@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { Play, Loader, Clock, Edit2, Check, Copy, Package, Contrast, Type, Maximize2 } from "lucide-react";
+import { Play, Loader, Clock, Edit2, Check, Copy, Package, Contrast, Type, Plus, Minus, Trash2, X } from "lucide-react";
 import ContentEditor from "../components/ContentEditor";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
@@ -13,6 +13,9 @@ export default function Slideshows() {
   const generateCarousel = useAction(api.slideshows.generate.generate);
   const updateStatus = useMutation(api.content.updateStatus);
   const toggleSlideOverlay = useMutation(api.content.toggleSlideOverlay);
+  const updateSlide = useMutation(api.content.updateSlide);
+  const updateAspectRatio = useMutation(api.content.updateAspectRatio);
+  const updateFontSize = useMutation(api.content.updateFontSize);
 
   const [selectedProduct, setSelectedProduct] = useState<Id<"products"> | "">("");
   const [prompt, setPrompt] = useState("");
@@ -25,6 +28,14 @@ export default function Slideshows() {
   const [editingCarousel, setEditingCarousel] = useState<Id<"content"> | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [copiedCaption, setCopiedCaption] = useState(false);
+
+  // Text editing state
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [editedText, setEditedText] = useState("");
+  const [editedFontSize, setEditedFontSize] = useState(48);
+
+  // Ratio selection state
+  const [showRatioMenu, setShowRatioMenu] = useState(false);
 
   // Query carousels for selected product (if product is selected)
   const carouselsByProduct = useQuery(
@@ -165,6 +176,82 @@ export default function Slideshows() {
     await navigator.clipboard.writeText(selectedCarouselItem.content.caption);
     setCopiedCaption(true);
     setTimeout(() => setCopiedCaption(false), 2000);
+  };
+
+  const handleStartTextEdit = () => {
+    if (!selectedCarouselItem?.content?.slides?.[selectedSlideIndex]) return;
+    const currentSlide = selectedCarouselItem.content.slides[selectedSlideIndex];
+    setEditedText(currentSlide.text || "");
+    setEditedFontSize(selectedCarouselItem.content.config?.fontSize || 48);
+    setIsEditingText(true);
+  };
+
+  const handleCancelTextEdit = () => {
+    setIsEditingText(false);
+    setEditedText("");
+  };
+
+  const handleSaveTextEdit = async () => {
+    if (!selectedCarousel || !selectedCarouselItem?.content?.slides?.[selectedSlideIndex]) return;
+
+    try {
+      const currentSlide = selectedCarouselItem.content.slides[selectedSlideIndex];
+      const slideUpdate: { text: string; imageUrl: string; overlay?: boolean } = {
+        text: editedText,
+        imageUrl: currentSlide.imageUrl,
+      };
+
+      if (currentSlide.overlay !== undefined) {
+        slideUpdate.overlay = currentSlide.overlay;
+      }
+
+      // Update the slide text
+      await updateSlide({
+        id: selectedCarousel,
+        slideIndex: selectedSlideIndex,
+        slide: slideUpdate,
+      });
+
+      // Update the global font size if it changed
+      const currentFontSize = selectedCarouselItem.content?.config?.fontSize || 48;
+      if (editedFontSize !== currentFontSize) {
+        await updateFontSize({
+          id: selectedCarousel,
+          fontSize: editedFontSize,
+        });
+      }
+
+      setIsEditingText(false);
+      setEditedText("");
+    } catch (error) {
+      console.error("Failed to save text:", error);
+      alert("Failed to save text changes");
+    }
+  };
+
+  const handleDeleteText = async () => {
+    if (!selectedCarousel || !selectedCarouselItem?.content?.slides?.[selectedSlideIndex]) return;
+
+    const currentSlide = selectedCarouselItem.content.slides[selectedSlideIndex];
+    await updateSlide({
+      id: selectedCarousel,
+      slideIndex: selectedSlideIndex,
+      slide: {
+        ...currentSlide,
+        text: "",
+      },
+    });
+
+    setIsEditingText(false);
+  };
+
+  const handleChangeRatio = async (ratio: "1:1" | "4:5" | "9:16") => {
+    if (!selectedCarousel) return;
+    await updateAspectRatio({
+      id: selectedCarousel,
+      aspectRatio: ratio,
+    });
+    setShowRatioMenu(false);
   };
 
   return (
@@ -323,7 +410,131 @@ export default function Slideshows() {
                             />
                           )}
                           {/* Text Overlay */}
-                          {slide.text && (
+                          {isEditingText && selectedSlideIndex === idx ? (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                position: "absolute",
+                                top: `${selectedCarouselItem.content?.config?.textPosition?.y || 50}%`,
+                                left: `${selectedCarouselItem.content?.config?.textPosition?.x || 50}%`,
+                                transform: "translate(-50%, -50%)",
+                                width: "80%",
+                                maxWidth: "280px",
+                              }}
+                            >
+                              <textarea
+                                value={editedText}
+                                onChange={(e) => setEditedText(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  width: "100%",
+                                  minHeight: "60px",
+                                  padding: "8px 12px",
+                                  fontSize: `${editedFontSize / 4}px`,
+                                  fontFamily: '"TikTok Display Medium"',
+                                  fontWeight: 700,
+                                  textAlign: "center",
+                                  color: "white",
+                                  background: "rgba(0, 0, 0, 0.6)",
+                                  border: "2px solid #3b82f6",
+                                  borderRadius: "8px",
+                                  resize: "none",
+                                  outline: "none",
+                                }}
+                                maxLength={100}
+                              />
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "0.5rem",
+                                  justifyContent: "center",
+                                  marginTop: "0.5rem",
+                                }}
+                              >
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditedFontSize(Math.max(24, editedFontSize - 4));
+                                  }}
+                                  style={{
+                                    width: "32px",
+                                    height: "32px",
+                                    borderRadius: "50%",
+                                    border: "2px solid white",
+                                    background: "white",
+                                    color: "#1f2937",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                    fontSize: "18px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <Minus size={16} />
+                                </button>
+                                <div
+                                  style={{
+                                    minWidth: "40px",
+                                    height: "32px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: "white",
+                                    fontSize: "14px",
+                                    fontWeight: 700,
+                                    background: "rgba(255, 255, 255, 0.2)",
+                                    borderRadius: "16px",
+                                    padding: "0 8px",
+                                  }}
+                                >
+                                  {editedFontSize}
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditedFontSize(Math.min(72, editedFontSize + 4));
+                                  }}
+                                  style={{
+                                    width: "32px",
+                                    height: "32px",
+                                    borderRadius: "50%",
+                                    border: "2px solid white",
+                                    background: "white",
+                                    color: "#1f2937",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                    fontSize: "18px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <Plus size={16} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteText();
+                                  }}
+                                  style={{
+                                    width: "32px",
+                                    height: "32px",
+                                    borderRadius: "50%",
+                                    border: "2px solid white",
+                                    background: "#ef4444",
+                                    color: "white",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : slide.text ? (
                             <div
                               style={{
                                 position: "absolute",
@@ -331,7 +542,7 @@ export default function Slideshows() {
                                 left: `${selectedCarouselItem.content?.config?.textPosition?.x || 50}%`,
                                 transform: "translate(-50%, -50%)",
                                 color: "white",
-                                fontSize: `14px`,
+                                fontSize: `${(selectedCarouselItem.content?.config?.fontSize || 48) / 4}px`,
                                 fontFamily: '"TikTok Display Medium"',
                                 fontWeight: 700,
                                 textAlign: "center",
@@ -347,7 +558,7 @@ export default function Slideshows() {
                             >
                               {slide.text}
                             </div>
-                          )}
+                          ) : null}
                           {/* Slide number badge */}
                           <div
                             style={{
@@ -369,82 +580,167 @@ export default function Slideshows() {
                     </div>
                   </div>
 
-                  {/* Slide Actions - Directly under selected image */}
-                  <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", justifyContent: "center", alignItems: "center" }}>
-                    <button
-                      onClick={() => {
-                        if (selectedCarousel) {
-                          toggleSlideOverlay({
-                            id: selectedCarousel,
-                            slideIndex: selectedSlideIndex,
-                          });
-                        }
-                      }}
-                      title="Toggle dark overlay"
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "50%",
-                        border: "2px solid #e5e7eb",
-                        background: selectedCarouselItem.content?.slides?.[selectedSlideIndex]?.overlay ? "#3b82f6" : "white",
-                        color: selectedCarouselItem.content?.slides?.[selectedSlideIndex]?.overlay ? "white" : "#6b7280",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <Contrast size={18} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        // TODO: Implement text editing
-                        console.log("Edit text clicked");
-                      }}
-                      title="Edit text"
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "50%",
-                        border: "2px solid #e5e7eb",
-                        background: "white",
-                        color: "#6b7280",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <Type size={18} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        // TODO: Implement ratio selection
-                        console.log("Change ratio clicked");
-                      }}
-                      title="Change aspect ratio"
-                      style={{
-                        minWidth: "40px",
-                        height: "40px",
-                        borderRadius: "20px",
-                        border: "2px solid #e5e7eb",
-                        background: "white",
-                        color: "#6b7280",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                        padding: "0 12px",
-                        fontSize: "0.875rem",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {selectedCarouselItem.content?.config?.aspectRatio || "1:1"}
-                    </button>
-                  </div>
+                  {/* Action Buttons / Cancel-Save Buttons - Directly under selected image */}
+                  {isEditingText ? (
+                    // Cancel and Save buttons (shown when editing text)
+                    <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", justifyContent: "center", alignItems: "center" }}>
+                      <button
+                        onClick={handleCancelTextEdit}
+                        style={{
+                          minWidth: "120px",
+                          height: "48px",
+                          borderRadius: "24px",
+                          border: "none",
+                          background: "#ef4444",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          fontSize: "1rem",
+                          fontWeight: 600,
+                          gap: "0.5rem",
+                          padding: "0 1.5rem",
+                        }}
+                      >
+                        <X size={20} />
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveTextEdit}
+                        style={{
+                          minWidth: "120px",
+                          height: "48px",
+                          borderRadius: "24px",
+                          border: "none",
+                          background: "#22c55e",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          fontSize: "1rem",
+                          fontWeight: 600,
+                          gap: "0.5rem",
+                          padding: "0 1.5rem",
+                        }}
+                      >
+                        <Check size={20} />
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    // Action buttons (shown when not editing)
+                    <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", justifyContent: "center", alignItems: "center" }}>
+                      <button
+                        onClick={() => {
+                          if (selectedCarousel) {
+                            toggleSlideOverlay({
+                              id: selectedCarousel,
+                              slideIndex: selectedSlideIndex,
+                            });
+                          }
+                        }}
+                        title="Toggle dark overlay"
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "50%",
+                          border: "2px solid #e5e7eb",
+                          background: selectedCarouselItem.content?.slides?.[selectedSlideIndex]?.overlay ? "#3b82f6" : "white",
+                          color: selectedCarouselItem.content?.slides?.[selectedSlideIndex]?.overlay ? "white" : "#6b7280",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        <Contrast size={18} />
+                      </button>
+                      <button
+                        onClick={handleStartTextEdit}
+                        title="Edit text"
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "50%",
+                          border: "2px solid #e5e7eb",
+                          background: "white",
+                          color: "#6b7280",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        <Type size={18} />
+                      </button>
+                      <div style={{ position: "relative" }}>
+                        <button
+                          onClick={() => setShowRatioMenu(!showRatioMenu)}
+                          title="Change aspect ratio"
+                          style={{
+                            minWidth: "40px",
+                            height: "40px",
+                            borderRadius: "20px",
+                            border: "2px solid #e5e7eb",
+                            background: showRatioMenu ? "#3b82f6" : "white",
+                            color: showRatioMenu ? "white" : "#6b7280",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
+                            padding: "0 12px",
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {selectedCarouselItem.content?.config?.aspectRatio || "1:1"}
+                        </button>
+                        {showRatioMenu && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "48px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              background: "white",
+                              border: "2px solid #e5e7eb",
+                              borderRadius: "12px",
+                              padding: "0.5rem",
+                              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+                              zIndex: 10,
+                              minWidth: "80px",
+                            }}
+                          >
+                            {["1:1", "4:5", "9:16"].map((ratio) => (
+                              <button
+                                key={ratio}
+                                onClick={() => handleChangeRatio(ratio as "1:1" | "4:5" | "9:16")}
+                                style={{
+                                  width: "100%",
+                                  padding: "0.5rem 1rem",
+                                  background: selectedCarouselItem.content?.config?.aspectRatio === ratio ? "#eff6ff" : "transparent",
+                                  color: selectedCarouselItem.content?.config?.aspectRatio === ratio ? "#3b82f6" : "#1f2937",
+                                  border: "none",
+                                  borderRadius: "8px",
+                                  cursor: "pointer",
+                                  fontSize: "0.875rem",
+                                  fontWeight: 600,
+                                  textAlign: "center",
+                                }}
+                              >
+                                {ratio}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Thumbnail Navigation */}
                   <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", marginBottom: "1rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
@@ -473,7 +769,7 @@ export default function Slideshows() {
                               left: "50%",
                               transform: "translate(-50%, -50%)",
                               color: "white",
-                              fontSize: "6px",
+                              fontSize: `${(selectedCarouselItem.content?.config?.fontSize || 48) / 8}px`,
                               fontFamily: '"TikTok Display Medium"',
                               fontWeight: 700,
                               textAlign: "center",

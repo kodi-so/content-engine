@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Doc, Id } from "../../convex/_generated/dataModel";
+import { Doc } from "../../convex/_generated/dataModel";
 import {
   X,
   Download,
@@ -11,7 +11,6 @@ import {
   ChevronRight,
   RefreshCw,
   Type,
-  Palette,
   Save,
   Sparkles,
   Contrast,
@@ -66,25 +65,17 @@ export default function ContentEditor({
     setHasChanges(true);
   };
 
+  // Font size and color are now global config settings, not per-slide
+  // These handlers are commented out but kept for potential future use
+  /*
   const handleFontSizeChange = (fontSize: number) => {
-    const newSlides = [...editedSlides];
-    newSlides[selectedSlideIndex] = {
-      ...newSlides[selectedSlideIndex],
-      fontSize,
-    };
-    setEditedSlides(newSlides);
-    setHasChanges(true);
+    // Would need to update global config instead
   };
 
   const handleFontColorChange = (fontColor: string) => {
-    const newSlides = [...editedSlides];
-    newSlides[selectedSlideIndex] = {
-      ...newSlides[selectedSlideIndex],
-      fontColor,
-    };
-    setEditedSlides(newSlides);
-    setHasChanges(true);
+    // Would need to update global config instead
   };
+  */
 
   const handleToggleOverlay = () => {
     const newSlides = [...editedSlides];
@@ -109,11 +100,10 @@ export default function ContentEditor({
         const originalSlide = content.content?.slides?.[i];
         const editedSlide = editedSlides[i];
 
-        // Check if slide was modified
+        // Check if slide was modified (text or overlay)
         if (
           originalSlide?.text !== editedSlide.text ||
-          originalSlide?.fontSize !== editedSlide.fontSize ||
-          originalSlide?.fontColor !== editedSlide.fontColor
+          originalSlide?.overlay !== editedSlide.overlay
         ) {
           await updateSlide({
             id: content._id,
@@ -186,18 +176,19 @@ export default function ContentEditor({
     }
   };
 
-  const fontColors = [
-    "#FFFFFF",
-    "#000000",
-    "#EF4444",
-    "#F59E0B",
-    "#10B981",
-    "#3B82F6",
-    "#8B5CF6",
-    "#EC4899",
-  ];
-
-  const fontSizes = [24, 32, 40, 48, 56, 64, 72];
+  // Font colors and sizes moved to global config, these are no longer used
+  // const fontColors = [
+  //   "#FFFFFF",
+  //   "#000000",
+  //   "#EF4444",
+  //   "#F59E0B",
+  //   "#10B981",
+  //   "#3B82F6",
+  //   "#8B5CF6",
+  //   "#EC4899",
+  // ];
+  //
+  // const fontSizes = [24, 32, 40, 48, 56, 64, 72];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -359,51 +350,8 @@ export default function ContentEditor({
               </div>
             </div>
 
-            {/* Font Size */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Font Size</label>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {fontSizes.map((size) => (
-                  <button
-                    key={size}
-                    className={`btn btn-sm ${
-                      (currentSlide?.fontSize || 48) === size ? "btn-primary" : "btn-secondary"
-                    }`}
-                    onClick={() => handleFontSizeChange(size)}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Font Color */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">
-                <Palette size={14} style={{ marginRight: "0.5rem" }} />
-                Font Color
-              </label>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {fontColors.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => handleFontColorChange(color)}
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "8px",
-                      background: color,
-                      border:
-                        (currentSlide?.fontColor || "#FFFFFF") === color
-                          ? "3px solid #3b82f6"
-                          : "2px solid #e5e7eb",
-                      cursor: "pointer",
-                      boxShadow: color === "#FFFFFF" ? "inset 0 0 0 1px #e5e7eb" : "none",
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
+            {/* Font Size and Color are now global config settings, editing disabled */}
+            {/* TODO: Add global font size/color editing if needed */}
 
             {/* Overlay Toggle */}
             <div className="form-group" style={{ marginBottom: 0 }}>

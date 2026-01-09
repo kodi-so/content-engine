@@ -1,10 +1,11 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-// Slide validator (just text and image)
+// Slide validator (text, image, and optional overlay)
 const slideValidator = v.object({
   text: v.string(),
   imageUrl: v.string(),
+  overlay: v.optional(v.boolean()),
 });
 
 // Get all content
@@ -247,6 +248,60 @@ export const updateCaption = mutation({
         caption: args.caption,
       },
       status: "edited",
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update aspect ratio
+export const updateAspectRatio = mutation({
+  args: {
+    id: v.id("content"),
+    aspectRatio: v.union(
+      v.literal("1:1"),
+      v.literal("4:5"),
+      v.literal("9:16")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const content = await ctx.db.get(args.id);
+    if (!content || !content.content) {
+      throw new Error("Content not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      content: {
+        ...content.content,
+        config: {
+          ...content.content.config!,
+          aspectRatio: args.aspectRatio,
+        },
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update font size
+export const updateFontSize = mutation({
+  args: {
+    id: v.id("content"),
+    fontSize: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const content = await ctx.db.get(args.id);
+    if (!content || !content.content) {
+      throw new Error("Content not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      content: {
+        ...content.content,
+        config: {
+          ...content.content.config!,
+          fontSize: args.fontSize,
+        },
+      },
       updatedAt: Date.now(),
     });
   },
