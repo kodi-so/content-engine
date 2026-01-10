@@ -76,7 +76,7 @@ export function PreviewPanel({
   isDownloading,
 }: PreviewPanelProps) {
   return (
-    <div className="card" style={{ overflow: "visible" }}>
+    <div className="card" style={{ overflow: "visible", minWidth: 0 }}>
       {/* Header */}
       <div
         style={{

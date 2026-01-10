@@ -144,7 +144,7 @@ export default function Slideshows() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "400px 1fr",
+          gridTemplateColumns: "minmax(300px, 400px) minmax(400px, 1fr)",
           gap: "1.5rem",
           marginBottom: "1.5rem",
           alignItems: "start",
