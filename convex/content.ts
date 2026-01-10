@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
 // Slide validator (text, image, optional overlay, and optional prompt)
 const slideValidator = v.object({
@@ -262,7 +263,20 @@ export const updateFontSize = mutation({
   },
 });
 
-// Delete content
+// Helper to extract storage ID from URL
+function extractStorageIdFromUrl(url: string): Id<"_storage"> | null {
+  try {
+    const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return match[1] as Id<"_storage">;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Delete content and associated images from storage
 export const remove = mutation({
   args: { id: v.id("content") },
   handler: async (ctx, args) => {
@@ -274,6 +288,24 @@ export const remove = mutation({
     const content = await ctx.db.get(args.id);
     if (!content || content.userId !== identity.subject) {
       throw new Error("Content not found");
+    }
+
+    // Delete all slide images from storage
+    const slides = content.content?.slides;
+    if (slides && slides.length > 0) {
+      for (const slide of slides) {
+        if (slide.imageUrl) {
+          const storageId = extractStorageIdFromUrl(slide.imageUrl);
+          if (storageId) {
+            try {
+              await ctx.storage.delete(storageId);
+            } catch (e) {
+              // Log but don't fail if image deletion fails
+              console.error("Failed to delete image:", e);
+            }
+          }
+        }
+      }
     }
 
     await ctx.db.delete(args.id);
