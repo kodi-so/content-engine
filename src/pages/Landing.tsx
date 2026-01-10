@@ -764,11 +764,37 @@ export default function Landing() {
           fontSize: "0.875rem",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginBottom: "1rem" }}>
           <Zap size={16} color="#3b82f6" />
           <span style={{ fontWeight: 600, color: "#6b7280" }}>Content Engine</span>
         </div>
-        <p>Create stunning content with AI</p>
+        <div style={{ display: "flex", justifyContent: "center", gap: "1.5rem", marginBottom: "1rem" }}>
+          <a
+            href="/privacy"
+            style={{
+              color: "#6b7280",
+              textDecoration: "none",
+              transition: "color 0.2s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#3b82f6")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
+          >
+            Privacy Policy
+          </a>
+          <a
+            href="/terms"
+            style={{
+              color: "#6b7280",
+              textDecoration: "none",
+              transition: "color 0.2s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#3b82f6")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
+          >
+            Terms of Service
+          </a>
+        </div>
+        <p>&copy; {new Date().getFullYear()} Content Engine. All rights reserved.</p>
       </footer>
     </div>
   );

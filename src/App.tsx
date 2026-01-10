@@ -23,6 +23,8 @@ import HookDemo from "./pages/HookDemo";
 import AIUGC from "./pages/AIUGC";
 import SettingsPage from "./pages/Settings";
 import Landing from "./pages/Landing";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function AppContent() {
@@ -78,6 +80,14 @@ function AppContent() {
   // Show landing page on root path (for both authenticated and unauthenticated users)
   if (location.pathname === "/") {
     return <Landing />;
+  }
+
+  // Show public pages without sidebar
+  if (location.pathname === "/privacy") {
+    return <Privacy />;
+  }
+  if (location.pathname === "/terms") {
+    return <Terms />;
   }
 
 
