@@ -15,17 +15,18 @@ export const listPostedContent = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { posts: [], nextCursor: null };
 
-    let postsQuery = ctx.db
+    const allPosts = await ctx.db
       .query("postedContent")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .order("desc");
-
-    const allPosts = await postsQuery.collect();
+      .collect();
 
     // Filter by account if specified
     let filteredPosts = args.accountId
       ? allPosts.filter((p) => p.accountId === args.accountId)
       : allPosts;
+
+    // Sort by postedAt (when posted on TikTok), most recent first
+    filteredPosts.sort((a, b) => b.postedAt - a.postedAt);
 
     // Handle cursor-based pagination
     if (args.cursor) {

@@ -139,7 +139,7 @@ export function PreviewPanel({
                   onToggleRegeneratePopover={onToggleRegeneratePopover}
                   onRegenerateImage={onRegenerateImage}
                   currentSlidePrompt={
-                    selectedCarouselItem.content.slides[selectedSlideIndex]?.prompt
+                    selectedCarouselItem.content.slides[selectedSlideIndex]?.imagePrompt
                   }
                   isRegenerating={isRegenerating}
                 />

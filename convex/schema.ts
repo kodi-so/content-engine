@@ -1,13 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-
-// Slide definition for carousels
-const slideValidator = v.object({
-  text: v.string(),
-  imageUrl: v.string(),
-  overlay: v.optional(v.boolean()), // Dark overlay for text readability
-  prompt: v.optional(v.string()), // Custom prompt used for image regeneration
-});
+import { slideValidator } from "./validators";
 
 export default defineSchema({
   // Products - Apps/brands/businesses for content context

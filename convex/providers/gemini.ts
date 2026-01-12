@@ -190,23 +190,86 @@ export async function generateImages(
   };
 }
 
+// ============ VISUAL PLANNING ============
+
+export interface VisualPlanResponse {
+  descriptions: string[];
+  cost: number;
+}
+
+/**
+ * Generate visual descriptions for carousel slides
+ * This intermediate step creates optimized image prompts from slide text
+ */
+export async function generateVisualDescriptions(
+  slideTexts: string[],
+  topic: string,
+  userStyle?: string | null
+): Promise<VisualPlanResponse> {
+  const slideList = slideTexts
+    .map((text, i) => `${i + 1}. "${text}"`)
+    .join("\n");
+
+  const styleInstruction = userStyle
+    ? `User's style preference: "${userStyle}"`
+    : "No specific style preference provided.";
+
+  const prompt = `You are a creative director planning visuals for a social media carousel.
+
+Topic: "${topic}"
+${styleInstruction}
+
+Slides:
+${slideList}
+
+For each slide, describe a specific visual/photograph that would:
+- Represent the slide's message without showing any text
+- Work well as a background for text overlay (clean areas, not too busy)
+- Create visual cohesion across the carousel (avoid repetitive imagery)
+- Align with the user's style preference if provided
+
+Each description should be a concrete visual scene (e.g., "glass of water on a wooden nightstand with soft morning light" NOT "an image representing hydration").
+
+Return JSON:
+{
+  "descriptions": [
+    "description for slide 1",
+    "description for slide 2",
+    ...
+  ]
+}`;
+
+  const response = await generateText(
+    prompt,
+    "You are a creative director who specializes in visual storytelling for social media.",
+    {
+      model: "gemini-2.0-flash",
+      responseFormat: { type: "json_object" },
+    }
+  );
+
+  const parsed = JSON.parse(response.text);
+
+  return {
+    descriptions: parsed.descriptions || [],
+    cost: response.cost,
+  };
+}
+
 /**
  * Generate a carousel slide image
  */
 export async function generateCarouselImage(
-  slideText: string,
-  style?: string
+  visualDescription: string,
+  userStyle?: string | null
 ): Promise<{ image: string; cost: number }> {
-  const styleHint = style || "modern, minimal, professional";
+  const styleHint = userStyle || "modern, minimal, professional";
 
-  const prompt = `Create a high-quality image for an Instagram/TikTok carousel about: "${slideText}"
+  const prompt = `Create a high-quality image: ${visualDescription}
 
 Requirements:
-- Modern, professional visual that directly relates to the content
-- Photography or illustration style
 - Clean composition suitable for text overlay
 - High contrast areas for text readability
-- Engaging and eye-catching
 - NO TEXT in the image
 - Square 1:1 aspect ratio
 
@@ -227,12 +290,12 @@ Style: ${styleHint}`;
  * Generate multiple carousel images in batch
  */
 export async function generateCarouselImages(
-  slideTexts: string[],
-  style?: string
+  visualDescriptions: string[],
+  userStyle?: string | null
 ): Promise<{ images: string[]; cost: number }> {
   // Generate images in parallel for speed
   const results = await Promise.all(
-    slideTexts.map((text) => generateCarouselImage(text, style))
+    visualDescriptions.map((desc) => generateCarouselImage(desc, userStyle))
   );
 
   return {

@@ -20,6 +20,7 @@ import type * as slideshows_generate from "../slideshows/generate.js";
 import type * as storage from "../storage.js";
 import type * as tiktok from "../tiktok.js";
 import type * as tiktokAnalytics from "../tiktokAnalytics.js";
+import type * as validators from "../validators.js";
 
 import type {
   ApiFromModules,
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   storage: typeof storage;
   tiktok: typeof tiktok;
   tiktokAnalytics: typeof tiktokAnalytics;
+  validators: typeof validators;
 }>;
 
 /**

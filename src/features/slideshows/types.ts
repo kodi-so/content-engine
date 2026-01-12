@@ -4,7 +4,7 @@ export interface Slide {
   text: string;
   imageUrl: string;
   overlay?: boolean;
-  prompt?: string; // Custom prompt used for image regeneration
+  imagePrompt?: string; // Prompt used to generate current image (from visual planning or manual regeneration)
 }
 
 export interface ContentConfig {

@@ -6,6 +6,7 @@ import { Id } from "../_generated/dataModel";
 import {
   generateText,
   generateCarouselImages,
+  generateVisualDescriptions,
 } from "../providers/gemini";
 
 /**
@@ -29,7 +30,7 @@ export const generate = action({
 
     const slideCount = args.slideCount || 5;
 
-    // Step 1: Generate text content
+    // Step 1: Generate text content + extract image style
     const prompt = `Generate ${slideCount} engaging carousel slides about: ${args.topic}
 
 Requirements:
@@ -37,9 +38,12 @@ Requirements:
 - Make them attention-grabbing and valuable
 - Format as a cohesive story or tips
 
-IMPORTANT: Return EXACTLY this JSON format (slides must be an array of strings):
+Also extract any image style preferences from the user's prompt (e.g., "dark and minimalist", "bright and colorful", "vintage aesthetic"). If no style is specified, set imageStyle to null.
+
+IMPORTANT: Return EXACTLY this JSON format:
 {
-  "slides": ["slide 1 text", "slide 2 text", "slide 3 text", ...]
+  "slides": ["slide 1 text", "slide 2 text", "slide 3 text", ...],
+  "imageStyle": "extracted style or null"
 }
 
 Each element in the "slides" array must be a single string containing all the text for that slide.`;
@@ -55,22 +59,34 @@ Each element in the "slides" array must be a single string containing all the te
     // Parse the response
     const parsed = JSON.parse(textResponse.text);
     const slideTexts: string[] = parsed.slides || [];
+    const imageStyle: string | null = parsed.imageStyle || null;
 
-    // Step 2: Generate images for each slide
-    const imageResponse = await generateCarouselImages(slideTexts);
+    // Step 2: Generate visual descriptions for each slide
+    const visualPlan = await generateVisualDescriptions(
+      slideTexts,
+      args.topic,
+      imageStyle
+    );
 
-    // Step 3: Upload images to Convex storage
+    // Step 3: Generate images using visual descriptions
+    const imageResponse = await generateCarouselImages(
+      visualPlan.descriptions,
+      imageStyle
+    );
+
+    // Step 4: Upload images to Convex storage
     const storageUrls = await ctx.runAction(api.storage.uploadBase64Images, {
       base64DataArray: imageResponse.images,
     });
 
-    // Step 4: Create final slides
+    // Step 5: Create final slides with image prompts
     const slides = slideTexts.map((text, index) => ({
       text,
       imageUrl: storageUrls[index],
+      imagePrompt: visualPlan.descriptions[index],
     }));
 
-    // Step 5: Save completed slideshow to DB
+    // Step 6: Save completed slideshow to DB
     const contentId = await ctx.runMutation(api.content.create, {
       userId: identity.subject,
       productId: args.productId,
@@ -148,7 +164,7 @@ export const regenerateSlideImage = action({
         }
       }
 
-      // Update the slide with new image and store the prompt
+      // Update the slide with new image and overwrite the image prompt
       await ctx.runMutation(api.content.updateSlide, {
         id: args.contentId,
         slideIndex: args.slideIndex,
@@ -156,7 +172,7 @@ export const regenerateSlideImage = action({
           text: currentSlide.text,
           imageUrl: storageUrl,
           overlay: currentSlide.overlay,
-          prompt: args.prompt, // Store the custom prompt
+          imagePrompt: args.prompt, // Overwrite with new prompt
         },
       });
 

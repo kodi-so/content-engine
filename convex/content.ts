@@ -1,35 +1,7 @@
-import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
-
-// Slide validator (text, image, optional overlay, and optional prompt)
-const slideValidator = v.object({
-  text: v.string(),
-  imageUrl: v.string(),
-  overlay: v.optional(v.boolean()),
-  prompt: v.optional(v.string()),
-});
-
-// Content validator
-const contentValidator = v.object({
-  type: v.string(),
-  slides: v.optional(v.array(slideValidator)),
-  texts: v.optional(v.array(v.string())),
-  mediaUrls: v.optional(v.array(v.string())),
-  config: v.optional(v.object({
-    fontSize: v.number(),
-    fontColor: v.string(),
-    textPosition: v.object({
-      x: v.number(),
-      y: v.number(),
-    }),
-    aspectRatio: v.optional(v.union(
-      v.literal("1:1"),
-      v.literal("4:5"),
-      v.literal("9:16")
-    )),
-  })),
-});
+import { slideValidator, contentValidator } from "./validators";
 
 // Get all content for current user
 export const list = query({
