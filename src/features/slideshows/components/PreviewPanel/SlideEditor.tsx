@@ -1,4 +1,5 @@
 import { Minus, Plus, Trash2 } from "lucide-react";
+import { getPreviewFontSize } from "../../styles";
 
 interface SlideEditorProps {
   editedText: string;
@@ -39,8 +40,8 @@ export function SlideEditor({
           width: "100%",
           minHeight: "60px",
           padding: "8px 12px",
-          fontSize: `${editedFontSize / 4}px`,
-          fontFamily: '"TikTok Display Medium"',
+          fontSize: `${getPreviewFontSize(editedFontSize)}px`,
+          fontFamily: '"TikTok Display", system-ui, sans-serif',
           fontWeight: 700,
           textAlign: "center",
           color: "white",

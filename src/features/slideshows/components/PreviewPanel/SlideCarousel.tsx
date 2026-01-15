@@ -1,12 +1,55 @@
+import { useMemo } from "react";
 import { Slide, TextElement, ContentConfig } from "../../types";
 import { SlideEditor } from "./SlideEditor";
 import {
   TEXT_STYLES,
   DEFAULT_CONFIG,
   PREVIEW_SLIDE_WIDTH,
+  EXPORT_BASE_SIZE,
   getPreviewFontSize,
   getDimensions,
 } from "../../styles";
+
+/**
+ * Use canvas to wrap text exactly like the export does.
+ * This ensures preview matches what gets rendered to TikTok.
+ */
+function useCanvasTextWrap(
+  text: string,
+  fontSize: number,
+  fontWeight: number
+): string[] {
+  return useMemo(() => {
+    // Calculate maxWidth at export scale (1080px base)
+    const maxWidth = (TEXT_STYLES.maxWidthPercent / 100) * EXPORT_BASE_SIZE;
+
+    // Create off-screen canvas for measurement
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return [text];
+
+    ctx.font = `${fontWeight} ${fontSize}px ${TEXT_STYLES.fontFamily}`;
+
+    // Word wrap using same logic as export
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let currentLine = "";
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+
+    return lines;
+  }, [text, fontSize, fontWeight]);
+}
 
 interface SlideCarouselProps {
   slides: Slide[];
@@ -28,22 +71,31 @@ interface SlideCarouselProps {
 function TextElementView({
   element,
   slideWidth,
-  isSelected,
   onClick,
+  stopPropagation = true,
 }: {
   element: TextElement;
   slideWidth: number;
-  isSelected: boolean;
   onClick: () => void;
+  stopPropagation?: boolean;
 }) {
   const textShadow = TEXT_STYLES.getTextShadow(slideWidth);
   const previewFontSize = getPreviewFontSize(element.fontSize);
-  const maxWidthPercent = element.maxWidth || 80;
+  const fontWeight = element.fontWeight || 700;
+
+  // Use canvas-based text wrapping to match export exactly
+  const lines = useCanvasTextWrap(
+    element.content,
+    element.fontSize,
+    fontWeight
+  );
 
   return (
     <div
       onClick={(e) => {
-        e.stopPropagation();
+        if (stopPropagation) {
+          e.stopPropagation();
+        }
         onClick();
       }}
       style={{
@@ -51,23 +103,19 @@ function TextElementView({
         top: `${element.position.y}%`,
         left: `${element.position.x}%`,
         transform: "translate(-50%, -50%)",
-        maxWidth: `${maxWidthPercent}%`,
         color: element.fontColor || "#ffffff",
         fontSize: `${previewFontSize}px`,
         fontFamily: TEXT_STYLES.fontFamily,
-        fontWeight: element.fontWeight || 700,
+        fontWeight,
         textAlign: element.textAlign || "center",
         textShadow,
         lineHeight: TEXT_STYLES.lineHeight,
         cursor: "pointer",
-        padding: "4px 8px",
-        borderRadius: "4px",
-        border: isSelected ? "2px solid #3b82f6" : "2px solid transparent",
-        background: isSelected ? "rgba(59, 130, 246, 0.1)" : "transparent",
-        transition: "border-color 0.15s, background 0.15s",
       }}
     >
-      {element.content}
+      {lines.map((line, i) => (
+        <div key={i} style={{ whiteSpace: "nowrap" }}>{line}</div>
+      ))}
     </div>
   );
 }
@@ -117,11 +165,9 @@ export function SlideCarousel({
               borderRadius: "12px",
               overflow: "hidden",
               background: "#f3f4f6",
-              border: selectedIndex === idx ? "3px solid #3b82f6" : "2px solid #e5e7eb",
               cursor: "pointer",
               opacity: selectedIndex === idx ? 1 : 0.6,
-              transform: selectedIndex === idx ? "scale(1)" : "scale(0.95)",
-              transition: "all 0.3s ease-out",
+              transition: "opacity 0.3s ease-out",
             }}
             onClick={() => onSelectSlide(idx)}
           >
@@ -169,7 +215,6 @@ export function SlideCarousel({
                   key={element.id}
                   element={element}
                   slideWidth={PREVIEW_SLIDE_WIDTH}
-                  isSelected={selectedElementId === element.id}
                   onClick={() => onStartTextEdit(element)}
                 />
               );
@@ -181,8 +226,8 @@ export function SlideCarousel({
                 key={element.id}
                 element={element}
                 slideWidth={PREVIEW_SLIDE_WIDTH}
-                isSelected={false}
                 onClick={() => {}}
+                stopPropagation={false}
               />
             ))}
 

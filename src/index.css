@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+/* TikTok Display font for slideshow text overlays */
+@font-face {
+  font-family: 'TikTok Display';
+  font-style: normal;
+  font-weight: 400;
+  src: local('TikTok Display'), url('https://fonts.cdnfonts.com/s/98474/TikTokDisplayRegular.woff') format('woff');
+}
+@font-face {
+  font-family: 'TikTok Display';
+  font-style: normal;
+  font-weight: 500;
+  src: local('TikTok Display'), url('https://fonts.cdnfonts.com/s/98474/TikTokDisplayMedium.woff') format('woff');
+}
+@font-face {
+  font-family: 'TikTok Display';
+  font-style: normal;
+  font-weight: 700;
+  src: local('TikTok Display'), url('https://fonts.cdnfonts.com/s/98474/TikTokDisplayBold.woff') format('woff');
+}
+
 /* Custom base styles */
 @layer base {
   * {

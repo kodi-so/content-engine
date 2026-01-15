@@ -12,7 +12,6 @@ export interface TextElement {
   fontColor?: string; // Defaults to white
   fontWeight?: number; // 400, 700, etc. Defaults to 700
   textAlign?: "left" | "center" | "right"; // Defaults to center
-  maxWidth?: number; // Max width as percentage (0-100), for text wrapping
 }
 
 // Slide with flexible text elements (like Canva)

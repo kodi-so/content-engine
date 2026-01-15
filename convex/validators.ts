@@ -13,7 +13,6 @@ export const textElementValidator = v.object({
   fontColor: v.optional(v.string()), // Defaults to white
   fontWeight: v.optional(v.number()), // 400, 700, etc. Defaults to 700
   textAlign: v.optional(v.union(v.literal("left"), v.literal("center"), v.literal("right"))), // Defaults to center
-  maxWidth: v.optional(v.number()), // Max width as percentage (0-100), for text wrapping
 });
 
 // Slide definition for carousels - flexible text elements approach

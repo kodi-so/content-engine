@@ -2,31 +2,22 @@
 // This ensures consistency between what users see and what they download
 
 export const TEXT_STYLES = {
-  fontFamily: '"TikTok Display Medium", "TikTok Display", system-ui, sans-serif',
+  fontFamily: '"TikTok Display", system-ui, sans-serif',
   fontWeight: 700,
-  color: "white",
   strokeColor: "rgb(0, 0, 0)",
   lineHeight: 1.2,
-  maxWidthPercent: 0.7, // 70% of slide width
+  maxWidthPercent: 75, // Max width for text elements (percentage of slide width)
 
-  // Text stroke/shadow creates an outline effect
-  // In CSS: 4-corner shadow at offset pixels
-  // The offset is relative to the display size
+  // Text stroke/shadow offset scales with display size
   getStrokeOffset: (displayWidth: number) => {
     // At 275px preview width, offset is 0.714286px
-    // Scale proportionally for other sizes
     return (0.714286 / 275) * displayWidth;
   },
 
-  // CSS text-shadow string for React components
+  // CSS text-shadow string for React components (4-corner outline effect)
   getTextShadow: (displayWidth: number) => {
     const offset = TEXT_STYLES.getStrokeOffset(displayWidth);
     return `rgb(0, 0, 0) ${-offset}px ${-offset}px 0px, rgb(0, 0, 0) ${offset}px ${-offset}px 0px, rgb(0, 0, 0) ${-offset}px ${offset}px 0px, rgb(0, 0, 0) ${offset}px ${offset}px 0px`;
-  },
-
-  // Canvas font string
-  getCanvasFont: (fontSize: number) => {
-    return `${TEXT_STYLES.fontWeight} ${fontSize}px ${TEXT_STYLES.fontFamily}`;
   },
 };
 

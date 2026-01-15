@@ -29,6 +29,38 @@ interface ConfigData {
 }
 
 /**
+ * Ensure TikTok Display font is loaded before canvas rendering
+ * This is critical for accurate text measurement and wrapping
+ */
+async function ensureFontLoaded(): Promise<void> {
+  // Check if the Font Loading API is available
+  if (!document.fonts) {
+    console.warn("Font Loading API not available");
+    return;
+  }
+
+  // Try to load the font with the weight we use (700 = bold)
+  try {
+    await document.fonts.load('700 48px "TikTok Display"');
+
+    // Force the font to be used by rendering to an off-screen canvas
+    // This ensures the font is actually available for measureText()
+    const testCanvas = document.createElement("canvas");
+    const testCtx = testCanvas.getContext("2d")!;
+    testCtx.font = '700 48px "TikTok Display"';
+    testCtx.fillText("Test", 0, 0);
+
+    // Small delay to ensure font is fully rendered
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Verify font is loaded
+    document.fonts.check('700 48px "TikTok Display"');
+  } catch (e) {
+    console.warn("TikTok Display font could not be loaded:", e);
+  }
+}
+
+/**
  * Render a single text element to the canvas
  */
 function renderTextElement(
@@ -41,15 +73,15 @@ function renderTextElement(
   const fontColor = element.fontColor || "#ffffff";
   const fontWeight = element.fontWeight || 700;
   const textAlign = element.textAlign || "center";
-  const maxWidthPercent = element.maxWidth || 80;
+  const maxWidthPercent = TEXT_STYLES.maxWidthPercent;
 
   // Calculate position in pixels
   const x = (element.position.x / 100) * canvasWidth;
   const y = (element.position.y / 100) * canvasHeight;
   const maxWidth = (maxWidthPercent / 100) * canvasWidth;
 
-  // Set font
-  ctx.font = `${fontWeight} ${fontSize}px "TikTok Display Medium", Inter, system-ui, sans-serif`;
+  // Set font - must match TEXT_STYLES.fontFamily
+  ctx.font = `${fontWeight} ${fontSize}px ${TEXT_STYLES.fontFamily}`;
   ctx.textAlign = textAlign;
   ctx.textBaseline = "middle";
 
@@ -71,6 +103,7 @@ function renderTextElement(
     const words = text.split(" ");
     const lines: string[] = [];
     let currentLine = "";
+
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
       const metrics = ctx.measureText(testLine);
@@ -82,6 +115,7 @@ function renderTextElement(
       }
     }
     if (currentLine) lines.push(currentLine);
+
     return lines;
   };
 
@@ -99,6 +133,9 @@ export async function renderSlideToCanvas(
   slide: Slide,
   config: ConfigData
 ): Promise<Blob> {
+  // Ensure font is loaded before rendering
+  await ensureFontLoaded();
+
   const aspectRatio = config.aspectRatio || DEFAULT_CONFIG.aspectRatio;
 
   // Get canvas dimensions
@@ -164,6 +201,9 @@ export async function renderSlideToWebPBase64(
   slide: Slide,
   config: ConfigData
 ): Promise<string> {
+  // Ensure font is loaded before rendering
+  await ensureFontLoaded();
+
   const aspectRatio = config.aspectRatio || DEFAULT_CONFIG.aspectRatio;
 
   // Get canvas dimensions

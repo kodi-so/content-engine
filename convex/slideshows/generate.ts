@@ -53,7 +53,6 @@ interface TextElement {
   fontColor?: string;
   fontWeight?: number;
   textAlign?: "left" | "center" | "right";
-  maxWidth?: number;
 }
 
 // Slide with text elements array
@@ -201,7 +200,6 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
             fontColor: "#ffffff",
             fontWeight: 700,
             textAlign: "center",
-            maxWidth: 80,
           });
         } else {
           // Content slide - heading + optional body
@@ -214,7 +212,6 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
               fontColor: "#ffffff",
               fontWeight: 700,
               textAlign: "center",
-              maxWidth: 85,
             });
           }
 
@@ -227,7 +224,6 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
               fontColor: "#ffffff",
               fontWeight: 400,
               textAlign: "center",
-              maxWidth: 80,
             });
           }
         }
