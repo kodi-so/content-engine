@@ -22,6 +22,12 @@ interface PendingPosition {
   y: number;
 }
 
+// Pending size for an element
+interface PendingSize {
+  width: number;
+  height: number;
+}
+
 export function useTextEditing() {
   // Currently selected element for editing
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
@@ -29,6 +35,7 @@ export function useTextEditing() {
   // All local changes (not yet saved to DB)
   const [pendingEdits, setPendingEdits] = useState<Map<string, PendingEdit>>(new Map());
   const [pendingPositions, setPendingPositions] = useState<Map<string, PendingPosition>>(new Map());
+  const [pendingSizes, setPendingSizes] = useState<Map<string, PendingSize>>(new Map());
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
   const [pendingAdds, setPendingAdds] = useState<TextElement[]>([]);
 
@@ -52,6 +59,15 @@ export function useTextEditing() {
       return pending;
     }
     return element.position;
+  };
+
+  // Get the current size for an element (pending or original)
+  const getSize = (element: TextElement): { width: number; height: number } => {
+    const pending = pendingSizes.get(element.id);
+    if (pending) {
+      return pending;
+    }
+    return element.size;
   };
 
   // Start editing a specific element
@@ -109,6 +125,26 @@ export function useTextEditing() {
     }
   };
 
+  // Update size for an element
+  const updateSize = (elementId: string, size: { width: number; height: number }, element: TextElement) => {
+    // Clamp size to valid range (10-100 for width, 5-100 for height)
+    const clampedSize = {
+      width: Math.max(10, Math.min(100, size.width)),
+      height: Math.max(5, Math.min(100, size.height)),
+    };
+
+    setPendingSizes((prev) => {
+      const next = new Map(prev);
+      next.set(elementId, clampedSize);
+      return next;
+    });
+
+    // Select this element if not already selected
+    if (selectedElementId !== elementId) {
+      startEditing(element);
+    }
+  };
+
   // Mark element for deletion locally
   const markForDeletion = (elementId: string, allElements: TextElement[] | undefined) => {
     setPendingDeletes((prev) => new Set(prev).add(elementId));
@@ -139,6 +175,7 @@ export function useTextEditing() {
       id: generateId(),
       content: "New text",
       position: { x: 50, y: 70 }, // Position lower to avoid overlap
+      size: DEFAULT_CONFIG.textSize,
       fontSize: DEFAULT_CONFIG.fontSize,
     };
 
@@ -157,6 +194,7 @@ export function useTextEditing() {
   const cancelEditing = () => {
     setPendingEdits(new Map());
     setPendingPositions(new Map());
+    setPendingSizes(new Map());
     setPendingDeletes(new Set());
     setPendingAdds([]);
     setSelectedElementId(null);
@@ -174,6 +212,7 @@ export function useTextEditing() {
         if (!pendingDeletes.has(newElement.id)) {
           const edit = pendingEdits.get(newElement.id);
           const position = pendingPositions.get(newElement.id);
+          const size = pendingSizes.get(newElement.id);
           await addTextElementMutation({
             id: contentId,
             slideIndex,
@@ -182,15 +221,17 @@ export function useTextEditing() {
               content: edit?.text || newElement.content,
               fontSize: edit?.fontSize || newElement.fontSize,
               position: position || newElement.position,
+              size: size || newElement.size,
             },
           });
         }
       }
 
-      // 2. Update existing elements that have edits or position changes
+      // 2. Update existing elements that have edits, position, or size changes
       const elementsToUpdate = new Set([
         ...pendingEdits.keys(),
         ...pendingPositions.keys(),
+        ...pendingSizes.keys(),
       ]);
 
       for (const elementId of elementsToUpdate) {
@@ -203,14 +244,18 @@ export function useTextEditing() {
         if (originalElement) {
           const edit = pendingEdits.get(elementId);
           const position = pendingPositions.get(elementId);
+          const size = pendingSizes.get(elementId);
 
-          const updates: { content?: string; fontSize?: number; position?: { x: number; y: number } } = {};
+          const updates: { content?: string; fontSize?: number; position?: { x: number; y: number }; size?: { width: number; height: number } } = {};
           if (edit) {
             updates.content = edit.text;
             updates.fontSize = edit.fontSize;
           }
           if (position) {
             updates.position = position;
+          }
+          if (size) {
+            updates.size = size;
           }
 
           if (Object.keys(updates).length > 0) {
@@ -239,6 +284,7 @@ export function useTextEditing() {
       // Clear all pending state
       setPendingEdits(new Map());
       setPendingPositions(new Map());
+      setPendingSizes(new Map());
       setPendingDeletes(new Set());
       setPendingAdds([]);
       setSelectedElementId(null);
@@ -294,6 +340,7 @@ export function useTextEditing() {
     pendingAdds,
     pendingEdits,
     pendingPositions,
+    pendingSizes,
     setEditedText,
     startEditing,
     cancelEditing,
@@ -305,6 +352,8 @@ export function useTextEditing() {
     decrementFontSize,
     getEditedValues,
     getPosition,
+    getSize,
     updatePosition,
+    updateSize,
   };
 }

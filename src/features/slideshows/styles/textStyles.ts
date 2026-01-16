@@ -8,7 +8,6 @@ export const TEXT_STYLES = {
   textAlign: "center" as const,
   strokeColor: "rgb(0, 0, 0)",
   lineHeight: 1.2,
-  maxWidthPercent: 75, // Max width for text elements (percentage of slide width)
 
   // Text stroke/shadow offset scales with display size
   getStrokeOffset: (displayWidth: number) => {
@@ -27,6 +26,7 @@ export const TEXT_STYLES = {
 export const DEFAULT_CONFIG = {
   fontSize: 48,
   textPosition: { x: 50, y: 50 },
+  textSize: { width: 80, height: 25 }, // Default text box size (percentage of slide)
   aspectRatio: "4:5" as const,
 };
 
@@ -39,16 +39,6 @@ export const PREVIEW_SLIDE_WIDTH = 275;
 // Get scaled font size for preview (preview is smaller than export)
 export const getPreviewFontSize = (fontSize: number) => {
   return fontSize * (PREVIEW_SLIDE_WIDTH / EXPORT_BASE_SIZE);
-};
-
-// Get max width for text wrapping at preview scale
-export const getPreviewMaxWidth = () => {
-  return (TEXT_STYLES.maxWidthPercent / 100) * PREVIEW_SLIDE_WIDTH;
-};
-
-// Get max width for text wrapping at export scale
-export const getExportMaxWidth = () => {
-  return (TEXT_STYLES.maxWidthPercent / 100) * EXPORT_BASE_SIZE;
 };
 
 // Get dimensions for aspect ratio

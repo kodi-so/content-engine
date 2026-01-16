@@ -5,8 +5,12 @@ export interface TextElement {
   id: string; // Unique ID for this text element
   content: string; // The text content
   position: {
-    x: number; // X position as percentage (0-100)
-    y: number; // Y position as percentage (0-100)
+    x: number; // X position of center as percentage (0-100)
+    y: number; // Y position of center as percentage (0-100)
+  };
+  size: {
+    width: number; // Width as percentage of slide (0-100)
+    height: number; // Height as percentage of slide (0-100)
   };
   fontSize: number; // Font size in pixels
   fontColor?: string; // Defaults to white

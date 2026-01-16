@@ -6,8 +6,12 @@ export const textElementValidator = v.object({
   id: v.string(), // Unique ID for this text element
   content: v.string(), // The text content
   position: v.object({
-    x: v.number(), // X position as percentage (0-100)
-    y: v.number(), // Y position as percentage (0-100)
+    x: v.number(), // X position of center as percentage (0-100)
+    y: v.number(), // Y position of center as percentage (0-100)
+  }),
+  size: v.object({
+    width: v.number(), // Width as percentage of slide (0-100)
+    height: v.number(), // Height as percentage of slide (0-100)
   }),
   fontSize: v.number(), // Font size in pixels
   fontColor: v.optional(v.string()), // Defaults to white

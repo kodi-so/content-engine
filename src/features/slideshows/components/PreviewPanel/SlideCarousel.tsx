@@ -5,7 +5,6 @@ import {
   DEFAULT_CONFIG,
   PREVIEW_SLIDE_WIDTH,
   getPreviewFontSize,
-  getPreviewMaxWidth,
   getDimensions,
 } from "../../styles";
 
@@ -21,6 +20,12 @@ interface PendingPosition {
   y: number;
 }
 
+// Pending size for an element
+interface PendingSize {
+  width: number;
+  height: number;
+}
+
 interface SlideCarouselProps {
   slides: Slide[];
   selectedIndex: number;
@@ -34,6 +39,7 @@ interface SlideCarouselProps {
   pendingAdds: TextElement[];
   pendingEdits: Map<string, PendingEdit>;
   pendingPositions: Map<string, PendingPosition>;
+  pendingSizes: Map<string, PendingSize>;
   onTextChange: (text: string) => void;
   onIncrementFontSize: () => void;
   onDecrementFontSize: () => void;
@@ -41,6 +47,7 @@ interface SlideCarouselProps {
   onStartTextEdit: (element: TextElement) => void;
   onAddText: () => void;
   onUpdatePosition: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
+  onUpdateSize: (elementId: string, size: { width: number; height: number }, element: TextElement) => void;
 }
 
 // Render a single text element (non-editing state)
@@ -73,8 +80,9 @@ function TextElementView({
   // Use pending position if available, otherwise use element position
   const position = pendingPosition || element.position;
 
-  // Use CSS-based wrapping (same as EditableTextElement)
-  const maxWidthPx = getPreviewMaxWidth();
+  // Calculate fixed dimensions from element size (percentage of slide)
+  const widthPx = (element.size.width / 100) * slideWidth;
+  const heightPx = (element.size.height / 100) * slideWidth * (5 / 4); // Assuming 4:5 aspect ratio for now
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isEditMode || !onDrag) return;
@@ -132,6 +140,11 @@ function TextElementView({
         top: `${position.y}%`,
         left: `${position.x}%`,
         transform: "translate(-50%, -50%)",
+        width: `${widthPx}px`,
+        height: `${heightPx}px`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         color: element.fontColor || TEXT_STYLES.fontColor,
         fontSize: `${previewFontSize}px`,
         fontFamily: TEXT_STYLES.fontFamily,
@@ -141,9 +154,7 @@ function TextElementView({
         lineHeight: TEXT_STYLES.lineHeight,
         cursor: isEditMode ? "grab" : "pointer",
         userSelect: "none",
-        maxWidth: `${maxWidthPx}px`,
-        wordWrap: "break-word",
-        overflowWrap: "break-word",
+        overflow: "hidden",
       }}
     >
       {displayText}
@@ -155,25 +166,31 @@ function TextElementView({
 function EditableTextElement({
   element,
   slideWidth,
+  slideHeight,
   editedText,
   editedFontSize,
   pendingPosition,
+  pendingSize,
   onTextChange,
   onIncrementFontSize,
   onDecrementFontSize,
   onDeleteText,
   onDrag,
+  onResize,
 }: {
   element: TextElement;
   slideWidth: number;
+  slideHeight: number;
   editedText: string;
   editedFontSize: number;
   pendingPosition?: PendingPosition;
+  pendingSize?: PendingSize;
   onTextChange: (text: string) => void;
   onIncrementFontSize: () => void;
   onDecrementFontSize: () => void;
   onDeleteText: () => void;
   onDrag?: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
+  onResize?: (elementId: string, size: { width: number; height: number }, element: TextElement) => void;
 }) {
   const textShadow = TEXT_STYLES.getTextShadow(slideWidth);
   const previewFontSize = getPreviewFontSize(editedFontSize);
@@ -181,6 +198,13 @@ function EditableTextElement({
 
   // Use pending position if available, otherwise use element position
   const position = pendingPosition || element.position;
+
+  // Use pending size if available, otherwise use element size
+  const size = pendingSize || element.size;
+
+  // Calculate fixed dimensions from element size (percentage of slide)
+  const widthPx = (size.width / 100) * slideWidth;
+  const heightPx = (size.height / 100) * slideHeight;
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!onDrag) return;
@@ -215,8 +239,68 @@ function EditableTextElement({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Calculate max width for text wrapping (matches export)
-  const maxWidthPx = getPreviewMaxWidth();
+  // Handle corner resize
+  const handleResizeMouseDown = (corner: 'nw' | 'ne' | 'sw' | 'se') => (e: React.MouseEvent) => {
+    if (!onResize) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    const slideElement = (e.target as HTMLElement).closest('[data-slide-container]') as HTMLElement;
+    if (!slideElement) return;
+
+    const slideRect = slideElement.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startSize = { ...size };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaXPx = moveEvent.clientX - startX;
+      const deltaYPx = moveEvent.clientY - startY;
+
+      // Convert pixel delta to percentage
+      const deltaWidthPercent = (deltaXPx / slideRect.width) * 100;
+      const deltaHeightPercent = (deltaYPx / slideRect.height) * 100;
+
+      let newWidth = startSize.width;
+      let newHeight = startSize.height;
+
+      // Adjust size based on which corner is being dragged
+      // Since element is centered, we need to double the delta (dragging one edge affects both sides visually)
+      if (corner === 'ne' || corner === 'se') {
+        newWidth = startSize.width + deltaWidthPercent * 2;
+      } else {
+        newWidth = startSize.width - deltaWidthPercent * 2;
+      }
+
+      if (corner === 'sw' || corner === 'se') {
+        newHeight = startSize.height + deltaHeightPercent * 2;
+      } else {
+        newHeight = startSize.height - deltaHeightPercent * 2;
+      }
+
+      onResize(element.id, { width: newWidth, height: newHeight }, element);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Corner handle style
+  const cornerHandleStyle: React.CSSProperties = {
+    position: 'absolute',
+    width: '10px',
+    height: '10px',
+    background: '#3b82f6',
+    border: '2px solid white',
+    borderRadius: '2px',
+    zIndex: 10,
+  };
 
   return (
     <div
@@ -228,9 +312,14 @@ function EditableTextElement({
         transform: "translate(-50%, -50%)",
       }}
     >
-      {/* Text with blue dashed outline - single editable element */}
+      {/* Text with blue dashed outline - fixed dimensions */}
       <div
         style={{
+          width: `${widthPx}px`,
+          height: `${heightPx}px`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           color: element.fontColor || TEXT_STYLES.fontColor,
           fontSize: `${previewFontSize}px`,
           fontFamily: TEXT_STYLES.fontFamily,
@@ -242,9 +331,7 @@ function EditableTextElement({
           outlineOffset: "4px",
           borderRadius: "4px",
           cursor: "text",
-          maxWidth: `${maxWidthPx}px`,
-          wordWrap: "break-word",
-          overflowWrap: "break-word",
+          overflow: "hidden",
         }}
         contentEditable
         suppressContentEditableWarning
@@ -357,6 +444,48 @@ function EditableTextElement({
           <Trash2 size={14} />
         </button>
       </div>
+
+      {/* Corner resize handles */}
+      <div
+        onMouseDown={handleResizeMouseDown('nw')}
+        style={{
+          ...cornerHandleStyle,
+          top: '-5px',
+          left: '-5px',
+          cursor: 'nw-resize',
+        }}
+        title="Resize"
+      />
+      <div
+        onMouseDown={handleResizeMouseDown('ne')}
+        style={{
+          ...cornerHandleStyle,
+          top: '-5px',
+          right: '-5px',
+          cursor: 'ne-resize',
+        }}
+        title="Resize"
+      />
+      <div
+        onMouseDown={handleResizeMouseDown('sw')}
+        style={{
+          ...cornerHandleStyle,
+          bottom: '-5px',
+          left: '-5px',
+          cursor: 'sw-resize',
+        }}
+        title="Resize"
+      />
+      <div
+        onMouseDown={handleResizeMouseDown('se')}
+        style={{
+          ...cornerHandleStyle,
+          bottom: '-5px',
+          right: '-5px',
+          cursor: 'se-resize',
+        }}
+        title="Resize"
+      />
     </div>
   );
 }
@@ -374,6 +503,7 @@ export function SlideCarousel({
   pendingAdds,
   pendingEdits,
   pendingPositions,
+  pendingSizes,
   onTextChange,
   onIncrementFontSize,
   onDecrementFontSize,
@@ -381,6 +511,7 @@ export function SlideCarousel({
   onStartTextEdit,
   onAddText,
   onUpdatePosition,
+  onUpdateSize,
 }: SlideCarouselProps) {
   const aspectRatio = config?.aspectRatio || DEFAULT_CONFIG.aspectRatio;
   const { height: slideHeight } = getDimensions(aspectRatio, PREVIEW_SLIDE_WIDTH);
@@ -453,14 +584,17 @@ export function SlideCarousel({
                       key={element.id}
                       element={element}
                       slideWidth={PREVIEW_SLIDE_WIDTH}
+                      slideHeight={slideHeight}
                       editedText={editedText}
                       editedFontSize={editedFontSize}
                       pendingPosition={pendingPositions.get(element.id)}
+                      pendingSize={pendingSizes.get(element.id)}
                       onTextChange={onTextChange}
                       onIncrementFontSize={onIncrementFontSize}
                       onDecrementFontSize={onDecrementFontSize}
                       onDeleteText={onDeleteText}
                       onDrag={onUpdatePosition}
+                      onResize={onUpdateSize}
                     />
                   );
                 }

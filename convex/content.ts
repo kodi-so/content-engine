@@ -295,7 +295,10 @@ export const updateTextElement = mutation({
         x: v.number(),
         y: v.number(),
       })),
-      maxWidth: v.optional(v.number()),
+      size: v.optional(v.object({
+        width: v.number(),
+        height: v.number(),
+      })),
     }),
   },
   handler: async (ctx, args) => {

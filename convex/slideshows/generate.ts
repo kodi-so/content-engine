@@ -49,6 +49,7 @@ interface TextElement {
   id: string;
   content: string;
   position: { x: number; y: number };
+  size: { width: number; height: number };
   fontSize: number;
   fontColor?: string;
   fontWeight?: number;
@@ -196,6 +197,7 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
             id: generateId(),
             content: slide.title,
             position: { x: 50, y: 50 },
+            size: { width: 80, height: 30 },
             fontSize: 56,
           });
         } else {
@@ -204,8 +206,9 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
             textElements.push({
               id: generateId(),
               content: slide.heading,
-              position: { x: 50, y: 35 },
-              fontSize: 48,
+              position: { x: 50, y: 30 },
+              size: { width: 80, height: 20 },
+              fontSize: 56,
             });
           }
 
@@ -213,8 +216,9 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
             textElements.push({
               id: generateId(),
               content: slide.body,
-              position: { x: 50, y: 60 },
-              fontSize: 32,
+              position: { x: 50, y: 65 },
+              size: { width: 80, height: 35 },
+              fontSize: 44,
             });
           }
         }

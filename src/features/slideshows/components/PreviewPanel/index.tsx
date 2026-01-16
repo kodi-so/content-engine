@@ -21,6 +21,12 @@ interface PendingPosition {
   y: number;
 }
 
+// Pending size for an element
+interface PendingSize {
+  width: number;
+  height: number;
+}
+
 // TikTok icon component
 function TikTokIcon({ size = 16 }: { size?: number }) {
   return (
@@ -44,8 +50,10 @@ interface PreviewPanelProps {
   pendingAdds: TextElement[];
   pendingEdits: Map<string, PendingEdit>;
   pendingPositions: Map<string, PendingPosition>;
+  pendingSizes: Map<string, PendingSize>;
   onTextChange: (text: string) => void;
   onUpdatePosition: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
+  onUpdateSize: (elementId: string, size: { width: number; height: number }, element: TextElement) => void;
   onStartTextEdit: (element: TextElement) => void;
   onEnterEditMode: () => void;
   onCancelEdit: () => void;
@@ -85,8 +93,10 @@ export function PreviewPanel({
   pendingAdds,
   pendingEdits,
   pendingPositions,
+  pendingSizes,
   onTextChange,
   onUpdatePosition,
+  onUpdateSize,
   onStartTextEdit,
   onEnterEditMode,
   onCancelEdit,
@@ -148,6 +158,7 @@ export function PreviewPanel({
                   pendingAdds={pendingAdds}
                   pendingEdits={pendingEdits}
                   pendingPositions={pendingPositions}
+                  pendingSizes={pendingSizes}
                   onTextChange={onTextChange}
                   onIncrementFontSize={onIncrementFontSize}
                   onDecrementFontSize={onDecrementFontSize}
@@ -155,6 +166,7 @@ export function PreviewPanel({
                   onStartTextEdit={onStartTextEdit}
                   onAddText={onAddText}
                   onUpdatePosition={onUpdatePosition}
+                  onUpdateSize={onUpdateSize}
                 />
 
                 <EditModeButtons

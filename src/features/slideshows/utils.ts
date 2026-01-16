@@ -73,12 +73,14 @@ function renderTextElement(
   const fontColor = element.fontColor || TEXT_STYLES.fontColor;
   const fontWeight = element.fontWeight || TEXT_STYLES.fontWeight;
   const textAlign = element.textAlign || TEXT_STYLES.textAlign;
-  const maxWidthPercent = TEXT_STYLES.maxWidthPercent;
 
-  // Calculate position in pixels
+  // Calculate fixed dimensions from element size (percentage of canvas)
+  const widthPx = (element.size.width / 100) * canvasWidth;
+  const heightPx = (element.size.height / 100) * canvasHeight;
+
+  // Calculate position in pixels (center point)
   const x = (element.position.x / 100) * canvasWidth;
   const y = (element.position.y / 100) * canvasHeight;
-  const maxWidth = (maxWidthPercent / 100) * canvasWidth;
 
   // Set font - must match TEXT_STYLES.fontFamily
   ctx.font = `${fontWeight} ${fontSize}px ${TEXT_STYLES.fontFamily}`;
@@ -98,7 +100,7 @@ function renderTextElement(
     ctx.fillText(text, drawX, drawY);
   };
 
-  // Word wrap text
+  // Word wrap text using fixed width
   const wrapText = (text: string): string[] => {
     const words = text.split(" ");
     const lines: string[] = [];
@@ -107,7 +109,7 @@ function renderTextElement(
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
       const metrics = ctx.measureText(testLine);
-      if (metrics.width > maxWidth && currentLine) {
+      if (metrics.width > widthPx && currentLine) {
         lines.push(currentLine);
         currentLine = word;
       } else {
@@ -122,9 +124,14 @@ function renderTextElement(
   const lines = wrapText(element.content);
   const lineHeight = fontSize * TEXT_STYLES.lineHeight;
   const totalHeight = lines.length * lineHeight;
+
+  // Clamp text to fixed height (don't render lines that overflow)
+  const maxLines = Math.floor(heightPx / lineHeight);
+  const visibleLines = lines.slice(0, maxLines);
+
   const startY = y - totalHeight / 2 + lineHeight / 2;
 
-  lines.forEach((line, index) => {
+  visibleLines.forEach((line, index) => {
     drawTextWithStroke(line, x, startY + index * lineHeight);
   });
 }

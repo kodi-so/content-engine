@@ -188,8 +188,10 @@ export default function Slideshows() {
           pendingAdds={textEditing.pendingAdds}
           pendingEdits={textEditing.pendingEdits}
           pendingPositions={textEditing.pendingPositions}
+          pendingSizes={textEditing.pendingSizes}
           onTextChange={textEditing.setEditedText}
           onUpdatePosition={textEditing.updatePosition}
+          onUpdateSize={textEditing.updateSize}
           onStartTextEdit={handleStartTextEdit}
           onEnterEditMode={handleEnterEditMode}
           onCancelEdit={handleCancelEdit}
