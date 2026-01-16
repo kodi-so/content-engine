@@ -32,30 +32,49 @@ export default function Slideshows() {
     }
   }, [state.selectedCarouselItem?._id]);
 
+  // Get current slide's text elements
+  const currentTextElements = state.selectedCarouselItem?.content?.slides?.[state.selectedSlideIndex]?.textElements;
+
   // Handle generation
   const handleGenerate = () => {
     generation.generate(state.selectedProduct || undefined);
   };
 
-  // Handle text editing - now receives a TextElement
+  // Handle text editing - clicking a text element starts editing
   const handleStartTextEdit = (element: TextElement) => {
     textEditing.startEditing(element);
   };
 
+  // Handle entering edit mode via the Text button
+  const handleEnterEditMode = () => {
+    textEditing.enterEditModeWithElement(currentTextElements);
+  };
+
+  const handleCancelEdit = () => {
+    textEditing.cancelEditing();
+  };
+
   const handleSaveTextEdit = async () => {
     if (!state.selectedCarousel) return;
-    await textEditing.saveText(
+    await textEditing.saveChanges(
       state.selectedCarousel,
-      state.selectedSlideIndex
+      state.selectedSlideIndex,
+      currentTextElements
     );
   };
 
-  const handleDeleteText = async () => {
-    if (!state.selectedCarousel) return;
-    await textEditing.deleteElement(
-      state.selectedCarousel,
-      state.selectedSlideIndex
-    );
+  const handleDeleteText = () => {
+    if (!textEditing.selectedElementId) return;
+    // Combine original elements with pending adds for the full list
+    const allElements = [
+      ...(currentTextElements || []),
+      ...textEditing.pendingAdds,
+    ];
+    textEditing.markForDeletion(textEditing.selectedElementId, allElements);
+  };
+
+  const handleAddText = () => {
+    textEditing.addTextElement(currentTextElements);
   };
 
   // Handle download as zip
@@ -161,15 +180,22 @@ export default function Slideshows() {
           selectedCarouselItem={state.selectedCarouselItem}
           selectedSlideIndex={state.selectedSlideIndex}
           onSelectSlide={state.setSelectedSlideIndex}
-          isEditingText={textEditing.isEditingText}
+          isEditMode={textEditing.isEditMode}
           selectedElementId={textEditing.selectedElementId}
           editedText={textEditing.editedText}
           editedFontSize={textEditing.editedFontSize}
+          pendingDeletes={textEditing.pendingDeletes}
+          pendingAdds={textEditing.pendingAdds}
+          pendingEdits={textEditing.pendingEdits}
+          pendingPositions={textEditing.pendingPositions}
           onTextChange={textEditing.setEditedText}
+          onUpdatePosition={textEditing.updatePosition}
           onStartTextEdit={handleStartTextEdit}
-          onCancelTextEdit={textEditing.cancelEditing}
-          onSaveTextEdit={handleSaveTextEdit}
+          onEnterEditMode={handleEnterEditMode}
+          onCancelEdit={handleCancelEdit}
+          onSaveEdit={handleSaveTextEdit}
           onDeleteText={handleDeleteText}
+          onAddText={handleAddText}
           onIncrementFontSize={textEditing.incrementFontSize}
           onDecrementFontSize={textEditing.decrementFontSize}
           onToggleOverlay={state.handleToggleOverlay}

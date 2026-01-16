@@ -1,54 +1,24 @@
-import { useMemo } from "react";
+import { Plus, Minus, Trash2, Move } from "lucide-react";
 import { Slide, TextElement, ContentConfig } from "../../types";
-import { SlideEditor } from "./SlideEditor";
 import {
   TEXT_STYLES,
   DEFAULT_CONFIG,
   PREVIEW_SLIDE_WIDTH,
-  EXPORT_BASE_SIZE,
   getPreviewFontSize,
+  getPreviewMaxWidth,
   getDimensions,
 } from "../../styles";
 
-/**
- * Use canvas to wrap text exactly like the export does.
- * This ensures preview matches what gets rendered to TikTok.
- */
-function useCanvasTextWrap(
-  text: string,
-  fontSize: number,
-  fontWeight: number
-): string[] {
-  return useMemo(() => {
-    // Calculate maxWidth at export scale (1080px base)
-    const maxWidth = (TEXT_STYLES.maxWidthPercent / 100) * EXPORT_BASE_SIZE;
+// Pending edit for an element
+interface PendingEdit {
+  text: string;
+  fontSize: number;
+}
 
-    // Create off-screen canvas for measurement
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return [text];
-
-    ctx.font = `${fontWeight} ${fontSize}px ${TEXT_STYLES.fontFamily}`;
-
-    // Word wrap using same logic as export
-    const words = text.split(" ");
-    const lines: string[] = [];
-    let currentLine = "";
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const metrics = ctx.measureText(testLine);
-      if (metrics.width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-
-    return lines;
-  }, [text, fontSize, fontWeight]);
+// Pending position for an element
+interface PendingPosition {
+  x: number;
+  y: number;
 }
 
 interface SlideCarouselProps {
@@ -56,66 +26,337 @@ interface SlideCarouselProps {
   selectedIndex: number;
   onSelectSlide: (index: number) => void;
   config?: ContentConfig;
-  isEditingText: boolean;
+  isEditMode: boolean;
   selectedElementId: string | null;
   editedText: string;
   editedFontSize: number;
+  pendingDeletes: Set<string>;
+  pendingAdds: TextElement[];
+  pendingEdits: Map<string, PendingEdit>;
+  pendingPositions: Map<string, PendingPosition>;
   onTextChange: (text: string) => void;
   onIncrementFontSize: () => void;
   onDecrementFontSize: () => void;
   onDeleteText: () => void;
   onStartTextEdit: (element: TextElement) => void;
+  onAddText: () => void;
+  onUpdatePosition: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
 }
 
-// Render a single text element
+// Render a single text element (non-editing state)
 function TextElementView({
   element,
   slideWidth,
   onClick,
   stopPropagation = true,
+  pendingEdit,
+  pendingPosition,
+  isEditMode,
+  onDrag,
 }: {
   element: TextElement;
   slideWidth: number;
   onClick: () => void;
   stopPropagation?: boolean;
+  pendingEdit?: PendingEdit;
+  pendingPosition?: PendingPosition;
+  isEditMode?: boolean;
+  onDrag?: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
 }) {
   const textShadow = TEXT_STYLES.getTextShadow(slideWidth);
-  const previewFontSize = getPreviewFontSize(element.fontSize);
-  const fontWeight = element.fontWeight || 700;
+  // Use pending edit values if available
+  const displayText = pendingEdit?.text ?? element.content;
+  const displayFontSize = pendingEdit?.fontSize ?? element.fontSize;
+  const previewFontSize = getPreviewFontSize(displayFontSize);
+  const fontWeight = element.fontWeight || TEXT_STYLES.fontWeight;
 
-  // Use canvas-based text wrapping to match export exactly
-  const lines = useCanvasTextWrap(
-    element.content,
-    element.fontSize,
-    fontWeight
-  );
+  // Use pending position if available, otherwise use element position
+  const position = pendingPosition || element.position;
+
+  // Use CSS-based wrapping (same as EditableTextElement)
+  const maxWidthPx = getPreviewMaxWidth();
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isEditMode || !onDrag) return;
+
+    e.stopPropagation();
+
+    const slideElement = (e.target as HTMLElement).closest('[data-slide-container]') as HTMLElement;
+    if (!slideElement) return;
+
+    const slideRect = slideElement.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let hasDragged = false;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      // Only start dragging if moved more than 5px (prevents accidental drags)
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!hasDragged && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+
+      hasDragged = true;
+      const x = ((moveEvent.clientX - slideRect.left) / slideRect.width) * 100;
+      const y = ((moveEvent.clientY - slideRect.top) / slideRect.height) * 100;
+      onDrag(element.id, { x, y }, element);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+
+      // If we didn't drag, treat it as a click to select
+      if (!hasDragged) {
+        onClick();
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   return (
     <div
       onClick={(e) => {
-        if (stopPropagation) {
-          e.stopPropagation();
+        // Only handle click if not in edit mode (edit mode uses mousedown/mouseup)
+        if (!isEditMode) {
+          if (stopPropagation) {
+            e.stopPropagation();
+          }
+          onClick();
         }
-        onClick();
       }}
+      onMouseDown={handleMouseDown}
       style={{
         position: "absolute",
-        top: `${element.position.y}%`,
-        left: `${element.position.x}%`,
+        top: `${position.y}%`,
+        left: `${position.x}%`,
         transform: "translate(-50%, -50%)",
-        color: element.fontColor || "#ffffff",
+        color: element.fontColor || TEXT_STYLES.fontColor,
         fontSize: `${previewFontSize}px`,
         fontFamily: TEXT_STYLES.fontFamily,
         fontWeight,
-        textAlign: element.textAlign || "center",
+        textAlign: element.textAlign || TEXT_STYLES.textAlign,
         textShadow,
         lineHeight: TEXT_STYLES.lineHeight,
-        cursor: "pointer",
+        cursor: isEditMode ? "grab" : "pointer",
+        userSelect: "none",
+        maxWidth: `${maxWidthPx}px`,
+        wordWrap: "break-word",
+        overflowWrap: "break-word",
       }}
     >
-      {lines.map((line, i) => (
-        <div key={i} style={{ whiteSpace: "nowrap" }}>{line}</div>
-      ))}
+      {displayText}
+    </div>
+  );
+}
+
+// Render an editable text element with controls
+function EditableTextElement({
+  element,
+  slideWidth,
+  editedText,
+  editedFontSize,
+  pendingPosition,
+  onTextChange,
+  onIncrementFontSize,
+  onDecrementFontSize,
+  onDeleteText,
+  onDrag,
+}: {
+  element: TextElement;
+  slideWidth: number;
+  editedText: string;
+  editedFontSize: number;
+  pendingPosition?: PendingPosition;
+  onTextChange: (text: string) => void;
+  onIncrementFontSize: () => void;
+  onDecrementFontSize: () => void;
+  onDeleteText: () => void;
+  onDrag?: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
+}) {
+  const textShadow = TEXT_STYLES.getTextShadow(slideWidth);
+  const previewFontSize = getPreviewFontSize(editedFontSize);
+  const fontWeight = element.fontWeight || TEXT_STYLES.fontWeight;
+
+  // Use pending position if available, otherwise use element position
+  const position = pendingPosition || element.position;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!onDrag) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    const slideElement = (e.target as HTMLElement).closest('[data-slide-container]') as HTMLElement;
+    if (!slideElement) return;
+
+    const slideRect = slideElement.getBoundingClientRect();
+
+    // Calculate offset from cursor to element center (in percentage)
+    const cursorXPercent = ((e.clientX - slideRect.left) / slideRect.width) * 100;
+    const cursorYPercent = ((e.clientY - slideRect.top) / slideRect.height) * 100;
+    const offsetX = cursorXPercent - position.x;
+    const offsetY = cursorYPercent - position.y;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const cursorX = ((moveEvent.clientX - slideRect.left) / slideRect.width) * 100;
+      const cursorY = ((moveEvent.clientY - slideRect.top) / slideRect.height) * 100;
+      // Subtract the offset to keep element position relative to where we grabbed
+      onDrag(element.id, { x: cursorX - offsetX, y: cursorY - offsetY }, element);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Calculate max width for text wrapping (matches export)
+  const maxWidthPx = getPreviewMaxWidth();
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        top: `${position.y}%`,
+        left: `${position.x}%`,
+        transform: "translate(-50%, -50%)",
+      }}
+    >
+      {/* Text with blue dashed outline - single editable element */}
+      <div
+        style={{
+          color: element.fontColor || TEXT_STYLES.fontColor,
+          fontSize: `${previewFontSize}px`,
+          fontFamily: TEXT_STYLES.fontFamily,
+          fontWeight,
+          textAlign: element.textAlign || TEXT_STYLES.textAlign,
+          textShadow,
+          lineHeight: TEXT_STYLES.lineHeight,
+          outline: "2px dashed rgba(59, 130, 246, 0.8)",
+          outlineOffset: "4px",
+          borderRadius: "4px",
+          cursor: "text",
+          maxWidth: `${maxWidthPx}px`,
+          wordWrap: "break-word",
+          overflowWrap: "break-word",
+        }}
+        contentEditable
+        suppressContentEditableWarning
+        onBlur={(e) => onTextChange(e.currentTarget.textContent || "")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+      >
+        {editedText}
+      </div>
+
+      {/* Control icons */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "-32px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          gap: "4px",
+          background: "rgba(0, 0, 0, 0.7)",
+          borderRadius: "6px",
+          padding: "4px",
+        }}
+      >
+        {/* Drag handle */}
+        <div
+          onMouseDown={handleMouseDown}
+          style={{
+            width: "24px",
+            height: "24px",
+            borderRadius: "4px",
+            background: "transparent",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "grab",
+          }}
+          title="Drag to reposition"
+        >
+          <Move size={14} />
+        </div>
+        <div style={{ width: "1px", background: "rgba(255,255,255,0.3)", margin: "2px 2px" }} />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDecrementFontSize();
+          }}
+          style={{
+            width: "24px",
+            height: "24px",
+            borderRadius: "4px",
+            border: "none",
+            background: "transparent",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+          title="Decrease font size"
+        >
+          <Minus size={14} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onIncrementFontSize();
+          }}
+          style={{
+            width: "24px",
+            height: "24px",
+            borderRadius: "4px",
+            border: "none",
+            background: "transparent",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+          title="Increase font size"
+        >
+          <Plus size={14} />
+        </button>
+        <div style={{ width: "1px", background: "rgba(255,255,255,0.3)", margin: "2px 2px" }} />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteText();
+          }}
+          style={{
+            width: "24px",
+            height: "24px",
+            borderRadius: "4px",
+            border: "none",
+            background: "transparent",
+            color: "#ef4444",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+          title="Delete text element"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -125,23 +366,24 @@ export function SlideCarousel({
   selectedIndex,
   onSelectSlide,
   config,
-  isEditingText,
+  isEditMode,
   selectedElementId,
   editedText,
   editedFontSize,
+  pendingDeletes,
+  pendingAdds,
+  pendingEdits,
+  pendingPositions,
   onTextChange,
   onIncrementFontSize,
   onDecrementFontSize,
   onDeleteText,
   onStartTextEdit,
+  onAddText,
+  onUpdatePosition,
 }: SlideCarouselProps) {
   const aspectRatio = config?.aspectRatio || DEFAULT_CONFIG.aspectRatio;
   const { height: slideHeight } = getDimensions(aspectRatio, PREVIEW_SLIDE_WIDTH);
-
-  const currentSlide = slides[selectedIndex];
-  const editingElement = isEditingText && selectedElementId && currentSlide?.textElements
-    ? currentSlide.textElements.find(el => el.id === selectedElementId)
-    : null;
 
   return (
     <div style={{ marginBottom: "1rem", position: "relative", overflow: "hidden" }}>
@@ -154,101 +396,150 @@ export function SlideCarousel({
           transition: "transform 0.3s ease-out, height 0.3s ease-out",
         }}
       >
-        {slides.map((slide, idx) => (
-          <div
-            key={idx}
-            style={{
-              minWidth: `${PREVIEW_SLIDE_WIDTH}px`,
-              width: `${PREVIEW_SLIDE_WIDTH}px`,
-              height: `${slideHeight}px`,
-              position: "relative",
-              borderRadius: "12px",
-              overflow: "hidden",
-              background: "#f3f4f6",
-              cursor: "pointer",
-              opacity: selectedIndex === idx ? 1 : 0.6,
-              transition: "opacity 0.3s ease-out",
-            }}
-            onClick={() => onSelectSlide(idx)}
-          >
-            <img
-              src={slide.imageUrl}
-              alt={`Slide ${idx + 1}`}
+        {slides.map((slide, idx) => {
+          // Get visible elements for this slide (original - deleted + added)
+          const originalElements = slide.textElements || [];
+          const visibleOriginal = originalElements.filter((el) => !pendingDeletes.has(el.id));
+          // Only show pending adds on the selected slide
+          const visibleAdds = selectedIndex === idx ? pendingAdds : [];
+          const allVisibleElements = [...visibleOriginal, ...visibleAdds];
+
+          return (
+            <div
+              key={idx}
+              data-slide-container
               style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
+                minWidth: `${PREVIEW_SLIDE_WIDTH}px`,
+                width: `${PREVIEW_SLIDE_WIDTH}px`,
+                height: `${slideHeight}px`,
+                position: "relative",
+                borderRadius: "12px",
+                overflow: "hidden",
+                background: "#f3f4f6",
+                cursor: "pointer",
+                opacity: selectedIndex === idx ? 1 : 0.6,
+                transition: "opacity 0.3s ease-out",
               }}
-            />
-            {/* Dark Overlay (for text readability) */}
-            {slide.overlay && (
-              <div
+              onClick={() => onSelectSlide(idx)}
+            >
+              <img
+                src={slide.imageUrl}
+                alt={`Slide ${idx + 1}`}
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(0, 0, 0, 0.4)",
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
                 }}
               />
-            )}
+              {/* Dark Overlay (for text readability) */}
+              {slide.overlay && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(0, 0, 0, 0.4)",
+                  }}
+                />
+              )}
 
-            {/* Text Elements */}
-            {selectedIndex === idx && slide.textElements?.map((element) => {
-              // If editing this element, show the editor instead
-              if (isEditingText && selectedElementId === element.id && editingElement) {
+              {/* Text Elements on selected slide */}
+              {selectedIndex === idx && allVisibleElements.map((element) => {
+                const isSelected = selectedElementId === element.id;
+
+                if (isSelected) {
+                  // Show editable element with controls
+                  return (
+                    <EditableTextElement
+                      key={element.id}
+                      element={element}
+                      slideWidth={PREVIEW_SLIDE_WIDTH}
+                      editedText={editedText}
+                      editedFontSize={editedFontSize}
+                      pendingPosition={pendingPositions.get(element.id)}
+                      onTextChange={onTextChange}
+                      onIncrementFontSize={onIncrementFontSize}
+                      onDecrementFontSize={onDecrementFontSize}
+                      onDeleteText={onDeleteText}
+                      onDrag={onUpdatePosition}
+                    />
+                  );
+                }
+
+                // Show regular text element (clickable to edit)
                 return (
-                  <SlideEditor
+                  <TextElementView
                     key={element.id}
-                    editedText={editedText}
-                    editedFontSize={editedFontSize}
-                    position={element.position}
-                    onTextChange={onTextChange}
-                    onIncrementFontSize={onIncrementFontSize}
-                    onDecrementFontSize={onDecrementFontSize}
-                    onDeleteText={onDeleteText}
+                    element={element}
+                    slideWidth={PREVIEW_SLIDE_WIDTH}
+                    onClick={() => onStartTextEdit(element)}
+                    pendingEdit={pendingEdits.get(element.id)}
+                    pendingPosition={pendingPositions.get(element.id)}
+                    isEditMode={isEditMode}
+                    onDrag={onUpdatePosition}
                   />
                 );
-              }
+              })}
 
-              // Otherwise show the text element (clickable to edit)
-              return (
+              {/* Show text elements on non-selected slides (non-interactive, no pending changes) */}
+              {selectedIndex !== idx && (slide.textElements || []).map((element) => (
                 <TextElementView
                   key={element.id}
                   element={element}
                   slideWidth={PREVIEW_SLIDE_WIDTH}
-                  onClick={() => onStartTextEdit(element)}
+                  onClick={() => {}}
+                  stopPropagation={false}
                 />
-              );
-            })}
+              ))}
 
-            {/* Show text elements on non-selected slides (non-interactive) */}
-            {selectedIndex !== idx && slide.textElements?.map((element) => (
-              <TextElementView
-                key={element.id}
-                element={element}
-                slideWidth={PREVIEW_SLIDE_WIDTH}
-                onClick={() => {}}
-                stopPropagation={false}
-              />
-            ))}
+              {/* Add text button - shown in edit mode on selected slide */}
+              {selectedIndex === idx && isEditMode && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddText();
+                  }}
+                  title="Add text element"
+                  style={{
+                    position: "absolute",
+                    bottom: "0.75rem",
+                    right: "0.75rem",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    border: "none",
+                    background: "#3b82f6",
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+                    zIndex: 5,
+                  }}
+                >
+                  <Plus size={20} />
+                </button>
+              )}
 
-            {/* Slide number badge */}
-            <div
-              style={{
-                position: "absolute",
-                top: "0.5rem",
-                right: "0.5rem",
-                background: "rgba(0, 0, 0, 0.6)",
-                color: "white",
-                padding: "0.25rem 0.5rem",
-                borderRadius: "6px",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              {idx + 1}
+              {/* Slide number badge */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: "0.5rem",
+                  right: "0.5rem",
+                  background: "rgba(0, 0, 0, 0.6)",
+                  color: "white",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "6px",
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                }}
+              >
+                {idx + 1}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -70,9 +70,9 @@ function renderTextElement(
   canvasHeight: number
 ) {
   const fontSize = element.fontSize;
-  const fontColor = element.fontColor || "#ffffff";
-  const fontWeight = element.fontWeight || 700;
-  const textAlign = element.textAlign || "center";
+  const fontColor = element.fontColor || TEXT_STYLES.fontColor;
+  const fontWeight = element.fontWeight || TEXT_STYLES.fontWeight;
+  const textAlign = element.textAlign || TEXT_STYLES.textAlign;
   const maxWidthPercent = TEXT_STYLES.maxWidthPercent;
 
   // Calculate position in pixels

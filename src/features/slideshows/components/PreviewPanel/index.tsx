@@ -9,6 +9,18 @@ import { TikTokPostModal } from "./TikTokPostModal";
 
 type ModalTab = "post" | "schedule";
 
+// Pending edit for an element
+interface PendingEdit {
+  text: string;
+  fontSize: number;
+}
+
+// Pending position for an element
+interface PendingPosition {
+  x: number;
+  y: number;
+}
+
 // TikTok icon component
 function TikTokIcon({ size = 16 }: { size?: number }) {
   return (
@@ -23,16 +35,23 @@ interface PreviewPanelProps {
   selectedSlideIndex: number;
   onSelectSlide: (index: number) => void;
 
-  // Text editing
-  isEditingText: boolean;
+  // Edit mode
+  isEditMode: boolean;
   selectedElementId: string | null;
   editedText: string;
   editedFontSize: number;
+  pendingDeletes: Set<string>;
+  pendingAdds: TextElement[];
+  pendingEdits: Map<string, PendingEdit>;
+  pendingPositions: Map<string, PendingPosition>;
   onTextChange: (text: string) => void;
+  onUpdatePosition: (elementId: string, position: { x: number; y: number }, element: TextElement) => void;
   onStartTextEdit: (element: TextElement) => void;
-  onCancelTextEdit: () => void;
-  onSaveTextEdit: () => void;
+  onEnterEditMode: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
   onDeleteText: () => void;
+  onAddText: () => void;
   onIncrementFontSize: () => void;
   onDecrementFontSize: () => void;
 
@@ -58,15 +77,22 @@ export function PreviewPanel({
   selectedCarouselItem,
   selectedSlideIndex,
   onSelectSlide,
-  isEditingText,
+  isEditMode,
   selectedElementId,
   editedText,
   editedFontSize,
+  pendingDeletes,
+  pendingAdds,
+  pendingEdits,
+  pendingPositions,
   onTextChange,
+  onUpdatePosition,
   onStartTextEdit,
-  onCancelTextEdit,
-  onSaveTextEdit,
+  onEnterEditMode,
+  onCancelEdit,
+  onSaveEdit,
   onDeleteText,
+  onAddText,
   onIncrementFontSize,
   onDecrementFontSize,
   onToggleOverlay,
@@ -114,21 +140,28 @@ export function PreviewPanel({
                   selectedIndex={selectedSlideIndex}
                   onSelectSlide={onSelectSlide}
                   config={selectedCarouselItem.content.config}
-                  isEditingText={isEditingText}
+                  isEditMode={isEditMode}
                   selectedElementId={selectedElementId}
                   editedText={editedText}
                   editedFontSize={editedFontSize}
+                  pendingDeletes={pendingDeletes}
+                  pendingAdds={pendingAdds}
+                  pendingEdits={pendingEdits}
+                  pendingPositions={pendingPositions}
                   onTextChange={onTextChange}
                   onIncrementFontSize={onIncrementFontSize}
                   onDecrementFontSize={onDecrementFontSize}
                   onDeleteText={onDeleteText}
                   onStartTextEdit={onStartTextEdit}
+                  onAddText={onAddText}
+                  onUpdatePosition={onUpdatePosition}
                 />
 
                 <EditModeButtons
-                  isEditingText={isEditingText}
-                  onCancelEdit={onCancelTextEdit}
-                  onSaveEdit={onSaveTextEdit}
+                  isEditMode={isEditMode}
+                  onEnterEditMode={onEnterEditMode}
+                  onCancelEdit={onCancelEdit}
+                  onSaveEdit={onSaveEdit}
                   onToggleOverlay={onToggleOverlay}
                   onToggleRatioMenu={onToggleRatioMenu}
                   showRatioMenu={showRatioMenu}

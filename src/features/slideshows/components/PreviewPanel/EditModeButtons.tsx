@@ -1,9 +1,10 @@
-import { X, Check, Contrast, ImageIcon } from "lucide-react";
+import { X, Check, Contrast, ImageIcon, Type } from "lucide-react";
 import { AspectRatio } from "../../types";
 import { ImageRegeneratePopover } from "./ImageRegeneratePopover";
 
 interface EditModeButtonsProps {
-  isEditingText: boolean;
+  isEditMode: boolean;
+  onEnterEditMode: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onToggleOverlay: () => void;
@@ -21,7 +22,8 @@ interface EditModeButtonsProps {
 }
 
 export function EditModeButtons({
-  isEditingText,
+  isEditMode,
+  onEnterEditMode,
   onCancelEdit,
   onSaveEdit,
   onToggleOverlay,
@@ -36,7 +38,8 @@ export function EditModeButtons({
   currentSlidePrompt,
   isRegenerating,
 }: EditModeButtonsProps) {
-  if (isEditingText) {
+  // When in edit mode, show Cancel/Save buttons
+  if (isEditMode) {
     return (
       <div
         style={{
@@ -95,6 +98,7 @@ export function EditModeButtons({
     );
   }
 
+  // Default state: show action buttons
   return (
     <div
       style={{
@@ -123,6 +127,25 @@ export function EditModeButtons({
         }}
       >
         <Contrast size={18} />
+      </button>
+      <button
+        onClick={onEnterEditMode}
+        title="Edit text elements"
+        style={{
+          width: "40px",
+          height: "40px",
+          borderRadius: "50%",
+          border: "2px solid #e5e7eb",
+          background: "white",
+          color: "#6b7280",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <Type size={18} />
       </button>
       <div style={{ position: "relative" }}>
         <button

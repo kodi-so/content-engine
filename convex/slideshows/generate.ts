@@ -197,9 +197,6 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
             content: slide.title,
             position: { x: 50, y: 50 },
             fontSize: 56,
-            fontColor: "#ffffff",
-            fontWeight: 700,
-            textAlign: "center",
           });
         } else {
           // Content slide - heading + optional body
@@ -209,9 +206,6 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
               content: slide.heading,
               position: { x: 50, y: 35 },
               fontSize: 48,
-              fontColor: "#ffffff",
-              fontWeight: 700,
-              textAlign: "center",
             });
           }
 
@@ -221,9 +215,6 @@ Return ONLY valid JSON with EXACTLY ${slideCount} slides:
               content: slide.body,
               position: { x: 50, y: 60 },
               fontSize: 32,
-              fontColor: "#ffffff",
-              fontWeight: 400,
-              textAlign: "center",
             });
           }
         }

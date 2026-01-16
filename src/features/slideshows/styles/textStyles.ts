@@ -4,6 +4,8 @@
 export const TEXT_STYLES = {
   fontFamily: '"TikTok Display", system-ui, sans-serif',
   fontWeight: 700,
+  fontColor: "#ffffff",
+  textAlign: "center" as const,
   strokeColor: "rgb(0, 0, 0)",
   lineHeight: 1.2,
   maxWidthPercent: 75, // Max width for text elements (percentage of slide width)
@@ -37,6 +39,16 @@ export const PREVIEW_SLIDE_WIDTH = 275;
 // Get scaled font size for preview (preview is smaller than export)
 export const getPreviewFontSize = (fontSize: number) => {
   return fontSize * (PREVIEW_SLIDE_WIDTH / EXPORT_BASE_SIZE);
+};
+
+// Get max width for text wrapping at preview scale
+export const getPreviewMaxWidth = () => {
+  return (TEXT_STYLES.maxWidthPercent / 100) * PREVIEW_SLIDE_WIDTH;
+};
+
+// Get max width for text wrapping at export scale
+export const getExportMaxWidth = () => {
+  return (TEXT_STYLES.maxWidthPercent / 100) * EXPORT_BASE_SIZE;
 };
 
 // Get dimensions for aspect ratio
