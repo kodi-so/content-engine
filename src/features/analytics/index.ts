@@ -3,6 +3,7 @@ export {
   MetricCard,
   SummaryCards,
   AccountTabs,
+  AccountStatsCard,
   DateRangePicker,
   ContentTable,
 } from "./components";

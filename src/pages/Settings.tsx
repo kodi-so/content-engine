@@ -370,6 +370,9 @@ function AccountTab() {
       authUrl.searchParams.set("scope", scopes);
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("state", state);
+      // Force TikTok to show full authorization screen instead of auto-approving
+      // This allows users to log out and sign in with a different account
+      authUrl.searchParams.set("disable_auto_auth", "1");
 
       // Redirect to TikTok
       window.location.href = authUrl.toString();
@@ -513,15 +516,19 @@ function AccountTab() {
                 </div>
               </div>
             ))}
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={handleConnectTikTok}
-              disabled={isConnecting}
-              style={{ alignSelf: "flex-start", marginTop: "0.5rem" }}
-            >
-              <Plus size={14} />
-              Add Another Account
-            </button>
+            <div style={{ marginTop: "0.75rem" }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleConnectTikTok}
+                disabled={isConnecting}
+              >
+                <Plus size={14} />
+                Add Another Account
+              </button>
+              <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.5rem", maxWidth: "400px" }}>
+                To connect a different account, log out of TikTok in your browser first or use an incognito window.
+              </p>
+            </div>
           </div>
         )}
       </div>

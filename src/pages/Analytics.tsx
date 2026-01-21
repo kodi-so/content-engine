@@ -1,17 +1,20 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
 import { RefreshCw, BarChart3 } from "lucide-react";
+import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import {
   useAnalytics,
   SummaryCards,
   AccountTabs,
+  AccountStatsCard,
   DateRangePicker,
   ContentTable,
   DateRange,
 } from "../features/analytics";
 
 export default function Analytics() {
-  const [dateRange, setDateRange] = useState<DateRange>("30d");
+  const [dateRange, setDateRange] = useState<DateRange>("all");
   const [selectedAccountId, setSelectedAccountId] = useState<Id<"accounts"> | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -19,6 +22,12 @@ export default function Analytics() {
     accountId: selectedAccountId ?? undefined,
     dateRange,
   });
+
+  // Get accounts with their stats (for AccountStatsCard)
+  const accounts = useQuery(api.accounts.list);
+  const selectedAccount = selectedAccountId
+    ? accounts?.find((a) => a._id === selectedAccountId)
+    : null;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -132,6 +141,16 @@ export default function Analytics() {
               selectedAccountId={selectedAccountId}
               onSelectAccount={setSelectedAccountId}
             />
+          )}
+
+          {/* Account Stats (from user.info.stats scope) */}
+          {selectedAccount ? (
+            <AccountStatsCard account={selectedAccount} />
+          ) : (
+            // Show all account stats when "All Accounts" is selected
+            accounts?.filter(a => a.platform === "tiktok" && a.followerCount !== undefined).map(account => (
+              <AccountStatsCard key={account._id} account={account} />
+            ))
           )}
 
           {/* Content Table */}

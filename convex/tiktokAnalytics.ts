@@ -326,7 +326,7 @@ export const syncAccount = action({
 
 /**
  * Manual refresh all (user-triggered from analytics page)
- * Syncs new videos AND refreshes metrics for existing ones
+ * Syncs new videos, refreshes video metrics, AND refreshes account stats
  */
 export const refreshAllUserMetrics = action({
   handler: async (ctx): Promise<{ success: boolean; synced: number; updated: number; error?: string }> => {
@@ -335,6 +335,14 @@ export const refreshAllUserMetrics = action({
 
     // Then refresh metrics for all videos
     const refreshResult = await ctx.runAction(internal.tiktokAnalytics.refreshAllMetrics);
+
+    // Also refresh account-level stats (follower count, etc.)
+    const accounts = await ctx.runQuery(internal.analytics.getAllTikTokAccounts);
+    for (const account of accounts) {
+      await ctx.runAction(internal.accounts.refreshAccountStats, {
+        accountId: account._id,
+      });
+    }
 
     return {
       success: true,

@@ -41,6 +41,12 @@ export default defineSchema({
     tokenExpiresAt: v.optional(v.number()),
     platformUserId: v.optional(v.string()), // Platform-specific user ID
     scopes: v.optional(v.array(v.string())), // Granted OAuth scopes
+    // Account-level stats (from user.info.stats scope)
+    followerCount: v.optional(v.number()),
+    followingCount: v.optional(v.number()),
+    likesCount: v.optional(v.number()), // Total likes received on all videos
+    videoCount: v.optional(v.number()),
+    statsLastUpdated: v.optional(v.number()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),

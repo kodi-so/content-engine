@@ -167,9 +167,9 @@ http.route({
         throw new Error(tokenData.error_description || "Failed to get access token");
       }
 
-      // Get user info from TikTok
+      // Get user info from TikTok (basic + profile + stats)
       const userResponse = await fetch(
-        "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username",
+        "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username,follower_count,following_count,likes_count,video_count",
         {
           headers: {
             Authorization: `Bearer ${tokenData.access_token}`,
@@ -186,7 +186,7 @@ http.route({
 
       const userInfo = userData.data?.user || {};
 
-      // Store the account
+      // Store the account with stats
       await ctx.runMutation(internal.accounts.storeAccount, {
         userId: stateData.userId,
         platform: "tiktok",
@@ -200,6 +200,11 @@ http.route({
           : undefined,
         platformUserId: tokenData.open_id || userInfo.open_id,
         scopes: tokenData.scope ? tokenData.scope.split(",") : undefined,
+        // Account-level stats from user.info.stats scope
+        followerCount: userInfo.follower_count,
+        followingCount: userInfo.following_count,
+        likesCount: userInfo.likes_count,
+        videoCount: userInfo.video_count,
       });
 
       // Redirect back to settings with success

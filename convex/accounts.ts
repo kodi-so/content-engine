@@ -9,18 +9,21 @@ const platformValidator = v.union(
   v.literal("twitter")
 );
 
-// Get all accounts for current user
+// Get all accounts for current user (excludes tokens for security)
 export const list = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       return [];
     }
-    return await ctx.db
+    const accounts = await ctx.db
       .query("accounts")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .order("desc")
       .collect();
+
+    // Remove sensitive token data
+    return accounts.map(({ accessToken, refreshToken, ...safeAccount }) => safeAccount);
   },
 });
 
@@ -152,6 +155,11 @@ export const storeAccount = internalMutation({
     tokenExpiresAt: v.optional(v.number()),
     platformUserId: v.string(),
     scopes: v.optional(v.array(v.string())),
+    // Account-level stats (from user.info.stats scope)
+    followerCount: v.optional(v.number()),
+    followingCount: v.optional(v.number()),
+    likesCount: v.optional(v.number()),
+    videoCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -175,6 +183,11 @@ export const storeAccount = internalMutation({
         refreshToken: args.refreshToken ?? existing.refreshToken,
         tokenExpiresAt: args.tokenExpiresAt,
         scopes: args.scopes,
+        followerCount: args.followerCount,
+        followingCount: args.followingCount,
+        likesCount: args.likesCount,
+        videoCount: args.videoCount,
+        statsLastUpdated: now,
         isActive: true,
         updatedAt: now,
       });
@@ -193,6 +206,11 @@ export const storeAccount = internalMutation({
       tokenExpiresAt: args.tokenExpiresAt,
       platformUserId: args.platformUserId,
       scopes: args.scopes,
+      followerCount: args.followerCount,
+      followingCount: args.followingCount,
+      likesCount: args.likesCount,
+      videoCount: args.videoCount,
+      statsLastUpdated: now,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -332,5 +350,80 @@ export const getValidAccessToken = internalAction({
     }
 
     return { token: account.accessToken };
+  },
+});
+
+// Update account stats (internal mutation)
+export const updateAccountStats = internalMutation({
+  args: {
+    accountId: v.id("accounts"),
+    followerCount: v.optional(v.number()),
+    followingCount: v.optional(v.number()),
+    likesCount: v.optional(v.number()),
+    videoCount: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.accountId, {
+      followerCount: args.followerCount,
+      followingCount: args.followingCount,
+      likesCount: args.likesCount,
+      videoCount: args.videoCount,
+      statsLastUpdated: now,
+      updatedAt: now,
+    });
+  },
+});
+
+// Refresh account stats from TikTok API (internal action)
+export const refreshAccountStats = internalAction({
+  args: { accountId: v.id("accounts") },
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    // Get valid access token
+    const tokenResult = await ctx.runAction(internal.accounts.getValidAccessToken, {
+      accountId: args.accountId,
+    });
+
+    if (!tokenResult.token) {
+      return { success: false, error: tokenResult.error || "No valid token" };
+    }
+
+    try {
+      // Fetch user stats from TikTok
+      const response = await fetch(
+        "https://open.tiktokapis.com/v2/user/info/?fields=follower_count,following_count,likes_count,video_count",
+        {
+          headers: {
+            Authorization: `Bearer ${tokenResult.token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.error?.code !== "ok" && data.error) {
+        console.error("TikTok user stats error:", data);
+        return { success: false, error: "Failed to fetch user stats" };
+      }
+
+      const userInfo = data.data?.user || {};
+
+      // Update account with new stats
+      await ctx.runMutation(internal.accounts.updateAccountStats, {
+        accountId: args.accountId,
+        followerCount: userInfo.follower_count,
+        followingCount: userInfo.following_count,
+        likesCount: userInfo.likes_count,
+        videoCount: userInfo.video_count,
+      });
+
+      return { success: true };
+    } catch (err) {
+      console.error("Error refreshing account stats:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      };
+    }
   },
 });
