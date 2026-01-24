@@ -4,14 +4,40 @@ import { internal } from "./_generated/api";
 
 const http = httpRouter();
 
-// TikTok URL prefix verification file
+// TikTok URL prefix verification files
 // This allows TikTok to verify we own this domain for PULL_FROM_URL
+// Dev environment verification
 http.route({
   path: "/tiktokm9mCu2HxIOt2lrIRTfjBWOdeiXnYdRNi.txt",
   method: "GET",
   handler: httpAction(async () => {
-    // TikTok expects this exact content for verification
     return new Response("tiktok-developers-site-verification=m9mCu2HxIOt2lrIRTfjBWOdeiXnYdRNi", {
+      headers: {
+        "Content-Type": "text/plain",
+      },
+    });
+  }),
+});
+
+// Production environment verification (sandbox)
+http.route({
+  path: "/tiktokvmdhWGPsWDZgEVTn40OxpGJspvI65LBN.txt",
+  method: "GET",
+  handler: httpAction(async () => {
+    return new Response("tiktok-developers-site-verification=vmdhWGPsWDZgEVTn40OxpGJspvI65LBN", {
+      headers: {
+        "Content-Type": "text/plain",
+      },
+    });
+  }),
+});
+
+// Production environment verification (TikTok production API)
+http.route({
+  path: "/tiktokJf1C9SnWeiLrlttKN4UNRPxCrxDg0J2y.txt",
+  method: "GET",
+  handler: httpAction(async () => {
+    return new Response("tiktok-developers-site-verification=Jf1C9SnWeiLrlttKN4UNRPxCrxDg0J2y", {
       headers: {
         "Content-Type": "text/plain",
       },

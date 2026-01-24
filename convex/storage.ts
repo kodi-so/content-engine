@@ -112,3 +112,55 @@ export const uploadBase64Images = action({
     return await Promise.all(uploadPromises);
   },
 });
+
+// Type for reference images used by Gemini API
+interface ReferenceImageData {
+  base64Data: string; // Base64 encoded image data (without data: prefix)
+  mimeType: string; // e.g., "image/jpeg", "image/png"
+}
+
+/**
+ * Fetch reference images from Convex storage and convert to base64 for Gemini API
+ * Takes an array of storage URLs and returns base64 encoded images
+ */
+export const fetchReferenceImages = action({
+  args: {
+    imageUrls: v.array(v.string()),
+  },
+  handler: async (_ctx, args): Promise<ReferenceImageData[]> => {
+    const results: ReferenceImageData[] = [];
+
+    for (const url of args.imageUrls) {
+      try {
+        // Fetch the image from Convex storage
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.error(`Failed to fetch reference image: ${url}, status: ${response.status}`);
+          continue;
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+
+        // Convert ArrayBuffer to base64
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Data = btoa(binary);
+
+        // Get mime type from content-type header or default to jpeg
+        const contentType = response.headers.get("content-type") || "image/jpeg";
+
+        results.push({
+          base64Data,
+          mimeType: contentType,
+        });
+      } catch (e) {
+        console.error("Failed to fetch reference image:", url, e);
+      }
+    }
+
+    return results;
+  },
+});

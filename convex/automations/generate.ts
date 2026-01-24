@@ -26,6 +26,7 @@ export interface ThemeConfig {
 export interface FormatConfig {
   visualStyle?: string;
   aspectRatio: "1:1" | "4:5" | "9:16";
+  contentStyle?: "overlay" | "infographic";
 }
 
 /**
@@ -171,7 +172,7 @@ export const generateForAutomation = internalAction({
       return { success: false, error: "Automation not found", errorStep: "initialization" };
     }
 
-    const { themeConfig, formatConfig } = automation;
+    const { themeConfig, formatConfig, referenceImageIds, characterInstructions } = automation;
 
     try {
       // Step 1: Generate topic
@@ -192,11 +193,16 @@ export const generateForAutomation = internalAction({
 
       // Step 2: Generate slideshow content using the existing generate action
       // We call the slideshow generate action with the topic
+      // Pass reference images from user's library for consistent visual identity
       const generateResult = await ctx.runAction(api.slideshows.generate.generateWithConfig, {
+        accountId: automation.accountId,
         topic: topicResult.topic,
+        referenceImageIds: referenceImageIds,
+        characterInstructions: characterInstructions,
         formatConfig: {
           visualStyle: formatConfig.visualStyle,
           aspectRatio: formatConfig.aspectRatio,
+          contentStyle: formatConfig.contentStyle,
         },
       });
 
@@ -247,8 +253,11 @@ export const generateForAutomation = internalAction({
  */
 export const previewGeneration = action({
   args: {
+    accountId: v.optional(v.id("accounts")), // Optional: for associating content
     themeConfig: themeConfigValidator,
     formatConfig: formatConfigValidator,
+    referenceImageIds: v.optional(v.array(v.id("referenceImages"))),
+    characterInstructions: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{
     success: boolean;
@@ -267,11 +276,16 @@ export const previewGeneration = action({
       const topicResult = await generateTopic(args.themeConfig);
 
       // Step 2: Generate slideshow
+      // Pass reference images from user's library for consistent visual identity
       const generateResult = await ctx.runAction(api.slideshows.generate.generateWithConfig, {
+        accountId: args.accountId,
         topic: topicResult.topic,
+        referenceImageIds: args.referenceImageIds,
+        characterInstructions: args.characterInstructions,
         formatConfig: {
           visualStyle: args.formatConfig.visualStyle,
           aspectRatio: args.formatConfig.aspectRatio,
+          contentStyle: args.formatConfig.contentStyle,
         },
       });
 

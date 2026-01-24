@@ -21,6 +21,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as products from "../products.js";
 import type * as providers_gemini from "../providers/gemini.js";
+import type * as referenceImages from "../referenceImages.js";
 import type * as scheduledPosts from "../scheduledPosts.js";
 import type * as slideshows_generate from "../slideshows/generate.js";
 import type * as storage from "../storage.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   products: typeof products;
   "providers/gemini": typeof providers_gemini;
+  referenceImages: typeof referenceImages;
   scheduledPosts: typeof scheduledPosts;
   "slideshows/generate": typeof slideshows_generate;
   storage: typeof storage;

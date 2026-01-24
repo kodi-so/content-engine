@@ -68,10 +68,17 @@ export const themeConfigValidator = v.object({
   topicExamples: v.array(v.string()), // Example topics for inspiration
 });
 
+// Content style - determines how text is handled in generated content
+export const contentStyleValidator = v.union(
+  v.literal("overlay"), // Text overlay on image (editable text elements)
+  v.literal("infographic") // Text baked into the AI-generated image
+);
+
 // Automation format configuration (simplified)
 export const formatConfigValidator = v.object({
   visualStyle: v.optional(v.string()), // "dark minimalist", "bright colorful"
   aspectRatio: aspectRatioValidator,
+  contentStyle: v.optional(contentStyleValidator), // Defaults to "overlay"
 });
 
 // Automation schedule configuration
@@ -103,3 +110,32 @@ export const automationRunStatusValidator = v.union(
 
 // Content type (extensible for future content types)
 export const contentTypeValidator = v.literal("slideshow");
+
+// ============ Brand Configuration (Reference Images) ============
+
+// Reference image type - what kind of visual asset this is
+export const referenceImageTypeValidator = v.union(
+  v.literal("character"), // Main character/mascot (e.g., "Blue Bro")
+  v.literal("person"), // AI UGC persona face
+  v.literal("logo"), // Brand logo
+  v.literal("style") // Style reference image
+);
+
+// Individual reference image stored for an account
+export const referenceImageValidator = v.object({
+  id: v.string(), // Unique ID for this reference
+  storageUrl: v.string(), // Convex storage URL
+  type: referenceImageTypeValidator,
+  name: v.string(), // User-friendly name (e.g., "Blue Bro", "Main Logo")
+  description: v.optional(v.string()), // How to use this reference in generation
+  createdAt: v.number(),
+});
+
+// Brand configuration for an account - enables consistent visual identity
+export const brandConfigValidator = v.object({
+  // Reference images (max 6 per Gemini API limits)
+  referenceImages: v.optional(v.array(referenceImageValidator)),
+  // Global instructions for how to use the character/references
+  // e.g., "Blue Bro is a muscular blue character. Always show him with confident body language."
+  characterInstructions: v.optional(v.string()),
+});

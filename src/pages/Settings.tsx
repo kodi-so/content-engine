@@ -1,17 +1,17 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { Plus, Edit2, Trash2, X, Check, Package, Link, Unlink, ExternalLink } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Check, Package, Link, Unlink, ExternalLink, Image, Upload, Sparkles, Loader } from "lucide-react";
 
-type Tab = "general" | "products" | "account" | "billing";
+type Tab = "general" | "products" | "images" | "account" | "billing";
 
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const tab = searchParams.get("tab");
-    if (tab === "account" || tab === "general" || tab === "products" || tab === "billing") {
+    if (tab === "account" || tab === "general" || tab === "products" || tab === "images" || tab === "billing") {
       return tab;
     }
     return "products";
@@ -83,6 +83,12 @@ export default function Settings() {
           Products
         </button>
         <button
+          className={`tab ${activeTab === "images" ? "active" : ""}`}
+          onClick={() => setActiveTab("images")}
+        >
+          Images
+        </button>
+        <button
           className={`tab ${activeTab === "account" ? "active" : ""}`}
           onClick={() => setActiveTab("account")}
         >
@@ -99,6 +105,7 @@ export default function Settings() {
       {/* Tab Content */}
       {activeTab === "general" && <GeneralTab />}
       {activeTab === "products" && <ProductsTab />}
+      {activeTab === "images" && <ImagesTab />}
       {activeTab === "account" && <AccountTab />}
       {activeTab === "billing" && <BillingTab />}
     </div>
@@ -541,6 +548,509 @@ function AccountTab() {
         </p>
       </div>
     </div>
+  );
+}
+
+type ImageType = "character" | "person" | "logo" | "style";
+
+const imageTypeLabels: Record<ImageType, string> = {
+  character: "Character/Mascot",
+  person: "Person/Face",
+  logo: "Logo",
+  style: "Style Reference",
+};
+
+type ModalMode = "upload" | "generate";
+
+function ImagesTab() {
+  const images = useQuery(api.referenceImages.list);
+  const addImage = useMutation(api.referenceImages.add);
+  const updateImage = useMutation(api.referenceImages.update);
+  const removeImage = useMutation(api.referenceImages.remove);
+  const uploadBase64Image = useAction(api.storage.uploadBase64Image);
+  const generateImage = useAction(api.referenceImages.generateImage);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>("upload");
+  const [editingImage, setEditingImage] = useState<Id<"referenceImages"> | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    type: "character" as ImageType,
+    description: "",
+  });
+  const [generatePrompt, setGeneratePrompt] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenModal = (imageId?: Id<"referenceImages">, mode: ModalMode = "upload") => {
+    if (imageId) {
+      const image = images?.find((img) => img._id === imageId);
+      if (image) {
+        setEditingImage(imageId);
+        setFormData({
+          name: image.name,
+          type: image.type as ImageType,
+          description: image.description || "",
+        });
+        setPreviewUrl(image.storageUrl);
+        setModalMode("upload"); // Editing is always upload mode
+      }
+    } else {
+      setEditingImage(null);
+      setFormData({ name: "", type: "character", description: "" });
+      setPreviewUrl(null);
+      setSelectedFile(null);
+      setGeneratePrompt("");
+      setModalMode(mode);
+    }
+    setError(null);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingImage(null);
+    setFormData({ name: "", type: "character", description: "" });
+    setPreviewUrl(null);
+    setSelectedFile(null);
+    setGeneratePrompt("");
+    setError(null);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be less than 5MB");
+      return;
+    }
+
+    setSelectedFile(file);
+    setError(null);
+
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreviewUrl(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    // Validation differs by mode
+    if (modalMode === "upload" || editingImage) {
+      if (!formData.name.trim()) {
+        setError("Name is required");
+        return;
+      }
+    }
+
+    if (!editingImage) {
+      if (modalMode === "upload" && !selectedFile) {
+        setError("Please select an image");
+        return;
+      }
+      if (modalMode === "generate" && !generatePrompt.trim()) {
+        setError("Please describe the character you want to generate");
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      if (editingImage) {
+        // Update existing image metadata
+        await updateImage({
+          id: editingImage,
+          name: formData.name.trim(),
+          type: formData.type,
+          description: formData.description.trim() || undefined,
+        });
+      } else if (modalMode === "generate") {
+        // Generate image with AI - use prompt as both name and description
+        const promptText = generatePrompt.trim();
+        // Create a short name from the first few words of the prompt
+        const autoName = promptText.split(/\s+/).slice(0, 4).join(" ") + (promptText.split(/\s+/).length > 4 ? "..." : "");
+
+        const result = await generateImage({
+          prompt: promptText,
+          name: autoName,
+          type: "character", // Default to character for AI generated
+          description: promptText, // Use full prompt as description for reference
+        });
+
+        if (!result.success) {
+          setError(result.error || "Failed to generate image");
+          setIsSaving(false);
+          return;
+        }
+      } else {
+        // Upload new image
+        const reader = new FileReader();
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedFile!);
+        });
+
+        // Upload to storage
+        const storageUrl = await uploadBase64Image({ base64Data });
+
+        // Save reference image record
+        await addImage({
+          storageUrl,
+          name: formData.name.trim(),
+          type: formData.type,
+          description: formData.description.trim() || undefined,
+        });
+      }
+      handleCloseModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save image");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (imageId: Id<"referenceImages">) => {
+    if (confirm("Are you sure you want to delete this image? This cannot be undone.")) {
+      try {
+        await removeImage({ id: imageId });
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Failed to delete image");
+      }
+    }
+  };
+
+  return (
+    <>
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Reference Images</h2>
+            <p style={{ color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
+              Upload or generate images to use as references for consistent visual identity.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="btn btn-secondary" onClick={() => handleOpenModal(undefined, "upload")}>
+              <Upload size={16} />
+              Upload
+            </button>
+            <button className="btn btn-primary" onClick={() => handleOpenModal(undefined, "generate")}>
+              <Sparkles size={16} />
+              Generate with AI
+            </button>
+          </div>
+        </div>
+
+        {!images || images.length === 0 ? (
+          <div className="empty-state">
+            <Image size={32} style={{ opacity: 0.3, marginBottom: "0.5rem" }} />
+            <h3>No reference images yet</h3>
+            <p>Upload or generate character mascots, logos, or style references to maintain consistent branding.</p>
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center" }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => handleOpenModal(undefined, "upload")}>
+                <Upload size={14} />
+                Upload
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => handleOpenModal(undefined, "generate")}>
+                <Sparkles size={14} />
+                Generate with AI
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem" }}>
+            {images.map((image) => (
+              <div
+                key={image._id}
+                style={{
+                  background: "#f9fafb",
+                  borderRadius: "8px",
+                  border: "1px solid #e5e7eb",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    aspectRatio: "1",
+                    background: "#e5e7eb",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                  }}
+                >
+                  <img
+                    src={image.storageUrl}
+                    alt={image.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+                <div style={{ padding: "0.75rem" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "0.25rem", fontSize: "0.875rem" }}>
+                    {image.name}
+                  </div>
+                  <div style={{ marginBottom: "0.5rem" }}>
+                    <span
+                      className="badge"
+                      style={{
+                        background: "#e0e7ff",
+                        color: "#4338ca",
+                        fontSize: "0.7rem",
+                      }}
+                    >
+                      {imageTypeLabels[image.type as ImageType]}
+                    </span>
+                  </div>
+                  {image.description && (
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.5rem" }}>
+                      {image.description.length > 60
+                        ? image.description.substring(0, 60) + "..."
+                        : image.description}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => handleOpenModal(image._id)}
+                      title="Edit"
+                      style={{ flex: 1 }}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleDelete(image._id)}
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Image Upload/Edit/Generate Modal */}
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "500px" }}>
+            <div className="modal-header">
+              <h2>
+                {editingImage
+                  ? "Edit Image"
+                  : modalMode === "generate"
+                    ? "Generate Reference Image"
+                    : "Upload Reference Image"}
+              </h2>
+              <button className="modal-close" onClick={handleCloseModal}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {error && (
+              <div className="alert alert-error" style={{ marginBottom: "1rem" }}>
+                {error}
+              </div>
+            )}
+
+            {/* Mode Toggle (only when creating new) */}
+            {!editingImage && (
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+                <button
+                  className={`btn btn-sm ${modalMode === "upload" ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setModalMode("upload")}
+                  disabled={isSaving}
+                  style={{ flex: 1 }}
+                >
+                  <Upload size={14} />
+                  Upload
+                </button>
+                <button
+                  className={`btn btn-sm ${modalMode === "generate" ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setModalMode("generate")}
+                  disabled={isSaving}
+                  style={{ flex: 1 }}
+                >
+                  <Sparkles size={14} />
+                  Generate with AI
+                </button>
+              </div>
+            )}
+
+            {/* Upload Mode: Image Preview / Upload Area */}
+            {!editingImage && modalMode === "upload" && (
+              <div style={{ marginBottom: "1rem" }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  style={{ display: "none" }}
+                />
+                {previewUrl ? (
+                  <div
+                    style={{
+                      position: "relative",
+                      borderRadius: "8px",
+                      overflow: "hidden",
+                      border: "1px solid #e5e7eb",
+                    }}
+                  >
+                    <img
+                      src={previewUrl}
+                      alt="Preview"
+                      style={{ width: "100%", maxHeight: "200px", objectFit: "contain", background: "#f3f4f6" }}
+                    />
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ position: "absolute", bottom: "0.5rem", right: "0.5rem" }}
+                      disabled={isSaving}
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: "2px dashed #e5e7eb",
+                      borderRadius: "8px",
+                      padding: "2rem",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      background: "#f9fafb",
+                    }}
+                  >
+                    <Upload size={32} style={{ color: "#9ca3af", marginBottom: "0.5rem" }} />
+                    <div style={{ color: "#6b7280" }}>Click to select an image</div>
+                    <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+                      PNG, JPG up to 5MB
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Generate Mode: AI Prompt */}
+            {!editingImage && modalMode === "generate" && (
+              <div className="form-group">
+                <label className="form-label">Describe your character</label>
+                <textarea
+                  className="textarea"
+                  placeholder="Example: A friendly blue cartoon mascot with a muscular build and confident smile, wearing gym clothes. Simple, clean design with bold outlines."
+                  value={generatePrompt}
+                  onChange={(e) => setGeneratePrompt(e.target.value)}
+                  disabled={isSaving}
+                  rows={4}
+                  style={{ minHeight: "100px" }}
+                />
+              </div>
+            )}
+
+            {editingImage && previewUrl && (
+              <div style={{ marginBottom: "1rem" }}>
+                <img
+                  src={previewUrl}
+                  alt="Preview"
+                  style={{
+                    width: "100%",
+                    maxHeight: "150px",
+                    objectFit: "contain",
+                    background: "#f3f4f6",
+                    borderRadius: "8px",
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Show form fields for upload mode and edit mode, but not generate mode */}
+            {(modalMode === "upload" || editingImage) && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Name *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g., Blue Bro, Main Logo"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Type</label>
+                  <select
+                    className="input"
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value as ImageType })}
+                    disabled={isSaving}
+                  >
+                    <option value="character">Character/Mascot</option>
+                    <option value="person">Person/Face</option>
+                    <option value="logo">Logo</option>
+                    <option value="style">Style Reference</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Instructions (optional)</label>
+                  <textarea
+                    className="textarea"
+                    placeholder="e.g., Blue Bro is a muscular blue character. Always show confident body language."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    disabled={isSaving}
+                    rows={3}
+                  />
+                  <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+                    Describe how this image should be used when generating slideshows.
+                  </p>
+                </div>
+              </>
+            )}
+
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={handleCloseModal} disabled={isSaving}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Loader size={16} className="spinner" />
+                    {editingImage ? "Saving..." : modalMode === "generate" ? "Generating..." : "Uploading..."}
+                  </>
+                ) : (
+                  <>
+                    {modalMode === "generate" && !editingImage ? <Sparkles size={16} /> : <Check size={16} />}
+                    {editingImage ? "Update" : modalMode === "generate" ? "Generate" : "Upload"}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

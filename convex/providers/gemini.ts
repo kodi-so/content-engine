@@ -109,8 +109,17 @@ export async function generateText(
 
 // ============ IMAGE GENERATION ============
 
+// Reference image for consistent visual identity across generations
+export interface ReferenceImage {
+  base64Data: string; // Base64 encoded image data (without data: prefix)
+  mimeType: string; // e.g., "image/jpeg", "image/png"
+  description?: string; // Optional description for the AI
+}
+
 export interface GeminiImageParams {
   aspectRatio?: "1:1" | "4:5" | "9:16";
+  // Reference images for maintaining character/style consistency
+  referenceImages?: ReferenceImage[];
 }
 
 export interface GeminiImageResponse {
@@ -123,6 +132,7 @@ const COST_PER_IMAGE = 0.02;
 
 /**
  * Generate images using Gemini's native image generation
+ * Optionally accepts reference images for character/style consistency
  */
 export async function generateImages(
   prompt: string,
@@ -135,6 +145,27 @@ export async function generateImages(
 
   const aspectRatio = params.aspectRatio || "4:5";
 
+  // Build parts array - reference images first (as context), then text prompt
+  const parts: Array<
+    | { text: string }
+    | { inlineData: { mimeType: string; data: string } }
+  > = [];
+
+  // Add reference images first if provided
+  if (params.referenceImages && params.referenceImages.length > 0) {
+    for (const ref of params.referenceImages) {
+      parts.push({
+        inlineData: {
+          mimeType: ref.mimeType,
+          data: ref.base64Data,
+        },
+      });
+    }
+  }
+
+  // Add text prompt after images
+  parts.push({ text: prompt });
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
     {
@@ -143,15 +174,7 @@ export async function generateImages(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
+        contents: [{ parts }],
         generationConfig: {
           responseModalities: ["IMAGE"],
           imageConfig: {
@@ -170,9 +193,9 @@ export async function generateImages(
   const data = await response.json();
 
   // Extract image from response
-  const parts = data.candidates?.[0]?.content?.parts || [];
+  const responseParts = data.candidates?.[0]?.content?.parts || [];
   let image: string | null = null;
-  for (const part of parts) {
+  for (const part of responseParts) {
     if (part.inlineData?.mimeType?.startsWith("image/")) {
       image = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       break;
@@ -278,14 +301,18 @@ Return JSON:
 
 /**
  * Generate a carousel slide image
+ * Optionally uses reference images for character/style consistency
  */
 export async function generateCarouselImage(
   visualDescription: string,
-  userStyle?: string | null
+  userStyle?: string | null,
+  referenceImages?: ReferenceImage[],
+  characterInstructions?: string | null,
+  aspectRatio: "1:1" | "4:5" | "9:16" = "4:5"
 ): Promise<{ image: string; cost: number }> {
   const styleHint = userStyle || "modern, minimal, professional";
 
-  const prompt = `Create a high-quality image: ${visualDescription}
+  let prompt = `Create a high-quality image: ${visualDescription}
 
 Requirements:
 - Clean composition suitable for text overlay
@@ -295,7 +322,20 @@ Requirements:
 
 Style: ${styleHint}`;
 
-  const response = await generateImages(prompt, { aspectRatio: "4:5" });
+  // Add character/reference instructions if provided
+  if (referenceImages && referenceImages.length > 0 && characterInstructions) {
+    prompt += `
+
+IMPORTANT - Reference Character/Element Instructions:
+${characterInstructions}
+
+Use the provided reference image(s) to maintain visual consistency. The character/element should appear in this scene with the described action/pose.`;
+  }
+
+  const response = await generateImages(prompt, {
+    aspectRatio,
+    referenceImages: referenceImages && referenceImages.length > 0 ? referenceImages : undefined,
+  });
 
   return {
     image: response.image,
@@ -305,14 +345,20 @@ Style: ${styleHint}`;
 
 /**
  * Generate multiple carousel images in batch
+ * Optionally uses reference images for character/style consistency
  */
 export async function generateCarouselImages(
   visualDescriptions: string[],
-  userStyle?: string | null
+  userStyle?: string | null,
+  referenceImages?: ReferenceImage[],
+  characterInstructions?: string | null,
+  aspectRatio: "1:1" | "4:5" | "9:16" = "4:5"
 ): Promise<{ images: string[]; cost: number }> {
   // Generate images in parallel for speed
   const results = await Promise.all(
-    visualDescriptions.map((desc) => generateCarouselImage(desc, userStyle))
+    visualDescriptions.map((desc) =>
+      generateCarouselImage(desc, userStyle, referenceImages, characterInstructions, aspectRatio)
+    )
   );
 
   return {

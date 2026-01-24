@@ -15,8 +15,9 @@ export interface WizardData {
     topicExamples: string[];
   };
   formatConfig: {
-    visualStyle: string;
+    visualStyle?: string;
     aspectRatio: "1:1" | "4:5" | "9:16";
+    contentStyle?: "overlay" | "infographic";
   };
 
   // Step 3: Schedule

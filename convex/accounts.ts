@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalAction } from "./_generated/server";
+import { mutation, query, internalMutation, internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 // Platform type for type safety
@@ -425,5 +425,13 @@ export const refreshAccountStats = internalAction({
         error: err instanceof Error ? err.message : "Unknown error",
       };
     }
+  },
+});
+
+// Internal query to get account (for automations that need account details)
+export const getAccountInternal = internalQuery({
+  args: { id: v.id("accounts") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
   },
 });

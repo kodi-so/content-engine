@@ -8,9 +8,22 @@ import {
   postSettingsValidator,
   automationRunStatusValidator,
   contentTypeValidator,
+  referenceImageTypeValidator,
 } from "./validators";
 
 export default defineSchema({
+  // Reference Images - User's personal image library for generation
+  referenceImages: defineTable({
+    userId: v.string(),
+    storageUrl: v.string(), // Convex storage URL
+    type: referenceImageTypeValidator,
+    name: v.string(), // User-friendly name (e.g., "Blue Bro", "Main Logo")
+    description: v.optional(v.string()), // Instructions for how to use this in generation
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "type"]),
+
   // Products - Apps/brands/businesses for content context
   products: defineTable({
     userId: v.string(),
@@ -221,6 +234,10 @@ export default defineSchema({
 
     // Format configuration
     formatConfig: formatConfigValidator,
+
+    // Reference images from user's library (for consistent visual identity)
+    referenceImageIds: v.optional(v.array(v.id("referenceImages"))),
+    characterInstructions: v.optional(v.string()), // How to use the references
 
     // Schedule configuration
     scheduleConfig: scheduleConfigValidator,

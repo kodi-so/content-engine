@@ -173,6 +173,10 @@ export default function Slideshows() {
           isGenerating={generation.isGenerating}
           error={generation.error}
           onGenerate={handleGenerate}
+          selectedReferenceImages={generation.selectedReferenceImages}
+          onReferenceImagesChange={generation.setSelectedReferenceImages}
+          contentStyle={generation.contentStyle}
+          onContentStyleChange={generation.setContentStyle}
         />
 
         {/* Right Column: Preview Panel */}
