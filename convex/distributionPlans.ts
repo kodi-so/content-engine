@@ -195,7 +195,12 @@ function extractArtifactText(artifacts: Doc<"artifacts">[]): string | undefined 
 }
 
 function inferMimeType(artifact: Doc<"artifacts">): string {
+  if (artifact.data && typeof artifact.data === "object") {
+    const data = artifact.data as Record<string, unknown>;
+    if (typeof data.mimeType === "string") return data.mimeType;
+  }
   if (artifact.type === "video") return "video/mp4";
+  if (artifact.type === "rendered_slide") return "image/svg+xml";
   if (!artifact.storageUrl) return "image/png";
   if (artifact.storageUrl.endsWith(".jpg") || artifact.storageUrl.endsWith(".jpeg")) {
     return "image/jpeg";
@@ -208,7 +213,15 @@ async function mediaFromArtifact(
   provider: ReturnType<typeof getPublishingProvider>,
   artifact: Doc<"artifacts">
 ): Promise<UploadedMedia | null> {
-  if (artifact.type !== "image" && artifact.type !== "video") return null;
+  if (
+    artifact.type !== "image" &&
+    artifact.type !== "video" &&
+    artifact.type !== "rendered_slide" &&
+    artifact.type !== "rendered_asset" &&
+    artifact.type !== "thumbnail"
+  ) {
+    return null;
+  }
 
   const data = artifact.data && typeof artifact.data === "object"
     ? (artifact.data as Record<string, unknown>)
@@ -347,6 +360,15 @@ export const publish = action({
 
     const context = await getDistributionPlanContext(ctx, args.id, identity.subject);
     if (!context) throw new Error("Distribution plan not found");
+    if (context.plan.status === "waiting_for_approval") {
+      throw new Error("Distribution plan is still waiting for approval");
+    }
+    if (context.plan.status === "needs_revision") {
+      throw new Error("Distribution plan needs revision before publishing");
+    }
+    if (context.plan.status !== "draft" && context.plan.status !== "failed") {
+      throw new Error(`Distribution plan cannot be published from ${context.plan.status}`);
+    }
     if (context.socialAccounts.length === 0) {
       throw new Error("Distribution plan has no target accounts");
     }

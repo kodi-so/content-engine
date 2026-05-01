@@ -440,7 +440,7 @@ Acceptance criteria:
 
 ### CE-0405: Add approval gate support
 
-Status: `Not Started`
+Status: `In Progress`
 
 Goal: Allow workflows to pause for human approval before publishing.
 
@@ -448,8 +448,10 @@ Acceptance criteria:
 
 - Workflow step can request approval.
 - Run pauses in approval-required status.
-- User can approve or reject.
-- Approved runs resume.
+- User can approve or request revision on artifacts.
+- Approved distribution plans become publish-ready.
+- Revision-needed distribution plans stay blocked from publishing.
+- Approved runs resume or resolve cleanly.
 - Rejected runs stop cleanly with reason.
 
 ## Milestone 5: Slideshow Rebuild

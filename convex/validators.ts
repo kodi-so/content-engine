@@ -54,6 +54,7 @@ export const workflowRunStatusValidator = v.union(
   v.literal("queued"),
   v.literal("running"),
   v.literal("waiting_for_approval"),
+  v.literal("needs_revision"),
   v.literal("completed"),
   v.literal("failed"),
   v.literal("canceled")
@@ -102,6 +103,7 @@ export const reviewStatusValidator = v.union(
 export const distributionStatusValidator = v.union(
   v.literal("draft"),
   v.literal("waiting_for_approval"),
+  v.literal("needs_revision"),
   v.literal("scheduled"),
   v.literal("publishing"),
   v.literal("published"),
