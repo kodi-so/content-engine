@@ -8,27 +8,21 @@
  * @module
  */
 
-import type * as accounts from "../accounts.js";
-import type * as analytics from "../analytics.js";
-import type * as automations_feedback from "../automations/feedback.js";
-import type * as automations_generate from "../automations/generate.js";
-import type * as automations_index from "../automations/index.js";
-import type * as automations_internal from "../automations/internal.js";
-import type * as automations_process from "../automations/process.js";
-import type * as automations_schedule from "../automations/schedule.js";
-import type * as content from "../content.js";
+import type * as artifacts from "../artifacts.js";
+import type * as brands from "../brands.js";
 import type * as crons from "../crons.js";
+import type * as distributionPlans from "../distributionPlans.js";
 import type * as http from "../http.js";
-import type * as products from "../products.js";
+import type * as metrics from "../metrics.js";
+import type * as providers_errors from "../providers/errors.js";
 import type * as providers_gemini from "../providers/gemini.js";
-import type * as referenceImages from "../referenceImages.js";
-import type * as scheduledPosts from "../scheduledPosts.js";
-import type * as slideshows_generate from "../slideshows/generate.js";
-import type * as slideshows_generateAgentic from "../slideshows/generateAgentic.js";
+import type * as providers_model from "../providers/model.js";
+import type * as providers_publishing from "../providers/publishing.js";
+import type * as socialAccounts from "../socialAccounts.js";
 import type * as storage from "../storage.js";
-import type * as tiktok from "../tiktok.js";
-import type * as tiktokAnalytics from "../tiktokAnalytics.js";
 import type * as validators from "../validators.js";
+import type * as workflowRuns from "../workflowRuns.js";
+import type * as workflows from "../workflows.js";
 
 import type {
   ApiFromModules,
@@ -37,27 +31,21 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  accounts: typeof accounts;
-  analytics: typeof analytics;
-  "automations/feedback": typeof automations_feedback;
-  "automations/generate": typeof automations_generate;
-  "automations/index": typeof automations_index;
-  "automations/internal": typeof automations_internal;
-  "automations/process": typeof automations_process;
-  "automations/schedule": typeof automations_schedule;
-  content: typeof content;
+  artifacts: typeof artifacts;
+  brands: typeof brands;
   crons: typeof crons;
+  distributionPlans: typeof distributionPlans;
   http: typeof http;
-  products: typeof products;
+  metrics: typeof metrics;
+  "providers/errors": typeof providers_errors;
   "providers/gemini": typeof providers_gemini;
-  referenceImages: typeof referenceImages;
-  scheduledPosts: typeof scheduledPosts;
-  "slideshows/generate": typeof slideshows_generate;
-  "slideshows/generateAgentic": typeof slideshows_generateAgentic;
+  "providers/model": typeof providers_model;
+  "providers/publishing": typeof providers_publishing;
+  socialAccounts: typeof socialAccounts;
   storage: typeof storage;
-  tiktok: typeof tiktok;
-  tiktokAnalytics: typeof tiktokAnalytics;
   validators: typeof validators;
+  workflowRuns: typeof workflowRuns;
+  workflows: typeof workflows;
 }>;
 
 /**

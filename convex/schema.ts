@@ -1,296 +1,247 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
-  slideValidator,
-  themeConfigValidator,
-  formatConfigValidator,
+  approvalPolicyValidator,
+  artifactTypeValidator,
+  contentFormatValidator,
+  distributionStatusValidator,
+  metricsValidator,
+  modelProviderValidator,
+  platformValidator,
+  publishingPolicyValidator,
+  publishingProviderValidator,
+  reviewStatusValidator,
   scheduleConfigValidator,
-  postSettingsValidator,
-  automationRunStatusValidator,
-  contentTypeValidator,
-  referenceImageTypeValidator,
+  socialAccountStatusValidator,
+  workflowRunEventTypeValidator,
+  workflowRunStatusValidator,
+  workflowStepValidator,
+  workflowTriggerValidator,
 } from "./validators";
 
 export default defineSchema({
-  // Reference Images - User's personal image library for generation
-  referenceImages: defineTable({
-    userId: v.string(),
-    storageUrl: v.string(), // Convex storage URL
-    type: referenceImageTypeValidator,
-    name: v.string(), // User-friendly name (e.g., "Blue Bro", "Main Logo")
-    description: v.optional(v.string()), // Instructions for how to use this in generation
-    createdAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_user_type", ["userId", "type"]),
-
-  // Products - Apps/brands/businesses for content context
-  products: defineTable({
+  brands: defineTable({
     userId: v.string(),
     name: v.string(),
     description: v.optional(v.string()),
+    niche: v.optional(v.string()),
+    audience: v.optional(v.string()),
+    voice: v.optional(v.string()),
+    visualStyle: v.optional(v.string()),
+    offer: v.optional(v.string()),
+    constraints: v.optional(v.array(v.string())),
+    examplePosts: v.optional(v.array(v.string())),
+    performanceNotes: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_active", ["isActive"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_user_active", ["userId", "isActive"]),
 
-  // Accounts - Social media accounts
-  accounts: defineTable({
-    userId: v.string(), // Owner of this connected account
-    platform: v.union(
-      v.literal("tiktok"),
-      v.literal("instagram"),
-      v.literal("twitter")
+  brandAssets: defineTable({
+    userId: v.string(),
+    brandId: v.id("brands"),
+    name: v.string(),
+    type: v.union(
+      v.literal("character"),
+      v.literal("person"),
+      v.literal("logo"),
+      v.literal("style_reference"),
+      v.literal("product"),
+      v.literal("other")
     ),
+    storageUrl: v.string(),
+    description: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandId"]),
+
+  providerConnections: defineTable({
+    userId: v.string(),
+    provider: publishingProviderValidator,
+    label: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("needs_attention"),
+      v.literal("disabled")
+    ),
+    externalWorkspaceId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_provider", ["userId", "provider"]),
+
+  socialAccounts: defineTable({
+    userId: v.string(),
+    brandId: v.optional(v.id("brands")),
+    providerConnectionId: v.optional(v.id("providerConnections")),
+    provider: publishingProviderValidator,
+    platform: platformValidator,
+    externalAccountId: v.string(),
     username: v.string(),
     displayName: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
-    productId: v.optional(v.id("products")), // Associated product
-    // OAuth credentials
-    accessToken: v.optional(v.string()),
-    refreshToken: v.optional(v.string()),
-    tokenExpiresAt: v.optional(v.number()),
-    platformUserId: v.optional(v.string()), // Platform-specific user ID
-    scopes: v.optional(v.array(v.string())), // Granted OAuth scopes
-    // Account-level stats (from user.info.stats scope)
-    followerCount: v.optional(v.number()),
-    followingCount: v.optional(v.number()),
-    likesCount: v.optional(v.number()), // Total likes received on all videos
-    videoCount: v.optional(v.number()),
-    statsLastUpdated: v.optional(v.number()),
+    status: socialAccountStatusValidator,
+    capabilities: v.optional(v.array(v.string())),
+    metadata: v.optional(v.any()),
+    lastSyncedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandId"])
+    .index("by_user_provider", ["userId", "provider"])
+    .index("by_external_account", ["provider", "externalAccountId"]),
+
+  workflows: defineTable({
+    userId: v.string(),
+    brandId: v.id("brands"),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    name: v.string(),
+    description: v.optional(v.string()),
+    contentFormat: contentFormatValidator,
+    trigger: workflowTriggerValidator,
+    scheduleConfig: v.optional(scheduleConfigValidator),
+    approvalPolicy: approvalPolicyValidator,
+    publishingPolicy: publishingPolicyValidator,
+    activeVersionId: v.optional(v.id("workflowVersions")),
     isActive: v.boolean(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_platform", ["platform"])
-    .index("by_user_platform", ["userId", "platform"])
-    .index("by_product", ["productId"])
-    .index("by_username", ["platform", "username"]),
-
-  // OAuth state - temporary storage for OAuth flow
-  oauthStates: defineTable({
-    state: v.string(), // Random state for CSRF protection
-    userId: v.string(),
-    platform: v.string(),
-    redirectUrl: v.string(), // Where to redirect after OAuth
-    createdAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_state", ["state"])
-    .index("by_expiry", ["expiresAt"]),
-
-  // Content - Generated content library (only stores completed slideshows)
-  content: defineTable({
-    userId: v.string(),
-    productId: v.optional(v.id("products")),
-    accountId: v.optional(v.id("accounts")),
-
-    // Input parameters used for generation
-    inputParams: v.object({
-      topic: v.optional(v.string()),
-      slideCount: v.optional(v.number()),
-      customPrompt: v.optional(v.string()),
-      variables: v.optional(v.any()), // Additional variables
-    }),
-
-    // Generated content
-    content: v.object({
-      type: v.string(),
-      slides: v.optional(v.array(slideValidator)),
-      texts: v.optional(v.array(v.string())), // For threads
-      mediaUrls: v.optional(v.array(v.string())),
-      // Config now only holds slideshow-level settings (aspect ratio)
-      // Font size, color, position are per text element
-      config: v.optional(v.object({
-        aspectRatio: v.optional(v.union(
-          v.literal("1:1"),
-          v.literal("4:5"),
-          v.literal("9:16")
-        )),
-      })),
-    }),
-
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_product", ["productId"])
-    .index("by_account", ["accountId"]),
-
-  // Config - API keys and global settings
-  config: defineTable({
-    key: v.string(),
-    value: v.string(),
-    isSecret: v.boolean(), // If true, value is encrypted/masked in UI
-    updatedAt: v.number(),
-  }).index("by_key", ["key"]),
-
-  // Scheduled posts - Posts scheduled for future publication
-  scheduledPosts: defineTable({
-    userId: v.string(),
-    contentId: v.id("content"), // Reference to the slideshow
-    accountId: v.id("accounts"), // TikTok account to post from
-
-    // Post metadata (captured at schedule time)
-    title: v.optional(v.string()),
-    description: v.optional(v.string()),
-    privacyLevel: v.union(
-      v.literal("PUBLIC_TO_EVERYONE"),
-      v.literal("MUTUAL_FOLLOW_FRIENDS"),
-      v.literal("SELF_ONLY")
-    ),
-    postMode: v.union(
-      v.literal("DIRECT_POST"),
-      v.literal("MEDIA_UPLOAD")
-    ),
-    autoAddMusic: v.boolean(),
-
-    // Pre-rendered images (stored as Convex storage URLs at schedule time)
-    renderedImageUrls: v.array(v.string()),
-
-    // Scheduling
-    scheduledFor: v.number(), // UTC timestamp
-    timezone: v.string(), // User's timezone for display
-
-    // Status tracking
-    status: v.union(
-      v.literal("scheduled"),
-      v.literal("posting"),
-      v.literal("posted"),
-      v.literal("failed")
-    ),
-    publishId: v.optional(v.string()), // TikTok's publish_id after posting
-    errorMessage: v.optional(v.string()), // Error message if failed
-    postedAt: v.optional(v.number()), // When actually posted
-
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_status", ["status"])
-    .index("by_user_status", ["userId", "status"])
-    .index("by_scheduled_time", ["scheduledFor"]),
-
-  // Posted content - Tracks published TikTok videos with analytics
-  // Videos are synced from TikTok's video list API, not just from Content Engine posts
-  postedContent: defineTable({
-    userId: v.string(),
-    accountId: v.id("accounts"), // TikTok account that posted
-    contentId: v.optional(v.id("content")), // Original slideshow (if from Content Engine)
-    scheduledPostId: v.optional(v.id("scheduledPosts")), // If from scheduled post
-
-    // TikTok identifiers
-    videoId: v.string(), // TikTok's video ID (required - primary identifier)
-    publishId: v.optional(v.string()), // From posting API (only for Content Engine posts)
-
-    // Source tracking
-    source: v.union(
-      v.literal("content_engine"), // Posted via Content Engine
-      v.literal("synced") // Synced from TikTok (posted elsewhere)
-    ),
-
-    // Video metadata (from TikTok)
-    title: v.optional(v.string()),
-    description: v.optional(v.string()),
-    coverImageUrl: v.optional(v.string()),
-    embedLink: v.optional(v.string()),
-    shareUrl: v.optional(v.string()),
-    duration: v.optional(v.number()),
-
-    // Metrics (updated periodically)
-    metrics: v.object({
-      views: v.number(),
-      likes: v.number(),
-      comments: v.number(),
-      shares: v.number(),
-    }),
-
-    // Timestamps
-    postedAt: v.number(), // When published on TikTok (create_time from API)
-    metricsLastUpdated: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_account", ["accountId"])
-    .index("by_video_id", ["videoId"])
-    .index("by_posted_at", ["postedAt"]),
-
-  // Automations - Automated content generation and posting
-  automations: defineTable({
-    userId: v.string(),
-    name: v.string(), // e.g., "Self-Improvement Daily Posts"
-    description: v.optional(v.string()),
-    accountId: v.id("accounts"), // One-to-one with TikTok account
-
-    // Content type (extensible for future: "hook_demo", "ai_ugc")
-    contentType: contentTypeValidator,
-
-    // Theme configuration
-    themeConfig: themeConfigValidator,
-
-    // Format configuration
-    formatConfig: formatConfigValidator,
-
-    // Reference images from user's library (for consistent visual identity)
-    referenceImageIds: v.optional(v.array(v.id("referenceImages"))),
-    characterInstructions: v.optional(v.string()), // How to use the references
-
-    // Schedule configuration
-    scheduleConfig: scheduleConfigValidator,
-
-    // Post settings
-    postSettings: postSettingsValidator,
-
-    // State
-    isActive: v.boolean(),
-    lastRunAt: v.optional(v.number()),
     nextRunAt: v.optional(v.number()),
-
-    // Preview content (for wizard)
-    lastPreviewContentId: v.optional(v.id("content")),
-    lastPreviewTopic: v.optional(v.string()),
-    lastPreviewCaption: v.optional(v.string()),
-
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_account", ["accountId"])
-    .index("by_next_run", ["isActive", "nextRunAt"]),
+    .index("by_brand", ["brandId"])
+    .index("by_active_next_run", ["isActive", "nextRunAt"]),
 
-  // Automation runs - Execution history for automations
-  automationRuns: defineTable({
-    automationId: v.id("automations"),
+  workflowVersions: defineTable({
     userId: v.string(),
+    workflowId: v.id("workflows"),
+    version: v.number(),
+    strategy: v.optional(v.any()),
+    steps: v.array(workflowStepValidator),
+    modelDefaults: v.optional(
+      v.object({
+        textProvider: v.optional(modelProviderValidator),
+        mediaProvider: v.optional(modelProviderValidator),
+        preferredTextModel: v.optional(v.string()),
+        preferredImageModel: v.optional(v.string()),
+        preferredVideoModel: v.optional(v.string()),
+      })
+    ),
+    createdAt: v.number(),
+    createdBy: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_workflow", ["workflowId"]),
 
-    // Status tracking
-    status: automationRunStatusValidator,
-
-    // Generated content (if successful)
-    contentId: v.optional(v.id("content")),
-    scheduledPostId: v.optional(v.id("scheduledPosts")),
-
-    // Generation metadata
-    generatedTopic: v.optional(v.string()), // The topic AI decided on
-    generatedCaption: v.optional(v.string()), // AI-generated caption
-
-    // Error tracking
+  workflowRuns: defineTable({
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    workflowVersionId: v.id("workflowVersions"),
+    brandId: v.id("brands"),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    trigger: workflowTriggerValidator,
+    status: workflowRunStatusValidator,
+    currentStepId: v.optional(v.string()),
+    generatedTopic: v.optional(v.string()),
+    generatedHook: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    costUsd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
-    errorStep: v.optional(v.string()), // "topic_generation", "content_generation", "scheduling"
-
-    // Timestamps
-    scheduledFor: v.number(), // When this run was supposed to execute
+    errorStepId: v.optional(v.string()),
+    scheduledFor: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_workflow", ["workflowId"])
+    .index("by_status", ["status"])
+    .index("by_user_status", ["userId", "status"]),
 
+  workflowRunEvents: defineTable({
+    userId: v.string(),
+    workflowRunId: v.id("workflowRuns"),
+    workflowId: v.id("workflows"),
+    type: workflowRunEventTypeValidator,
+    stepId: v.optional(v.string()),
+    message: v.string(),
+    data: v.optional(v.any()),
     createdAt: v.number(),
   })
-    .index("by_automation", ["automationId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_workflow", ["workflowId"]),
+
+  artifacts: defineTable({
+    userId: v.string(),
+    brandId: v.optional(v.id("brands")),
+    workflowId: v.optional(v.id("workflows")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
+    type: artifactTypeValidator,
+    title: v.optional(v.string()),
+    storageUrl: v.optional(v.string()),
+    data: v.optional(v.any()),
+    provider: v.optional(modelProviderValidator),
+    model: v.optional(v.string()),
+    prompt: v.optional(v.string()),
+    reviewStatus: reviewStatusValidator,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
     .index("by_user", ["userId"])
-    .index("by_status", ["status"])
-    .index("by_automation_status", ["automationId", "status"]),
+    .index("by_brand", ["brandId"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_type", ["type"]),
+
+  distributionPlans: defineTable({
+    userId: v.string(),
+    brandId: v.id("brands"),
+    workflowId: v.optional(v.id("workflows")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    artifactIds: v.array(v.id("artifacts")),
+    socialAccountIds: v.array(v.id("socialAccounts")),
+    provider: publishingProviderValidator,
+    status: distributionStatusValidator,
+    scheduledFor: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    providerPayload: v.optional(v.any()),
+    externalPostIds: v.optional(v.array(v.string())),
+    errorMessage: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandId"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_status", ["status"]),
+
+  postMetrics: defineTable({
+    userId: v.string(),
+    brandId: v.optional(v.id("brands")),
+    workflowId: v.optional(v.id("workflows")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    distributionPlanId: v.optional(v.id("distributionPlans")),
+    socialAccountId: v.id("socialAccounts"),
+    platform: platformValidator,
+    externalPostId: v.string(),
+    metrics: metricsValidator,
+    capturedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandId"])
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_external_post", ["platform", "externalPostId"]),
 });
