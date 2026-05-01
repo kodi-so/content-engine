@@ -302,12 +302,16 @@ export const updateFromRunner = internalMutation({
       throw new Error("Artifact not found");
     }
 
-    await ctx.db.patch(args.artifactId, {
-      storageUrl: args.storageUrl,
-      data: args.data,
-      reviewStatus: args.reviewStatus,
+    const patch: Partial<Doc<"artifacts">> = {
       updatedAt: Date.now(),
-    });
+    };
+    if (args.storageUrl !== undefined) patch.storageUrl = args.storageUrl;
+    if (args.data !== undefined) patch.data = args.data;
+    if (args.reviewStatus !== undefined) {
+      patch.reviewStatus = args.reviewStatus;
+    }
+
+    await ctx.db.patch(args.artifactId, patch);
   },
 });
 
