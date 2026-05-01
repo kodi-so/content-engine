@@ -500,6 +500,7 @@ function LibraryPage() {
   const plans = useQuery(api.distributionPlans.list);
   const setReviewStatus = useMutation(api.artifacts.setReviewStatus);
   const requestArtifactRevision = useMutation(api.artifacts.requestRevision);
+  const replacePlanArtifact = useMutation(api.distributionPlans.replaceArtifact);
   const regenerateArtifact = useAction(api.artifactRegeneration.regenerate);
   const publishPlan = useAction(api.distributionPlans.publish);
   const syncPlanStatus = useAction(api.distributionPlans.syncStatus);
@@ -584,6 +585,23 @@ function LibraryPage() {
       setReviewStatusMessage(`Created ${result.artifactIds.length} regenerated artifacts`);
     } catch (error) {
       setReviewStatusMessage(error instanceof Error ? error.message : "Regeneration failed");
+    }
+  };
+
+  const promoteArtifactToPlan = async (
+    artifact: ArtifactDoc,
+    target: { planId: DistributionPlanId; oldArtifactId: ArtifactDoc["_id"] }
+  ) => {
+    setReviewStatusMessage("Promoting regenerated artifact");
+    try {
+      await replacePlanArtifact({
+        id: target.planId,
+        oldArtifactId: target.oldArtifactId,
+        newArtifactId: artifact._id,
+      });
+      setReviewStatusMessage("Regenerated artifact promoted into distribution plan");
+    } catch (error) {
+      setReviewStatusMessage(error instanceof Error ? error.message : "Promotion failed");
     }
   };
 
@@ -743,64 +761,78 @@ function LibraryPage() {
           </div>
         )}
         <div className="artifact-grid">
-          {filteredArtifacts?.map((artifact) => (
-            <article className="artifact-card" key={artifact._id}>
-              <ArtifactPreview artifact={artifact} />
-              <div className="artifact-copy">
-                <div className="entity-eyebrow">{artifact.type}</div>
-                <h3>{artifact.title || artifact.type}</h3>
-                <p>{artifactSummary(artifact)}</p>
-                {latestRevisionNote(artifact) && (
-                  <p className="revision-note">Latest revision note: {latestRevisionNote(artifact)}</p>
-                )}
-                <span>{artifact.reviewStatus}</span>
-              </div>
-              <label className="revision-field">
-                <span>Revision note</span>
-                <textarea
-                  value={revisionNotes[artifact._id] ?? ""}
-                  onChange={(event) =>
-                    setRevisionNotes((current) => ({
-                      ...current,
-                      [artifact._id]: event.target.value,
-                    }))
-                  }
-                  placeholder="What should the agent change next time?"
-                  rows={3}
-                />
-              </label>
-              <div className="button-row">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void approveArtifact(artifact._id)}
-                >
-                  <Check size={16} />
-                  Approve
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void requestRevision(artifact._id)}
-                >
-                  <X size={16} />
-                  Request revision
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={
-                    artifact.reviewStatus !== "needs_revision" ||
-                    !supportsRegeneration(artifact)
-                  }
-                  onClick={() => void regenerateReviewedArtifact(artifact)}
-                >
-                  <RefreshCw size={16} />
-                  Regenerate
-                </button>
-              </div>
-            </article>
-          ))}
+          {filteredArtifacts?.map((artifact) => {
+            const promotableTarget = findPromotablePlanTarget(artifact, plans ?? []);
+
+            return (
+              <article className="artifact-card" key={artifact._id}>
+                <ArtifactPreview artifact={artifact} />
+                <div className="artifact-copy">
+                  <div className="entity-eyebrow">{artifact.type}</div>
+                  <h3>{artifact.title || artifact.type}</h3>
+                  <p>{artifactSummary(artifact)}</p>
+                  {latestRevisionNote(artifact) && (
+                    <p className="revision-note">Latest revision note: {latestRevisionNote(artifact)}</p>
+                  )}
+                  <span>{artifact.reviewStatus}</span>
+                </div>
+                <label className="revision-field">
+                  <span>Revision note</span>
+                  <textarea
+                    value={revisionNotes[artifact._id] ?? ""}
+                    onChange={(event) =>
+                      setRevisionNotes((current) => ({
+                        ...current,
+                        [artifact._id]: event.target.value,
+                      }))
+                    }
+                    placeholder="What should the agent change next time?"
+                    rows={3}
+                  />
+                </label>
+                <div className="button-row">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void approveArtifact(artifact._id)}
+                  >
+                    <Check size={16} />
+                    Approve
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void requestRevision(artifact._id)}
+                  >
+                    <X size={16} />
+                    Request revision
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={
+                      artifact.reviewStatus !== "needs_revision" ||
+                      !supportsRegeneration(artifact)
+                    }
+                    onClick={() => void regenerateReviewedArtifact(artifact)}
+                  >
+                    <RefreshCw size={16} />
+                    Regenerate
+                  </button>
+                  {promotableTarget && (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void promoteArtifactToPlan(artifact, promotableTarget)}
+                    >
+                      <CheckCircle2 size={16} />
+                      Promote to plan
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </Panel>
     </Page>
@@ -808,6 +840,7 @@ function LibraryPage() {
 }
 
 type ArtifactDoc = NonNullable<ReturnType<typeof useQuery<typeof api.artifacts.list>>>[number];
+type DistributionPlanDoc = NonNullable<ReturnType<typeof useQuery<typeof api.distributionPlans.list>>>[number];
 
 function artifactSummary(artifact: ArtifactDoc): string {
   if (artifact.type === "slide_spec" && artifact.data && typeof artifact.data === "object") {
@@ -858,6 +891,54 @@ function latestRevisionNote(artifact: ArtifactDoc): string | undefined {
 
 function supportsRegeneration(artifact: ArtifactDoc): boolean {
   return artifact.type === "image_prompt" || artifact.type === "image";
+}
+
+function replacementSourceIds(artifact: ArtifactDoc): Set<string> {
+  const sourceIds = new Set<string>();
+  artifact.parentArtifactIds?.forEach((artifactId) => sourceIds.add(String(artifactId)));
+
+  if (!artifact.data || typeof artifact.data !== "object") return sourceIds;
+
+  const data = artifact.data as {
+    sourceArtifactId?: string;
+    regeneration?: {
+      requestedFromArtifactId?: string;
+    };
+  };
+  if (data.sourceArtifactId) sourceIds.add(data.sourceArtifactId);
+  if (data.regeneration?.requestedFromArtifactId) {
+    sourceIds.add(data.regeneration.requestedFromArtifactId);
+  }
+
+  return sourceIds;
+}
+
+function findPromotablePlanTarget(
+  artifact: ArtifactDoc,
+  plans: DistributionPlanDoc[]
+): { planId: DistributionPlanId; oldArtifactId: ArtifactDoc["_id"] } | undefined {
+  if (artifact.reviewStatus === "needs_revision") return undefined;
+
+  const sourceIds = replacementSourceIds(artifact);
+  if (sourceIds.size === 0) return undefined;
+
+  for (const plan of plans) {
+    if (plan.status !== "waiting_for_approval" && plan.status !== "needs_revision") {
+      continue;
+    }
+
+    const oldArtifactId = plan.artifactIds.find((artifactId) =>
+      sourceIds.has(String(artifactId))
+    );
+    if (oldArtifactId) {
+      return {
+        planId: plan._id as DistributionPlanId,
+        oldArtifactId: oldArtifactId as ArtifactDoc["_id"],
+      };
+    }
+  }
+
+  return undefined;
 }
 
 function ArtifactPreview({ artifact }: { artifact: ArtifactDoc }) {

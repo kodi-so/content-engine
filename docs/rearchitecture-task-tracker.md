@@ -643,6 +643,7 @@ Acceptance criteria:
 - User can approve/reject artifacts.
 - User can request revision with artifact-level feedback notes.
 - User can request regeneration for revised image prompts and image artifacts.
+- Regenerated artifacts can replace their source artifact in a distribution plan.
 - Approval state feeds back into workflow runner.
 
 ### CE-0706: Update navigation
