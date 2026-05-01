@@ -890,7 +890,11 @@ function latestRevisionNote(artifact: ArtifactDoc): string | undefined {
 }
 
 function supportsRegeneration(artifact: ArtifactDoc): boolean {
-  return artifact.type === "image_prompt" || artifact.type === "image";
+  return (
+    artifact.type === "image_prompt" ||
+    artifact.type === "image" ||
+    artifact.type === "rendered_slide"
+  );
 }
 
 function replacementSourceIds(artifact: ArtifactDoc): Set<string> {
