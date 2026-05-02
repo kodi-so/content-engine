@@ -517,8 +517,10 @@ Acceptance criteria:
 - Library can show slideshow workflow outputs.
 - Content can be filtered by brand/account/format/status.
 - Review queue defaults to final review artifacts instead of raw pipeline internals.
+- Rendered slideshow artifacts are grouped by run into a swipeable review bundle.
 - Pipeline debug artifacts can be inspected when troubleshooting generation runs.
 - Test runs, artifacts, and distribution plans can be deleted from the UI to prevent dev-data bloat.
+- A slideshow bundle can be deleted in one action for manual testing cleanup.
 
 ### CE-0505: Improve slideshow generation reliability diagnostics
 

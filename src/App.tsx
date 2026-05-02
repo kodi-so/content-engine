@@ -9,6 +9,8 @@ import {
   BrainCircuit,
   Building2,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   GalleryHorizontalEnd,
   KeyRound,
   LayoutDashboard,
@@ -37,6 +39,7 @@ import { Id } from "../convex/_generated/dataModel";
 type BrandId = Id<"brands">;
 type SocialAccountId = Id<"socialAccounts">;
 type WorkflowId = Id<"workflows">;
+type WorkflowRunId = Id<"workflowRuns">;
 type DistributionPlanId = Id<"distributionPlans">;
 type PublishingProvider = "postiz" | "post_bridge" | "reel_farm" | "manual";
 type Platform = "tiktok" | "instagram" | "youtube" | "x" | "linkedin";
@@ -527,10 +530,12 @@ function LibraryPage() {
   const brands = useQuery(api.brands.list);
   const accounts = useQuery(api.socialAccounts.list);
   const workflows = useQuery(api.workflows.list);
+  const runs = useQuery(api.workflowRuns.list, {});
   const plans = useQuery(api.distributionPlans.list);
   const setReviewStatus = useMutation(api.artifacts.setReviewStatus);
   const requestArtifactRevision = useMutation(api.artifacts.requestRevision);
   const deleteArtifact = useMutation(api.artifacts.remove);
+  const deleteRun = useMutation(api.workflowRuns.remove);
   const replacePlanArtifact = useMutation(api.distributionPlans.replaceArtifact);
   const deletePlan = useMutation(api.distributionPlans.remove);
   const regenerateArtifact = useAction(api.artifactRegeneration.regenerate);
@@ -583,6 +588,26 @@ function LibraryPage() {
   const reviewArtifacts = useMemo(
     () => filteredArtifacts?.filter(isPrimaryReviewArtifact),
     [filteredArtifacts]
+  );
+  const slideshowBundles = useMemo(
+    () => buildSlideshowBundles(reviewArtifacts ?? [], runs ?? [], workflows ?? []),
+    [reviewArtifacts, runs, workflows]
+  );
+  const bundledArtifactIds = useMemo(
+    () =>
+      new Set(
+        slideshowBundles.flatMap((bundle) =>
+          bundle.artifacts.map((artifact) => String(artifact._id))
+        )
+      ),
+    [slideshowBundles]
+  );
+  const standaloneReviewArtifacts = useMemo(
+    () =>
+      reviewArtifacts?.filter(
+        (artifact) => !bundledArtifactIds.has(String(artifact._id))
+      ),
+    [bundledArtifactIds, reviewArtifacts]
   );
   const debugArtifacts = useMemo(
     () => filteredArtifacts?.filter((artifact) => !isPrimaryReviewArtifact(artifact)),
@@ -655,6 +680,26 @@ function LibraryPage() {
     try {
       await deleteArtifact({ id: artifact._id });
       setReviewStatusMessage("Artifact deleted");
+    } catch (error) {
+      setReviewStatusMessage(error instanceof Error ? error.message : "Delete failed");
+    }
+  };
+
+  const removeSlideshowBundle = async (bundle: SlideshowBundle) => {
+    if (!window.confirm(`Delete "${bundle.title}" and all artifacts from this slideshow run?`)) {
+      return;
+    }
+
+    setReviewStatusMessage("Deleting slideshow");
+    try {
+      if (bundle.workflowRunId) {
+        await deleteRun({ id: bundle.workflowRunId });
+      } else {
+        for (const artifact of bundle.artifacts) {
+          await deleteArtifact({ id: artifact._id });
+        }
+      }
+      setReviewStatusMessage("Slideshow deleted");
     } catch (error) {
       setReviewStatusMessage(error instanceof Error ? error.message : "Delete failed");
     }
@@ -926,7 +971,8 @@ function LibraryPage() {
         {filteredArtifacts && filteredArtifacts.length > 0 && (
           <div className="section-toolbar">
             <p className="muted">
-              Showing {reviewArtifacts?.length ?? 0} final review artifacts. Raw prompts,
+              Showing {slideshowBundles.length} slideshow bundles and{" "}
+              {standaloneReviewArtifacts?.length ?? 0} standalone review artifacts. Raw prompts,
               provider jobs, and publish payloads stay in pipeline debug.
             </p>
             <button
@@ -938,14 +984,31 @@ function LibraryPage() {
             </button>
           </div>
         )}
-        {reviewArtifacts?.length === 0 && filteredArtifacts && filteredArtifacts.length > 0 && (
+        {slideshowBundles.length === 0 &&
+          standaloneReviewArtifacts?.length === 0 &&
+          filteredArtifacts &&
+          filteredArtifacts.length > 0 && (
           <div className="empty-state">
             No final review artifacts match these filters. Turn on pipeline debug to inspect
             intermediate artifacts.
           </div>
         )}
+        <div className="slideshow-stack">
+          {slideshowBundles.map((bundle) => (
+            <SlideshowBundleCard
+              key={bundle.key}
+              bundle={bundle}
+              revisionNotes={revisionNotes}
+              setRevisionNotes={setRevisionNotes}
+              approveArtifact={approveArtifact}
+              requestRevision={requestRevision}
+              regenerateReviewedArtifact={regenerateReviewedArtifact}
+              removeSlideshowBundle={removeSlideshowBundle}
+            />
+          ))}
+        </div>
         <div className="artifact-grid">
-          {reviewArtifacts?.map((artifact) => renderArtifactCard(artifact))}
+          {standaloneReviewArtifacts?.map((artifact) => renderArtifactCard(artifact))}
         </div>
       </Panel>
       {showDebugArtifacts && (
@@ -968,6 +1031,276 @@ function LibraryPage() {
 
 type ArtifactDoc = NonNullable<ReturnType<typeof useQuery<typeof api.artifacts.list>>>[number];
 type DistributionPlanDoc = NonNullable<ReturnType<typeof useQuery<typeof api.distributionPlans.list>>>[number];
+type WorkflowDoc = NonNullable<ReturnType<typeof useQuery<typeof api.workflows.list>>>[number];
+type WorkflowRunDoc = NonNullable<ReturnType<typeof useQuery<typeof api.workflowRuns.list>>>[number];
+type SlideshowBundle = {
+  key: string;
+  workflowRunId?: WorkflowRunId;
+  title: string;
+  subtitle: string;
+  reviewStatus: string;
+  artifacts: ArtifactDoc[];
+};
+
+function buildSlideshowBundles(
+  artifacts: ArtifactDoc[],
+  runs: WorkflowRunDoc[],
+  workflows: WorkflowDoc[]
+): SlideshowBundle[] {
+  const runById = new Map(runs.map((run) => [String(run._id), run]));
+  const workflowById = new Map(workflows.map((workflow) => [String(workflow._id), workflow]));
+  const groups = new Map<string, ArtifactDoc[]>();
+
+  for (const artifact of artifacts) {
+    if (artifact.type !== "rendered_slide" || !artifact.workflowRunId) continue;
+    const key = String(artifact.workflowRunId);
+    groups.set(key, [...(groups.get(key) ?? []), artifact]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, groupArtifacts]) => {
+      const sortedArtifacts = [...groupArtifacts].sort(
+        (first, second) => slideNumber(first) - slideNumber(second)
+      );
+      const run = runById.get(key);
+      const workflow = sortedArtifacts[0]?.workflowId
+        ? workflowById.get(String(sortedArtifacts[0].workflowId))
+        : undefined;
+      const createdAt = Math.max(...sortedArtifacts.map((artifact) => artifact.createdAt));
+
+      return {
+        key,
+        workflowRunId: sortedArtifacts[0]?.workflowRunId as WorkflowRunId | undefined,
+        title:
+          run?.generatedTopic ||
+          workflow?.name ||
+          sortedArtifacts[0]?.title?.replace(/\s*slide\s*\d+/i, "").trim() ||
+          "Generated slideshow",
+        subtitle: `${sortedArtifacts.length} slides · ${new Date(createdAt).toLocaleString()}`,
+        reviewStatus: aggregateReviewStatus(sortedArtifacts),
+        artifacts: sortedArtifacts,
+      };
+    })
+    .sort((first, second) => {
+      const firstCreatedAt = Math.max(...first.artifacts.map((artifact) => artifact.createdAt));
+      const secondCreatedAt = Math.max(...second.artifacts.map((artifact) => artifact.createdAt));
+      return secondCreatedAt - firstCreatedAt;
+    });
+}
+
+function aggregateReviewStatus(artifacts: ArtifactDoc[]): string {
+  if (artifacts.some((artifact) => artifact.reviewStatus === "needs_revision")) {
+    return "needs_revision";
+  }
+  if (
+    artifacts.every(
+      (artifact) =>
+        artifact.reviewStatus === "approved" ||
+        artifact.reviewStatus === "not_required"
+    )
+  ) {
+    return "approved";
+  }
+  return "pending";
+}
+
+function slideNumber(artifact: ArtifactDoc): number {
+  if (artifact.data && typeof artifact.data === "object") {
+    const data = artifact.data as { slideIndex?: number };
+    if (typeof data.slideIndex === "number") return data.slideIndex;
+  }
+
+  const titleMatch = artifact.title?.match(/slide\s+(\d+)/i);
+  if (titleMatch) return Number(titleMatch[1]);
+
+  return artifact.createdAt;
+}
+
+function artifactImageUrl(artifact: ArtifactDoc): string | undefined {
+  const data = artifact.data && typeof artifact.data === "object"
+    ? (artifact.data as {
+        url?: string;
+        renderedImageUrl?: string;
+        backgroundImageUrl?: string;
+      })
+    : {};
+
+  return artifact.storageUrl ?? data.renderedImageUrl ?? data.url ?? data.backgroundImageUrl;
+}
+
+function SlideshowBundleCard({
+  bundle,
+  revisionNotes,
+  setRevisionNotes,
+  approveArtifact,
+  requestRevision,
+  regenerateReviewedArtifact,
+  removeSlideshowBundle,
+}: {
+  bundle: SlideshowBundle;
+  revisionNotes: Record<string, string>;
+  setRevisionNotes: (
+    updater: (current: Record<string, string>) => Record<string, string>
+  ) => void;
+  approveArtifact: (artifactId: ArtifactDoc["_id"]) => Promise<void>;
+  requestRevision: (artifactId: ArtifactDoc["_id"]) => Promise<void>;
+  regenerateReviewedArtifact: (artifact: ArtifactDoc) => Promise<void>;
+  removeSlideshowBundle: (bundle: SlideshowBundle) => Promise<void>;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const activeArtifact =
+    bundle.artifacts[Math.min(activeIndex, Math.max(bundle.artifacts.length - 1, 0))];
+  if (!activeArtifact) return null;
+
+  const moveSlide = (direction: -1 | 1) => {
+    setActiveIndex((current) =>
+      Math.min(Math.max(current + direction, 0), bundle.artifacts.length - 1)
+    );
+  };
+
+  const handleTouchEnd = (clientX: number) => {
+    if (touchStart === null) return;
+    const delta = touchStart - clientX;
+    if (Math.abs(delta) > 40) {
+      moveSlide(delta > 0 ? 1 : -1);
+    }
+    setTouchStart(null);
+  };
+
+  return (
+    <article className="slideshow-bundle-card">
+      <div className="slideshow-bundle-header">
+        <div>
+          <div className="entity-eyebrow">Slideshow</div>
+          <h3>{bundle.title}</h3>
+          <p>{bundle.subtitle}</p>
+        </div>
+        <div className="slideshow-bundle-actions">
+          <span>{bundle.reviewStatus}</span>
+          <button
+            className="danger-button"
+            type="button"
+            onClick={() => void removeSlideshowBundle(bundle)}
+          >
+            <Trash2 size={16} />
+            Delete slideshow
+          </button>
+        </div>
+      </div>
+
+      <div className="slideshow-editor">
+        <button
+          className="slideshow-nav-button"
+          type="button"
+          disabled={activeIndex === 0}
+          onClick={() => moveSlide(-1)}
+          aria-label="Previous slide"
+        >
+          <ChevronLeft size={22} />
+        </button>
+        <div
+          className="slideshow-phone-frame"
+          onTouchStart={(event) => setTouchStart(event.touches[0]?.clientX ?? null)}
+          onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
+        >
+          {artifactImageUrl(activeArtifact) ? (
+            <img src={artifactImageUrl(activeArtifact)} alt={activeArtifact.title || "Rendered slide"} />
+          ) : (
+            <ArtifactPreview artifact={activeArtifact} />
+          )}
+          <div className="slideshow-slide-count">
+            {activeIndex + 1}/{bundle.artifacts.length}
+          </div>
+        </div>
+        <button
+          className="slideshow-nav-button"
+          type="button"
+          disabled={activeIndex === bundle.artifacts.length - 1}
+          onClick={() => moveSlide(1)}
+          aria-label="Next slide"
+        >
+          <ChevronRight size={22} />
+        </button>
+      </div>
+
+      <div className="slideshow-thumb-row" aria-label="Slides">
+        {bundle.artifacts.map((artifact, index) => (
+          <button
+            className={`slideshow-thumb ${index === activeIndex ? "active" : ""}`}
+            key={artifact._id}
+            type="button"
+            onClick={() => setActiveIndex(index)}
+          >
+            {artifactImageUrl(artifact) ? (
+              <img src={artifactImageUrl(artifact)} alt="" />
+            ) : (
+              <span>{index + 1}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="slideshow-current-slide">
+        <div className="artifact-copy">
+          <div className="entity-eyebrow">Slide {slideNumber(activeArtifact)}</div>
+          <h3>{activeArtifact.title || "Rendered slide"}</h3>
+          <p>{artifactSummary(activeArtifact)}</p>
+          {latestRevisionNote(activeArtifact) && (
+            <p className="revision-note">
+              Latest revision note: {latestRevisionNote(activeArtifact)}
+            </p>
+          )}
+          <span>{activeArtifact.reviewStatus}</span>
+        </div>
+        <label className="revision-field">
+          <span>Revision note for this slide</span>
+          <textarea
+            value={revisionNotes[activeArtifact._id] ?? ""}
+            onChange={(event) =>
+              setRevisionNotes((current) => ({
+                ...current,
+                [activeArtifact._id]: event.target.value,
+              }))
+            }
+            placeholder="What should the agent change next time?"
+            rows={3}
+          />
+        </label>
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void approveArtifact(activeArtifact._id)}
+          >
+            <Check size={16} />
+            Approve slide
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void requestRevision(activeArtifact._id)}
+          >
+            <X size={16} />
+            Request revision
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={
+              activeArtifact.reviewStatus !== "needs_revision" ||
+              !supportsRegeneration(activeArtifact)
+            }
+            onClick={() => void regenerateReviewedArtifact(activeArtifact)}
+          >
+            <RefreshCw size={16} />
+            Regenerate slide
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 function isPrimaryReviewArtifact(artifact: ArtifactDoc): boolean {
   return (
