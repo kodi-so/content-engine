@@ -89,6 +89,61 @@ export const createManualRun = mutation({
   },
 });
 
+export const remove = mutation({
+  args: { id: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const run = await ctx.db.get(args.id);
+    if (!run || run.userId !== identity.subject) {
+      throw new Error("Workflow run not found");
+    }
+
+    const metrics = await ctx.db
+      .query("postMetrics")
+      .withIndex("by_workflow_run", (q) => q.eq("workflowRunId", args.id))
+      .collect();
+    for (const metric of metrics) {
+      if (metric.userId === identity.subject) {
+        await ctx.db.delete(metric._id);
+      }
+    }
+
+    const plans = await ctx.db
+      .query("distributionPlans")
+      .withIndex("by_workflow_run", (q) => q.eq("workflowRunId", args.id))
+      .collect();
+    for (const plan of plans) {
+      if (plan.userId === identity.subject) {
+        await ctx.db.delete(plan._id);
+      }
+    }
+
+    const artifacts = await ctx.db
+      .query("artifacts")
+      .withIndex("by_workflow_run", (q) => q.eq("workflowRunId", args.id))
+      .collect();
+    for (const artifact of artifacts) {
+      if (artifact.userId === identity.subject) {
+        await ctx.db.delete(artifact._id);
+      }
+    }
+
+    const events = await ctx.db
+      .query("workflowRunEvents")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", args.id))
+      .collect();
+    for (const event of events) {
+      if (event.userId === identity.subject) {
+        await ctx.db.delete(event._id);
+      }
+    }
+
+    await ctx.db.delete(args.id);
+  },
+});
+
 export const getExecutionContext = internalQuery({
   args: { runId: v.id("workflowRuns") },
   handler: async (ctx, args) => {

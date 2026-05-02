@@ -152,6 +152,31 @@ export const updateStatus = mutation({
   },
 });
 
+export const remove = mutation({
+  args: { id: v.id("distributionPlans") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const plan = await ctx.db.get(args.id);
+    if (!plan || plan.userId !== identity.subject) {
+      throw new Error("Distribution plan not found");
+    }
+
+    const metrics = await ctx.db
+      .query("postMetrics")
+      .withIndex("by_distribution_plan", (q) => q.eq("distributionPlanId", args.id))
+      .collect();
+    for (const metric of metrics) {
+      if (metric.userId === identity.subject) {
+        await ctx.db.delete(metric._id);
+      }
+    }
+
+    await ctx.db.delete(args.id);
+  },
+});
+
 export const updateFromProvider = internalMutation({
   args: {
     id: v.id("distributionPlans"),

@@ -242,6 +242,8 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_brand", ["brandId"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_distribution_plan", ["distributionPlanId"])
     .index("by_social_account", ["socialAccountId"])
     .index("by_external_post", ["platform", "externalPostId"]),
 });

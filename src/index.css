@@ -55,7 +55,8 @@
 .nav-link,
 .quiet-button,
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -70,7 +71,8 @@
 
 .quiet-button:disabled,
 .primary-button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.danger-button:disabled {
   cursor: not-allowed;
   opacity: 0.56;
 }
@@ -459,6 +461,19 @@
   font-size: 13px;
 }
 
+.error-note {
+  border-left: 3px solid #ba4a36;
+  padding-left: 10px;
+  color: #8c2d22 !important;
+  font-size: 13px;
+}
+
+.debug-note {
+  color: #7a756a !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px !important;
+}
+
 .primary-button {
   min-width: 140px;
   background: #d7f36b;
@@ -482,10 +497,30 @@
   border-color: #5d7b48;
 }
 
+.danger-button {
+  border: 1px solid #d8b6ad;
+  background: #fff8f6;
+  color: #8c2d22;
+  padding: 0 12px;
+}
+
+.danger-button:hover {
+  border-color: #ba4a36;
+  background: #fff0ec;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .status-row,
@@ -575,5 +610,10 @@
 
   .workspace {
     padding: 22px;
+  }
+
+  .section-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

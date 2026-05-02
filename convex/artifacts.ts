@@ -392,3 +392,46 @@ export const requestRevision = mutation({
     });
   },
 });
+
+export const remove = mutation({
+  args: { id: v.id("artifacts") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const artifact = await ctx.db.get(args.id);
+    if (!artifact || artifact.userId !== identity.subject) {
+      throw new Error("Artifact not found");
+    }
+
+    if (artifact.workflowRunId) {
+      const plans = await ctx.db
+        .query("distributionPlans")
+        .withIndex("by_workflow_run", (q) =>
+          q.eq("workflowRunId", artifact.workflowRunId!)
+        )
+        .collect();
+
+      for (const plan of plans) {
+        if (plan.userId !== identity.subject) continue;
+        if (!plan.artifactIds.some((artifactId) => artifactId === args.id)) {
+          continue;
+        }
+
+        const artifactIds = plan.artifactIds.filter(
+          (artifactId) => artifactId !== args.id
+        );
+        if (artifactIds.length === 0) {
+          await ctx.db.delete(plan._id);
+        } else {
+          await ctx.db.patch(plan._id, {
+            artifactIds,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+    }
+
+    await ctx.db.delete(args.id);
+  },
+});

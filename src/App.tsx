@@ -20,6 +20,7 @@ import {
   Radio,
   RefreshCw,
   Settings,
+  Trash2,
   X,
 } from "lucide-react";
 import { FormEvent, ReactNode, useMemo, useState } from "react";
@@ -458,6 +459,22 @@ function RunsPage() {
   const workflows = useQuery(api.workflows.list);
   const runs = useQuery(api.workflowRuns.list, {});
   const createManualRun = useMutation(api.workflowRuns.createManualRun);
+  const deleteRun = useMutation(api.workflowRuns.remove);
+  const [runStatus, setRunStatus] = useState("");
+
+  const removeRun = async (runId: Id<"workflowRuns">) => {
+    if (!window.confirm("Delete this run and its artifacts, events, plans, and metrics?")) {
+      return;
+    }
+
+    setRunStatus("Deleting run");
+    try {
+      await deleteRun({ id: runId });
+      setRunStatus("Run deleted");
+    } catch (error) {
+      setRunStatus(error instanceof Error ? error.message : "Delete failed");
+    }
+  };
 
   return (
     <Page title="Runs" description="Every agent execution gets durable state, events, and artifacts.">
@@ -478,16 +495,29 @@ function RunsPage() {
         </div>
       </Panel>
 
-      <EntityGrid
-        empty="No workflow runs yet."
-        items={runs?.map((run) => ({
-          id: run._id,
-          title: run.generatedTopic || "Untitled run",
-          eyebrow: run.status,
-          body: run.summary || run.errorMessage || "Queued for the workflow runner.",
-          meta: new Date(run.createdAt).toLocaleString(),
-        }))}
-      />
+      {runStatus && <p className="muted">{runStatus}</p>}
+      {!runs && <div className="empty-state">Loading...</div>}
+      {runs?.length === 0 && <div className="empty-state">No workflow runs yet.</div>}
+      <div className="entity-grid">
+        {runs?.map((run) => (
+          <article className="entity-card" key={run._id}>
+            <div className="entity-eyebrow">{run.status}</div>
+            <h3>{run.generatedTopic || "Untitled run"}</h3>
+            <p>{run.summary || run.errorMessage || "Queued for the workflow runner."}</p>
+            <span>{new Date(run.createdAt).toLocaleString()}</span>
+            <div className="button-row">
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => void removeRun(run._id)}
+              >
+                <Trash2 size={16} />
+                Delete run
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
     </Page>
   );
 }
@@ -500,7 +530,9 @@ function LibraryPage() {
   const plans = useQuery(api.distributionPlans.list);
   const setReviewStatus = useMutation(api.artifacts.setReviewStatus);
   const requestArtifactRevision = useMutation(api.artifacts.requestRevision);
+  const deleteArtifact = useMutation(api.artifacts.remove);
   const replacePlanArtifact = useMutation(api.distributionPlans.replaceArtifact);
+  const deletePlan = useMutation(api.distributionPlans.remove);
   const regenerateArtifact = useAction(api.artifactRegeneration.regenerate);
   const publishPlan = useAction(api.distributionPlans.publish);
   const syncPlanStatus = useAction(api.distributionPlans.syncStatus);
@@ -512,6 +544,7 @@ function LibraryPage() {
   const [formatFilter, setFormatFilter] = useState("");
   const [reviewFilter, setReviewFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [showDebugArtifacts, setShowDebugArtifacts] = useState(false);
   const [revisionNotes, setRevisionNotes] = useState<Record<string, string>>({});
 
   const filteredArtifacts = useMemo(() => {
@@ -546,6 +579,15 @@ function LibraryPage() {
     reviewFilter,
     typeFilter,
   ].filter(Boolean).length;
+
+  const reviewArtifacts = useMemo(
+    () => filteredArtifacts?.filter(isPrimaryReviewArtifact),
+    [filteredArtifacts]
+  );
+  const debugArtifacts = useMemo(
+    () => filteredArtifacts?.filter((artifact) => !isPrimaryReviewArtifact(artifact)),
+    [filteredArtifacts]
+  );
 
   const approveArtifact = async (artifactId: ArtifactDoc["_id"]) => {
     setReviewStatusMessage("Approving artifact");
@@ -605,6 +647,19 @@ function LibraryPage() {
     }
   };
 
+  const removeArtifact = async (artifact: ArtifactDoc) => {
+    const label = artifact.title || artifact.type;
+    if (!window.confirm(`Delete "${label}" from the library?`)) return;
+
+    setReviewStatusMessage("Deleting artifact");
+    try {
+      await deleteArtifact({ id: artifact._id });
+      setReviewStatusMessage("Artifact deleted");
+    } catch (error) {
+      setReviewStatusMessage(error instanceof Error ? error.message : "Delete failed");
+    }
+  };
+
   const runPlanAction = async (
     action: () => Promise<unknown>,
     successMessage: string
@@ -616,6 +671,106 @@ function LibraryPage() {
     } catch (error) {
       setPlanStatus(error instanceof Error ? error.message : "Action failed");
     }
+  };
+
+  const removePlan = async (plan: DistributionPlanDoc) => {
+    if (!window.confirm("Delete this distribution plan and any synced metrics?")) {
+      return;
+    }
+
+    setPlanStatus("Deleting distribution plan");
+    try {
+      await deletePlan({ id: plan._id });
+      setPlanStatus("Distribution plan deleted");
+    } catch (error) {
+      setPlanStatus(error instanceof Error ? error.message : "Delete failed");
+    }
+  };
+
+  const renderArtifactCard = (artifact: ArtifactDoc, debug = false) => {
+    const promotableTarget = findPromotablePlanTarget(artifact, plans ?? []);
+    const providerError = providerErrorSummary(artifact);
+
+    return (
+      <article className="artifact-card" key={artifact._id}>
+        <ArtifactPreview artifact={artifact} />
+        <div className="artifact-copy">
+          <div className="entity-eyebrow">{artifact.type}</div>
+          <h3>{artifact.title || artifact.type}</h3>
+          <p>{artifactSummary(artifact)}</p>
+          {providerError && <p className="error-note">Provider error: {providerError}</p>}
+          {debug && artifact.workflowRunId && (
+            <p className="debug-note">Run artifact: {String(artifact.workflowRunId)}</p>
+          )}
+          {latestRevisionNote(artifact) && (
+            <p className="revision-note">Latest revision note: {latestRevisionNote(artifact)}</p>
+          )}
+          <span>{artifact.reviewStatus}</span>
+        </div>
+        <label className="revision-field">
+          <span>Revision note</span>
+          <textarea
+            value={revisionNotes[artifact._id] ?? ""}
+            onChange={(event) =>
+              setRevisionNotes((current) => ({
+                ...current,
+                [artifact._id]: event.target.value,
+              }))
+            }
+            placeholder="What should the agent change next time?"
+            rows={3}
+          />
+        </label>
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void approveArtifact(artifact._id)}
+          >
+            <Check size={16} />
+            Approve
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void requestRevision(artifact._id)}
+          >
+            <X size={16} />
+            Request revision
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={
+              artifact.reviewStatus !== "needs_revision" ||
+              !supportsRegeneration(artifact)
+            }
+            onClick={() => void regenerateReviewedArtifact(artifact)}
+          >
+            <RefreshCw size={16} />
+            Regenerate
+          </button>
+          {promotableTarget && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void promoteArtifactToPlan(artifact, promotableTarget)}
+            >
+              <CheckCircle2 size={16} />
+              Promote to plan
+            </button>
+          )}
+          <button
+            className="danger-button"
+            type="button"
+            onClick={() => void removeArtifact(artifact)}
+          >
+            <Trash2 size={16} />
+            Delete
+          </button>
+        </div>
+      </article>
+    );
   };
 
   return (
@@ -745,6 +900,14 @@ function LibraryPage() {
                     <BarChart3 size={16} />
                     Metrics
                   </button>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    onClick={() => void removePlan(plan)}
+                  >
+                    <Trash2 size={16} />
+                    Delete
+                  </button>
                 </div>
               </article>
             );
@@ -760,87 +923,62 @@ function LibraryPage() {
             {artifacts?.length === 0 ? "No artifacts yet." : "No artifacts match these filters."}
           </div>
         )}
+        {filteredArtifacts && filteredArtifacts.length > 0 && (
+          <div className="section-toolbar">
+            <p className="muted">
+              Showing {reviewArtifacts?.length ?? 0} final review artifacts. Raw prompts,
+              provider jobs, and publish payloads stay in pipeline debug.
+            </p>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setShowDebugArtifacts((current) => !current)}
+            >
+              {showDebugArtifacts ? "Hide pipeline debug" : "Show pipeline debug"}
+            </button>
+          </div>
+        )}
+        {reviewArtifacts?.length === 0 && filteredArtifacts && filteredArtifacts.length > 0 && (
+          <div className="empty-state">
+            No final review artifacts match these filters. Turn on pipeline debug to inspect
+            intermediate artifacts.
+          </div>
+        )}
         <div className="artifact-grid">
-          {filteredArtifacts?.map((artifact) => {
-            const promotableTarget = findPromotablePlanTarget(artifact, plans ?? []);
-
-            return (
-              <article className="artifact-card" key={artifact._id}>
-                <ArtifactPreview artifact={artifact} />
-                <div className="artifact-copy">
-                  <div className="entity-eyebrow">{artifact.type}</div>
-                  <h3>{artifact.title || artifact.type}</h3>
-                  <p>{artifactSummary(artifact)}</p>
-                  {latestRevisionNote(artifact) && (
-                    <p className="revision-note">Latest revision note: {latestRevisionNote(artifact)}</p>
-                  )}
-                  <span>{artifact.reviewStatus}</span>
-                </div>
-                <label className="revision-field">
-                  <span>Revision note</span>
-                  <textarea
-                    value={revisionNotes[artifact._id] ?? ""}
-                    onChange={(event) =>
-                      setRevisionNotes((current) => ({
-                        ...current,
-                        [artifact._id]: event.target.value,
-                      }))
-                    }
-                    placeholder="What should the agent change next time?"
-                    rows={3}
-                  />
-                </label>
-                <div className="button-row">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => void approveArtifact(artifact._id)}
-                  >
-                    <Check size={16} />
-                    Approve
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => void requestRevision(artifact._id)}
-                  >
-                    <X size={16} />
-                    Request revision
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={
-                      artifact.reviewStatus !== "needs_revision" ||
-                      !supportsRegeneration(artifact)
-                    }
-                    onClick={() => void regenerateReviewedArtifact(artifact)}
-                  >
-                    <RefreshCw size={16} />
-                    Regenerate
-                  </button>
-                  {promotableTarget && (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => void promoteArtifactToPlan(artifact, promotableTarget)}
-                    >
-                      <CheckCircle2 size={16} />
-                      Promote to plan
-                    </button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+          {reviewArtifacts?.map((artifact) => renderArtifactCard(artifact))}
         </div>
       </Panel>
+      {showDebugArtifacts && (
+        <Panel title="Pipeline Debug">
+          <p className="muted">
+            Intermediate artifacts are useful while we tune the pipeline, but they are hidden
+            from the normal review queue so the library does not feel duplicated.
+          </p>
+          {debugArtifacts?.length === 0 && (
+            <div className="empty-state">No debug artifacts match these filters.</div>
+          )}
+          <div className="artifact-grid">
+            {debugArtifacts?.map((artifact) => renderArtifactCard(artifact, true))}
+          </div>
+        </Panel>
+      )}
     </Page>
   );
 }
 
 type ArtifactDoc = NonNullable<ReturnType<typeof useQuery<typeof api.artifacts.list>>>[number];
 type DistributionPlanDoc = NonNullable<ReturnType<typeof useQuery<typeof api.distributionPlans.list>>>[number];
+
+function isPrimaryReviewArtifact(artifact: ArtifactDoc): boolean {
+  return (
+    artifact.type === "caption" ||
+    artifact.type === "script" ||
+    artifact.type === "rendered_slide" ||
+    artifact.type === "rendered_asset" ||
+    artifact.type === "thumbnail" ||
+    artifact.type === "video"
+  );
+}
 
 function artifactSummary(artifact: ArtifactDoc): string {
   if (artifact.type === "slide_spec" && artifact.data && typeof artifact.data === "object") {
@@ -875,6 +1013,30 @@ function artifactSummary(artifact: ArtifactDoc): string {
   }
 
   return artifact.prompt || "Artifact metadata will appear here as workflows run.";
+}
+
+function providerErrorSummary(artifact: ArtifactDoc): string | undefined {
+  if (!artifact.data || typeof artifact.data !== "object") return undefined;
+
+  const data = artifact.data as {
+    providerError?: {
+      message?: string;
+      operation?: string;
+      statusCode?: number;
+      code?: string;
+    };
+  };
+  const error = data.providerError;
+  if (!error) return undefined;
+
+  const parts = [
+    error.message,
+    error.operation ? `operation: ${error.operation}` : undefined,
+    error.statusCode ? `status: ${error.statusCode}` : undefined,
+    error.code ? `code: ${error.code}` : undefined,
+  ].filter(Boolean);
+
+  return parts.join(" · ");
 }
 
 function latestRevisionNote(artifact: ArtifactDoc): string | undefined {
@@ -921,6 +1083,7 @@ function findPromotablePlanTarget(
   artifact: ArtifactDoc,
   plans: DistributionPlanDoc[]
 ): { planId: DistributionPlanId; oldArtifactId: ArtifactDoc["_id"] } | undefined {
+  if (artifact.type !== "rendered_slide") return undefined;
   if (artifact.reviewStatus === "needs_revision") return undefined;
 
   const sourceIds = replacementSourceIds(artifact);

@@ -516,6 +516,23 @@ Acceptance criteria:
 
 - Library can show slideshow workflow outputs.
 - Content can be filtered by brand/account/format/status.
+- Review queue defaults to final review artifacts instead of raw pipeline internals.
+- Pipeline debug artifacts can be inspected when troubleshooting generation runs.
+- Test runs, artifacts, and distribution plans can be deleted from the UI to prevent dev-data bloat.
+
+### CE-0505: Improve slideshow generation reliability diagnostics
+
+Status: `In Progress`
+
+Goal: Make image-generation failures obvious and actionable during manual testing.
+
+Acceptance criteria:
+
+- Failed provider jobs retain provider error metadata.
+- Library debug view surfaces provider error messages.
+- Renderer falls back gracefully when an image is unavailable.
+- Prompting discourages generated images from including text, logos, UI, or fake typography because the renderer owns slide text.
+- User can tell which slides used real generated images versus fallback backgrounds.
 
 ## Milestone 6: Publishing and Scheduling
 
