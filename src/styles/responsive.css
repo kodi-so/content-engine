@@ -1,45 +1,134 @@
+@media (max-width: 1120px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .app-shell {
-    @apply grid-cols-1;
+    grid-template-columns: 1fr;
   }
 
   .sidebar {
-    @apply static h-auto;
+    position: static;
+    height: auto;
+    padding: var(--space-3);
+  }
+
+  .brand-mark {
+    padding-bottom: var(--space-3);
+  }
+
+  .nav-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding-bottom: var(--space-1);
+  }
+
+  .nav-link {
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--space-3);
+  }
+
+  .user-panel {
+    display: none;
   }
 
   .metric-grid,
   .two-column,
   .form-grid,
   .filter-grid {
-    @apply grid-cols-1;
+    grid-template-columns: 1fr;
   }
 
   .prompt-field {
-    @apply col-span-1;
+    grid-column: span 1;
   }
 
   .workspace {
-    @apply p-[22px];
+    padding: var(--space-4);
+  }
+
+  .workspace > section {
+    gap: var(--space-4);
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
   }
 
   .slideshow-bundle-header,
   .section-toolbar {
-    @apply flex-col items-stretch;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .slideshow-bundle-actions {
-    @apply items-start;
+    align-items: flex-start;
   }
 
-  .slideshow-editor {
-    @apply grid-cols-1;
+  .slideshow-editor,
+  .create-slide-canvas {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .slideshow-nav-button {
-    @apply hidden;
+    display: none;
   }
 
   .slideshow-phone-frame {
-    @apply min-h-[360px];
+    min-height: 22rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .workspace {
+    padding: var(--space-3);
+  }
+
+  .panel,
+  .metric-card,
+  .entity-card,
+  .artifact-card {
+    padding: var(--space-4);
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-list {
+    grid-template-columns: 1fr;
+  }
+
+  .button-row,
+  .create-slide-actions {
+    display: grid;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .icon-action-button {
+    width: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .nav-link,
+  .quiet-button,
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .icon-action-button,
+  .slideshow-nav-button,
+  .slideshow-thumb {
+    min-height: 2.75rem;
   }
 }

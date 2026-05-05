@@ -14,7 +14,6 @@ export function Page({
   return (
     <section>
       <header className="page-header">
-        <p className="eyebrow">Agentic content operations</p>
         <h1>{title}</h1>
         <p>{description}</p>
       </header>
@@ -170,7 +169,7 @@ export function EntityGrid({
 export function LoadingScreen() {
   return (
     <div className="center-screen">
-      <span className="loader">Loading Content Engine...</span>
+      <span className="loader">Preparing Content Engine...</span>
     </div>
   );
 }
@@ -181,7 +180,7 @@ export function SignInScreen() {
       <div className="signin-copy">
         <BrainCircuit size={34} />
         <h1>Content Engine</h1>
-        <p>Connect accounts, define brand memory, and let agentic workflows create, review, and publish content.</p>
+        <p>Define brand memory, create reviewable content, and run repeatable publishing workflows from one focused workspace.</p>
         <SignInButton mode="modal">
           <button className="primary-button" type="button">
             Sign in

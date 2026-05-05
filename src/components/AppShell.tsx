@@ -9,8 +9,13 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand-mark">
-        <BrainCircuit size={22} />
-        <span>Content Engine</span>
+        <span className="brand-symbol">
+          <BrainCircuit size={18} />
+        </span>
+        <span>
+          Content Engine
+          <small>Agent workspace</small>
+        </span>
       </div>
 
       <nav className="nav-list">

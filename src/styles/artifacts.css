@@ -1,71 +1,111 @@
 .artifact-grid {
-  @apply grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3.5;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: var(--space-4);
 }
 
 .artifact-card {
-  @apply grid gap-3 rounded-lg border border-[#ded9ce] bg-[#fffdf8] p-3;
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-sm);
 }
 
 .artifact-preview {
-  @apply grid min-h-[180px] overflow-hidden rounded-md bg-[#ebe6db];
+  display: grid;
+  min-height: 11.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--color-page-quiet);
 }
 
 .image-preview img,
 .rendered-slide-preview img {
-  @apply size-full max-h-[260px] object-cover;
+  width: 100%;
+  height: 100%;
+  max-height: 16.25rem;
+  object-fit: cover;
 }
 
 .rendered-slide-preview {
-  @apply relative min-h-[260px] items-end bg-[#17201b];
+  position: relative;
+  min-height: 16.25rem;
+  align-items: end;
+  background: var(--color-ink);
 }
 
 .rendered-slide-preview img {
-  @apply absolute inset-0 max-h-none opacity-70;
+  position: absolute;
+  inset: 0;
+  max-height: none;
+  opacity: 0.72;
 }
 
 .rendered-slide-preview > div {
-  @apply relative grid gap-2 p-4 text-white;
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: white;
 }
 
 .rendered-slide-preview strong {
-  @apply text-xl leading-[1.15];
+  font-size: 1.25rem;
+  line-height: 1.15;
 }
 
 .rendered-slide-preview span {
-  @apply text-sm leading-[1.35] text-[#f1f1ed];
+  color: oklch(94% 0.01 230);
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .spec-preview,
 .text-preview {
-  @apply content-start gap-2 p-3.5;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-4);
 }
 
 .spec-preview strong {
-  @apply text-[15px] leading-[1.35];
+  font-size: 0.95rem;
+  line-height: 1.35;
 }
 
 .spec-preview span,
 .text-preview span {
-  @apply text-[13px] leading-[1.35] text-[#59645b];
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .artifact-copy {
-  @apply grid gap-[7px];
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
 }
 
 .artifact-copy h3,
 .artifact-copy p {
-  @apply m-0;
+  margin: 0;
 }
 
 .artifact-copy h3 {
-  @apply text-[17px];
+  color: var(--color-ink);
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .artifact-copy p {
-  @apply text-sm leading-[1.45] text-[#59645b];
-}
-
-.artifact-copy > span {
-  @apply w-fit rounded-full bg-[#e8f0d0] px-[9px] py-1 text-xs font-bold text-[#304018];
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
