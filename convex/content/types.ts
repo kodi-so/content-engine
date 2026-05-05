@@ -56,7 +56,7 @@ export type SlideshowPlan = {
 
 export type SlideshowExportSettings = {
   previewMimeType: "image/png";
-  publishMimeType: "image/jpeg" | "image/webp";
+  publishMimeType: "image/png" | "image/jpeg" | "image/webp";
   width: number;
   height: number;
 };
@@ -66,12 +66,6 @@ export type CanonicalSlideshowSlide = SlideshowSlide & {
   dimensions: { width: number; height: number };
   backgroundImageUrl?: string;
   sourceImageArtifactId?: string;
-  renderVersion: number;
-  renderStatus: "pending" | "rendering" | "succeeded" | "failed";
-  renderDurationMs?: number;
-  failedRenderReason?: string;
-  outputFileSize?: number;
-  publishFileSize?: number;
   updatedAt: number;
 };
 

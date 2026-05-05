@@ -60,7 +60,6 @@ export function getArtifactType(value: unknown, fallback: ArtifactType): Artifac
     "image",
     "image_prompt",
     "slide_spec",
-    "rendered_slide_image",
     "rendered_asset",
     "video",
     "thumbnail",

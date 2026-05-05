@@ -31,7 +31,6 @@ function inferMimeType(artifact: Doc<"artifacts">): string {
     if (typeof data.mimeType === "string") return data.mimeType;
   }
   if (artifact.type === "video") return "video/mp4";
-  if (artifact.type === "rendered_slide_image") return "image/png";
   if (!artifact.storageUrl) return "image/png";
   if (artifact.storageUrl.endsWith(".jpg") || artifact.storageUrl.endsWith(".jpeg")) {
     return "image/jpeg";
@@ -47,7 +46,6 @@ async function mediaFromArtifact(
   if (
     artifact.type !== "image" &&
     artifact.type !== "video" &&
-    artifact.type !== "rendered_slide_image" &&
     artifact.type !== "rendered_asset" &&
     artifact.type !== "thumbnail"
   ) {
@@ -66,22 +64,12 @@ async function mediaFromArtifact(
     };
   }
 
-  const source =
-    artifact.type === "rendered_slide_image" && typeof data.publishImageUrl === "string"
-      ? data.publishImageUrl
-      : typeof data.url === "string"
-        ? data.url
-        : artifact.storageUrl;
+  const source = typeof data.url === "string" ? data.url : artifact.storageUrl;
   if (!source) return null;
 
-  const mimeType =
-    artifact.type === "rendered_slide_image" && typeof data.publishMimeType === "string"
-      ? data.publishMimeType
-      : typeof data.mimeType === "string"
-        ? data.mimeType
-        : inferMimeType(artifact);
+  const mimeType = typeof data.mimeType === "string" ? data.mimeType : inferMimeType(artifact);
   if (mimeType === "image/svg+xml") {
-    throw new Error("SVG slideshow renders cannot be published. Render raster slide images first.");
+    throw new Error("SVG media cannot be published to TikTok. Use raster images first.");
   }
 
   if (source.startsWith("data:")) {
@@ -161,28 +149,21 @@ export async function loadPublishInput(
     return firstIndex - secondIndex;
   });
   const hasTikTokTarget = context.socialAccounts.some((account) => account.platform === "tiktok");
-  const renderedSlideArtifacts = orderedArtifacts.filter((artifact) => artifact.type === "rendered_slide_image");
-  const mediaArtifacts =
-    hasTikTokTarget || renderedSlideArtifacts.length > 0
-      ? renderedSlideArtifacts
-      : orderedArtifacts;
+  const mediaArtifacts = orderedArtifacts;
   if (hasTikTokTarget) {
-    if (renderedSlideArtifacts.length === 0) {
-      throw new Error("TikTok photo carousel publishing requires rendered raster slide image artifacts.");
-    }
-    const invalidCarouselArtifact = renderedSlideArtifacts.find((artifact) => {
+    const invalidCarouselArtifact = mediaArtifacts.find((artifact) => {
       const data = artifact.data && typeof artifact.data === "object"
         ? artifact.data as Record<string, unknown>
         : {};
-      const mimeType = typeof data.publishMimeType === "string"
-        ? data.publishMimeType
-        : typeof data.mimeType === "string"
+      const mimeType = typeof data.mimeType === "string"
           ? data.mimeType
           : inferMimeType(artifact);
-      return mimeType === "image/svg+xml" || !mimeType.startsWith("image/");
+      return artifact.type !== "image" ||
+        mimeType === "image/svg+xml" ||
+        !mimeType.startsWith("image/");
     });
     if (invalidCarouselArtifact) {
-      throw new Error("TikTok photo carousel publishing requires raster slide image artifacts.");
+      throw new Error("TikTok photo carousel publishing requires raster image artifacts.");
     }
   }
   const media = (

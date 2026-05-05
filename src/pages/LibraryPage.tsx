@@ -1,29 +1,27 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 import { api } from "../../convex/_generated/api";
-import { SlideshowBundleCard } from "../components/SlideshowPreview";
+import { SavedSlideshowCard } from "../components/SlideshowPreview";
 import { ArtifactCard } from "../components/library/ArtifactCard";
 import { DistributionPlansPanel } from "../components/library/DistributionPlansPanel";
 import { Page, Panel, Select } from "../components/ui";
 import {
-  buildSlideshowBundles,
   findPromotablePlanTarget,
   isPrimaryReviewArtifact,
 } from "../lib/artifactUtils";
-import type { ArtifactDoc, DistributionPlanDoc, DistributionPlanId, SlideshowBundle } from "../types";
+import type { ArtifactDoc, DistributionPlanDoc, DistributionPlanId, SlideshowDoc } from "../types";
 
 export function LibraryPage() {
   const artifacts = useQuery(api.artifacts.records.list, {});
   const brands = useQuery(api.accounts.brands.list);
   const accounts = useQuery(api.accounts.socialAccounts.list);
   const workflows = useQuery(api.workflows.definitions.list);
-  const runs = useQuery(api.workflows.runs.list, {});
-  const contentRequests = useQuery(api.content.requests.list, {});
+  const slideshows = useQuery(api.content.slideshows.list, {});
   const plans = useQuery(api.publishing.distributionPlans.list);
   const setReviewStatus = useMutation(api.artifacts.records.setReviewStatus);
   const requestArtifactRevision = useMutation(api.artifacts.records.requestRevision);
   const deleteArtifact = useMutation(api.artifacts.records.remove);
-  const deleteRun = useMutation(api.workflows.runs.remove);
+  const deleteSlideshow = useMutation(api.content.slideshows.remove);
   const replacePlanArtifact = useMutation(api.publishing.distributionPlans.replaceArtifact);
   const deletePlan = useMutation(api.publishing.distributionPlans.remove);
   const regenerateArtifact = useAction(api.artifacts.regeneration.regenerate);
@@ -79,30 +77,20 @@ export function LibraryPage() {
     () => filteredArtifacts?.filter(isPrimaryReviewArtifact),
     [filteredArtifacts]
   );
-  const slideshowBundles = useMemo(
-    () => buildSlideshowBundles(
-      reviewArtifacts ?? [],
-      runs ?? [],
-      workflows ?? [],
-      contentRequests ?? []
-    ),
-    [contentRequests, reviewArtifacts, runs, workflows]
-  );
-  const bundledArtifactIds = useMemo(
+  const savedSlideshows = useMemo(
     () =>
-      new Set(
-        slideshowBundles.flatMap((bundle) =>
-          bundle.artifacts.map((artifact) => String(artifact._id))
-        )
-      ),
-    [slideshowBundles]
+      (slideshows ?? []).filter((slideshow) => {
+        if (slideshow.status !== "saved") return false;
+        if (brandFilter && slideshow.brandId !== brandFilter) return false;
+        if (accountFilter && slideshow.socialAccountId !== accountFilter) return false;
+        if (formatFilter && formatFilter !== "slideshow") return false;
+        return true;
+      }),
+    [accountFilter, brandFilter, formatFilter, slideshows]
   );
   const standaloneReviewArtifacts = useMemo(
-    () =>
-      reviewArtifacts?.filter(
-        (artifact) => !bundledArtifactIds.has(String(artifact._id))
-      ),
-    [bundledArtifactIds, reviewArtifacts]
+    () => reviewArtifacts,
+    [reviewArtifacts]
   );
   const debugArtifacts = useMemo(
     () => filteredArtifacts?.filter((artifact) => !isPrimaryReviewArtifact(artifact)),
@@ -180,20 +168,14 @@ export function LibraryPage() {
     }
   };
 
-  const removeSlideshowBundle = async (bundle: SlideshowBundle) => {
-    if (!window.confirm(`Delete "${bundle.title}" and all artifacts from this slideshow run?`)) {
+  const removeSlideshow = async (slideshow: SlideshowDoc) => {
+    if (!window.confirm(`Delete "${slideshow.title}" from the library?`)) {
       return;
     }
 
     setReviewStatusMessage("Deleting slideshow");
     try {
-      if (bundle.workflowRunId) {
-        await deleteRun({ id: bundle.workflowRunId });
-      } else {
-        for (const artifact of bundle.artifacts) {
-          await deleteArtifact({ id: artifact._id });
-        }
-      }
+      await deleteSlideshow({ id: slideshow._id });
       setReviewStatusMessage("Slideshow deleted");
     } catch (error) {
       setReviewStatusMessage(error instanceof Error ? error.message : "Delete failed");
@@ -338,16 +320,16 @@ export function LibraryPage() {
 
       <Panel title="Review Queue">
         {reviewStatus && <p className="muted">{reviewStatus}</p>}
-        {!filteredArtifacts && <div className="empty-state">Loading...</div>}
-        {filteredArtifacts?.length === 0 && (
+        {(!filteredArtifacts || !slideshows) && <div className="empty-state">Loading...</div>}
+        {filteredArtifacts?.length === 0 && savedSlideshows.length === 0 && (
           <div className="empty-state">
             {artifacts?.length === 0 ? "No artifacts yet." : "No artifacts match these filters."}
           </div>
         )}
-        {filteredArtifacts && filteredArtifacts.length > 0 && (
+        {filteredArtifacts && (filteredArtifacts.length > 0 || savedSlideshows.length > 0) && (
           <div className="section-toolbar">
             <p className="muted">
-              Showing {slideshowBundles.length} slideshow bundles and{" "}
+              Showing {savedSlideshows.length} slideshow bundles and{" "}
               {standaloneReviewArtifacts?.length ?? 0} standalone review artifacts. Raw prompts,
               provider jobs, and publish payloads stay in pipeline debug.
             </p>
@@ -360,26 +342,21 @@ export function LibraryPage() {
             </button>
           </div>
         )}
-        {slideshowBundles.length === 0 &&
+        {savedSlideshows.length === 0 &&
           standaloneReviewArtifacts?.length === 0 &&
           filteredArtifacts &&
-          filteredArtifacts.length > 0 && (
+          (filteredArtifacts.length > 0 || savedSlideshows.length > 0) && (
           <div className="empty-state">
             No final review artifacts match these filters. Turn on pipeline debug to inspect
             intermediate artifacts.
           </div>
         )}
         <div className="slideshow-stack">
-          {slideshowBundles.map((bundle) => (
-            <SlideshowBundleCard
-              key={bundle.key}
-              bundle={bundle}
-              revisionNotes={revisionNotes}
-              setRevisionNotes={setRevisionNotes}
-              approveArtifact={approveArtifact}
-              requestRevision={requestRevision}
-              regenerateReviewedArtifact={regenerateReviewedArtifact}
-              removeSlideshowBundle={removeSlideshowBundle}
+          {savedSlideshows.map((slideshow) => (
+            <SavedSlideshowCard
+              key={slideshow._id}
+              slideshow={slideshow}
+              removeSlideshow={removeSlideshow}
             />
           ))}
         </div>

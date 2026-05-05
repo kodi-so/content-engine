@@ -2,7 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { slideFromCopy } from "../content/slideshowAdapter";
-import { getSlideDimensions } from "../content/slideshowRenderer";
+import { getSlideDimensions } from "../content/slideshowDimensions";
 import {
   createArtifact,
   getArtifactsForRefs,
@@ -57,7 +57,7 @@ function getSlideIndexFromImageArtifact(artifact: Doc<"artifacts">): number | un
   return typeof index === "number" ? index : undefined;
 }
 
-export async function executeRenderSlideshowStep(
+export async function executeCreateSlideshowStep(
   ctx: ActionCtx,
   context: WorkflowExecutionContext,
   step: WorkflowStep,
@@ -105,7 +105,7 @@ export async function executeRenderSlideshowStep(
       dimensions,
       exportSettings: {
         previewMimeType: "image/png",
-        publishMimeType: "image/jpeg",
+        publishMimeType: "image/png",
         width: dimensions.width,
         height: dimensions.height,
       },
@@ -127,12 +127,10 @@ export async function executeRenderSlideshowStep(
         dimensions,
         backgroundImageUrl: imageUrl,
         sourceImageArtifactId: image?._id ? String(image._id) : undefined,
-        renderVersion: 1,
-        renderStatus: "pending",
         updatedAt: Date.now(),
       })),
     };
-    const slideshowId = await ctx.runMutation(internal.content.slideshows.createFromRunner, {
+    await ctx.runMutation(internal.content.slideshows.createFromRunner, {
       userId: context.run.userId,
       brandId: context.run.brandId,
       socialAccountId: context.run.socialAccountId,
@@ -142,46 +140,9 @@ export async function executeRenderSlideshowStep(
       caption: slideshowSpec.caption,
       status: "saved",
       spec: slideshowSpec,
-      renderVersion: 1,
-      revisionHistory: [
-        {
-          type: "workflow_create",
-          at: Date.now(),
-          sourceSlideSpecArtifactId: slideSpecArtifact._id,
-        },
-      ],
     });
 
-    for (const { image, renderableSlide } of renderableSlides) {
-      artifactIds.push(
-        await ctx.runAction(internal.content.rendering.renderSlideForWorkflow, {
-          userId: context.run.userId,
-          brandId: context.run.brandId,
-          workflowId: context.workflow._id,
-          workflowRunId: context.run._id,
-          slideshowId,
-          slideId: renderableSlide.slideId,
-          specArtifactId: slideSpecArtifact._id,
-          parentArtifactIds: [
-            slideSpecArtifact._id,
-            ...(image ? [image._id] : []),
-          ],
-          reviewStatus: reviewStatusForWorkflow(context),
-        })
-      );
-    }
-
-    await ctx.runMutation(internal.content.slideshows.updateFromRunner, {
-      slideshowId,
-      userId: context.run.userId,
-      spec: {
-        ...slideshowSpec,
-        slides: slideshowSpec.slides.map((slide) => ({
-          ...slide,
-          renderStatus: "succeeded" as const,
-        })),
-      },
-    });
+    artifactIds.push(slideSpecArtifact._id);
   }
 
   return artifactIds;

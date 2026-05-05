@@ -16,13 +16,49 @@ export type DistributionPlanDoc = Doc<"distributionPlans">;
 export type WorkflowDoc = Doc<"workflows">;
 export type WorkflowRunDoc = Doc<"workflowRuns">;
 export type ContentRequestDoc = Doc<"contentRequests">;
+export type SlideshowDoc = Doc<"slideshows">;
 
-export type SlideshowBundle = {
-  key: string;
-  workflowRunId?: WorkflowRunId;
-  contentRequestId?: ContentRequestId;
-  title: string;
-  subtitle: string;
-  reviewStatus: string;
-  artifacts: ArtifactDoc[];
+export type SlideshowTextBlock = {
+  role?: "eyebrow" | "headline" | "body" | "bullet_list" | "cta";
+  text?: string;
+  items?: string[];
+  emphasis?: "primary" | "secondary" | "muted";
+};
+
+export type CanonicalSlideshowSlide = {
+  slideId: string;
+  index: number;
+  role?: string;
+  purpose?: string;
+  visualPrompt?: string;
+  textBlocks?: SlideshowTextBlock[];
+  layout?: {
+    intent?: string;
+    template?: string;
+    textZone?: "top" | "center" | "bottom" | "split";
+    density?: "sparse" | "medium" | "dense";
+    contrast?: "none" | "shadow" | "gradient_scrim" | "solid_scrim";
+  };
+  status?: "active" | "deleted";
+  dimensions?: { width: number; height: number };
+  backgroundImageUrl?: string;
+  sourceImageArtifactId?: string;
+  updatedAt?: number;
+};
+
+export type CanonicalSlideshowSpec = {
+  format?: "slideshow";
+  title?: string;
+  caption?: string;
+  aspectRatio?: "9:16" | "4:5" | "1:1";
+  dimensions?: { width: number; height: number };
+  exportSettings?: {
+    previewMimeType?: string;
+    publishMimeType?: string;
+    width?: number;
+    height?: number;
+  };
+  creativeBrief?: string;
+  strategy?: Record<string, unknown>;
+  slides?: CanonicalSlideshowSlide[];
 };

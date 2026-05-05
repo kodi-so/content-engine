@@ -5,6 +5,7 @@ import {
   defaultStructuredArtifactType,
   defaultStructuredSchema,
 } from "../content/formatContracts";
+import { storeGeneratedAsset } from "../content/assetStorage";
 import { getModelProvider } from "../providers";
 import { isProviderError } from "../providers/errors";
 import type { ModelProviderName } from "../providers/model";
@@ -197,14 +198,15 @@ export async function executeResolveModelJobStep(
     }
 
     for (const [index, asset] of (result.assets ?? []).entries()) {
+      const stored = await storeGeneratedAsset(ctx, asset);
       const artifactId = await createArtifact(ctx, context, step, {
         type: asset.mimeType.startsWith("video/") ? "video" : "image",
         title: `${jobArtifact.title ?? step.name} result ${index + 1}`,
-        storageUrl: asset.url,
+        storageUrl: stored.storageUrl,
         data: {
-          url: asset.url,
-          data: asset.url ? undefined : asset.data,
-          mimeType: asset.mimeType,
+          storageId: stored.storageId,
+          mimeType: stored.mimeType,
+          fileSize: stored.byteLength,
           jobId: job.jobId,
         },
         provider: result.metadata.provider,
@@ -370,12 +372,17 @@ export async function executeModelStep(
       await recordEvent(ctx, context, step, "model_call", "Requested image generation.", response.metadata);
 
       for (const [index, image] of response.images.entries()) {
+        const stored = await storeGeneratedAsset(ctx, image);
         artifactIds.push(
           await createArtifact(ctx, context, step, {
             type: "image",
             title: `${promptInput.title} image ${index + 1}`,
-            storageUrl: image.url,
-            data: image.url ? { url: image.url, mimeType: image.mimeType } : image,
+            storageUrl: stored.storageUrl,
+            data: {
+              storageId: stored.storageId,
+              mimeType: stored.mimeType,
+              fileSize: stored.byteLength,
+            },
             provider: response.metadata.provider,
             model: response.metadata.model,
             prompt: promptInput.prompt,

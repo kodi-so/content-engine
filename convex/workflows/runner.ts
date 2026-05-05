@@ -13,8 +13,8 @@ import {
   executeResolveModelJobStep,
 } from "./modelSteps";
 import {
+  executeCreateSlideshowStep,
   executeImagePromptStep,
-  executeRenderSlideshowStep,
 } from "./slideshowSteps";
 
 export const executeRun = internalAction({
@@ -62,8 +62,8 @@ export const executeRun = internalAction({
           artifactIds = await executeImagePromptStep(ctx, context, step, outputs);
         } else if (step.type === "resolve_model_job") {
           artifactIds = await executeResolveModelJobStep(ctx, context, step, outputs);
-        } else if (step.type === "render_slideshow") {
-          artifactIds = await executeRenderSlideshowStep(ctx, context, step, outputs);
+        } else if (step.type === "create_slideshow") {
+          artifactIds = await executeCreateSlideshowStep(ctx, context, step, outputs);
         } else if (step.type === "request_approval") {
           await recordEvent(ctx, context, step, "approval_requested", "Workflow is waiting for approval.");
           await ctx.runMutation(internal.workflows.runs.transitionRun, {

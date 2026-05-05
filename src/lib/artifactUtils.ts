@@ -2,69 +2,7 @@ import type {
   ArtifactDoc,
   DistributionPlanId,
   DistributionPlanDoc,
-  SlideshowBundle,
-  WorkflowDoc,
-  WorkflowRunDoc,
-  ContentRequestDoc,
-  WorkflowRunId,
 } from "../types";
-
-export function buildSlideshowBundles(
-  artifacts: ArtifactDoc[],
-  runs: WorkflowRunDoc[],
-  workflows: WorkflowDoc[],
-  contentRequests: ContentRequestDoc[] = []
-): SlideshowBundle[] {
-  const runById = new Map(runs.map((run) => [String(run._id), run]));
-  const workflowById = new Map(workflows.map((workflow) => [String(workflow._id), workflow]));
-  const requestById = new Map(contentRequests.map((request) => [String(request._id), request]));
-  const groups = new Map<string, ArtifactDoc[]>();
-
-  for (const artifact of artifacts) {
-    if (artifact.type !== "rendered_slide_image") continue;
-    if (artifact.lifecycle === "preview" || artifact.lifecycle === "discarded") continue;
-    const ownerId = artifact.workflowRunId ?? artifact.contentRequestId;
-    if (!ownerId) continue;
-    const key = String(ownerId);
-    groups.set(key, [...(groups.get(key) ?? []), artifact]);
-  }
-
-  return Array.from(groups.entries())
-    .map(([key, groupArtifacts]) => {
-      const sortedArtifacts = [...groupArtifacts].sort(
-        (first, second) => slideNumber(first) - slideNumber(second)
-      );
-      const run = runById.get(key);
-      const workflow = sortedArtifacts[0]?.workflowId
-        ? workflowById.get(String(sortedArtifacts[0].workflowId))
-        : undefined;
-      const request = sortedArtifacts[0]?.contentRequestId
-        ? requestById.get(String(sortedArtifacts[0].contentRequestId))
-        : undefined;
-      const createdAt = Math.max(...sortedArtifacts.map((artifact) => artifact.createdAt));
-
-      return {
-        key,
-        workflowRunId: sortedArtifacts[0]?.workflowRunId as WorkflowRunId | undefined,
-        contentRequestId: sortedArtifacts[0]?.contentRequestId,
-        title:
-          run?.generatedTopic ||
-          workflow?.name ||
-          request?.summary ||
-          request?.prompt ||
-          sortedArtifacts[0]?.title?.replace(/\s*slide\s*\d+/i, "").trim() ||
-          "Generated slideshow",
-        subtitle: `${sortedArtifacts.length} slides · ${new Date(createdAt).toLocaleString()}`,
-        reviewStatus: aggregateReviewStatus(sortedArtifacts),
-        artifacts: sortedArtifacts,
-      };
-    })
-    .sort((first, second) => {
-      const firstCreatedAt = Math.max(...first.artifacts.map((artifact) => artifact.createdAt));
-      const secondCreatedAt = Math.max(...second.artifacts.map((artifact) => artifact.createdAt));
-      return secondCreatedAt - firstCreatedAt;
-    });
-}
 
 export function aggregateReviewStatus(artifacts: ArtifactDoc[]): string {
   if (artifacts.some((artifact) => artifact.reviewStatus === "needs_revision")) {
@@ -98,19 +36,17 @@ export function artifactImageUrl(artifact: ArtifactDoc): string | undefined {
   const data = artifact.data && typeof artifact.data === "object"
     ? (artifact.data as {
         url?: string;
-        renderedImageUrl?: string;
         backgroundImageUrl?: string;
       })
     : {};
 
-  return artifact.storageUrl ?? data.renderedImageUrl ?? data.url ?? data.backgroundImageUrl;
+  return artifact.storageUrl ?? data.url ?? data.backgroundImageUrl;
 }
 
 export function isPrimaryReviewArtifact(artifact: ArtifactDoc): boolean {
   return (
     artifact.type === "caption" ||
     artifact.type === "script" ||
-    artifact.type === "rendered_slide_image" ||
     artifact.type === "rendered_asset" ||
     artifact.type === "thumbnail" ||
     artifact.type === "video"
@@ -121,21 +57,6 @@ export function artifactSummary(artifact: ArtifactDoc): string {
   if (artifact.type === "slide_spec" && artifact.data && typeof artifact.data === "object") {
     const data = artifact.data as { hook?: string; slides?: unknown[] };
     return `${data.hook ?? "Slideshow spec"}${data.slides ? ` · ${data.slides.length} slides` : ""}`;
-  }
-
-  if (artifact.type === "rendered_slide_image" && artifact.data && typeof artifact.data === "object") {
-    const data = artifact.data as {
-      headline?: string;
-      body?: string;
-      renderedImageUrl?: string;
-      backgroundImageUrl?: string;
-      textBlocks?: Array<{ text?: string; items?: string[] }>;
-    };
-    const textBlockSummary = data.textBlocks
-      ?.map((block) => block.text || block.items?.join(", "))
-      .filter(Boolean)
-      .join(" · ");
-    return textBlockSummary || data.headline || data.body || data.renderedImageUrl || data.backgroundImageUrl || "Rendered slide";
   }
 
   if (artifact.type === "image_prompt" && artifact.data && typeof artifact.data === "object") {
@@ -196,8 +117,7 @@ export function latestRevisionNote(artifact: ArtifactDoc): string | undefined {
 export function supportsRegeneration(artifact: ArtifactDoc): boolean {
   return (
     artifact.type === "image_prompt" ||
-    artifact.type === "image" ||
-    artifact.type === "rendered_slide_image"
+    artifact.type === "image"
   );
 }
 
@@ -225,7 +145,14 @@ export function findPromotablePlanTarget(
   artifact: ArtifactDoc,
   plans: DistributionPlanDoc[]
 ): { planId: DistributionPlanId; oldArtifactId: ArtifactDoc["_id"] } | undefined {
-  if (artifact.type !== "rendered_slide_image") return undefined;
+  if (
+    artifact.type !== "image" &&
+    artifact.type !== "rendered_asset" &&
+    artifact.type !== "thumbnail" &&
+    artifact.type !== "video"
+  ) {
+    return undefined;
+  }
   if (artifact.reviewStatus === "needs_revision") return undefined;
 
   const sourceIds = replacementSourceIds(artifact);

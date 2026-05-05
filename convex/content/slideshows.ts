@@ -82,15 +82,12 @@ export const createFromRunner = internalMutation({
     caption: v.optional(v.string()),
     status: v.optional(slideshowStatusValidator),
     spec: v.any(),
-    renderVersion: v.optional(v.number()),
-    revisionHistory: v.optional(v.array(v.any())),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
     return await ctx.db.insert("slideshows", {
       ...args,
       status: args.status ?? "preview",
-      renderVersion: args.renderVersion ?? 1,
       createdAt: now,
       updatedAt: now,
     });
@@ -105,8 +102,6 @@ export const updateFromRunner = internalMutation({
     caption: v.optional(v.string()),
     status: v.optional(slideshowStatusValidator),
     spec: v.optional(v.any()),
-    renderVersion: v.optional(v.number()),
-    revisionHistory: v.optional(v.array(v.any())),
     savedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -122,8 +117,6 @@ export const updateFromRunner = internalMutation({
     if (args.caption !== undefined) patch.caption = args.caption;
     if (args.status !== undefined) patch.status = args.status;
     if (args.spec !== undefined) patch.spec = args.spec;
-    if (args.renderVersion !== undefined) patch.renderVersion = args.renderVersion;
-    if (args.revisionHistory !== undefined) patch.revisionHistory = args.revisionHistory;
     if (args.savedAt !== undefined) patch.savedAt = args.savedAt;
 
     await ctx.db.patch(args.slideshowId, patch);

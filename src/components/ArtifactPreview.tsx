@@ -1,5 +1,4 @@
 import type { ArtifactDoc } from "../types";
-import { artifactImageUrl } from "../lib/artifactUtils";
 
 export function ArtifactPreview({ artifact }: { artifact: ArtifactDoc }) {
   const data = artifact.data && typeof artifact.data === "object"
@@ -16,34 +15,6 @@ export function ArtifactPreview({ artifact }: { artifact: ArtifactDoc }) {
     return (
       <div className="artifact-preview image-preview">
         <img src={imageUrl} alt={artifact.title || "Generated image"} />
-      </div>
-    );
-  }
-
-  if (artifact.type === "rendered_slide_image" && artifact.data && typeof artifact.data === "object") {
-    const slideData = artifact.data as {
-      headline?: string;
-      body?: string;
-      renderedImageUrl?: string;
-      backgroundImageUrl?: string;
-    };
-    const renderedImageUrl = artifactImageUrl(artifact);
-
-    if (renderedImageUrl) {
-      return (
-        <div className="artifact-preview image-preview">
-          <img src={renderedImageUrl} alt={artifact.title || "Rendered slide"} />
-        </div>
-      );
-    }
-
-    return (
-      <div className="artifact-preview rendered-slide-preview">
-        {slideData.backgroundImageUrl && <img src={slideData.backgroundImageUrl} alt="" />}
-        <div>
-          <strong>{slideData.headline || "Rendered slide"}</strong>
-          {slideData.body && <span>{slideData.body}</span>}
-        </div>
       </div>
     );
   }

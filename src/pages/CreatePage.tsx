@@ -1,25 +1,23 @@
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { Check, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { api } from "../../convex/_generated/api";
 import { CreateSlideshowPreview } from "../components/SlideshowPreview";
 import { FormPanel, Page, Panel, Select, TextArea } from "../components/ui";
-import { slideNumber } from "../lib/artifactUtils";
-import type { BrandId, SocialAccountId } from "../types";
+import type { BrandId, CanonicalSlideshowSlide, SocialAccountId } from "../types";
 
 export function CreatePage() {
   const brands = useQuery(api.accounts.brands.list);
   const accounts = useQuery(api.accounts.socialAccounts.list);
   const contentRequests = useQuery(api.content.requests.list, {});
-  const artifacts = useQuery(api.artifacts.records.list, {});
   const createSlideshow = useMutation(api.content.requests.createSlideshow);
   const reviseSlideshow = useMutation(api.content.requests.reviseSlideshow);
   const saveRequest = useMutation(api.content.requests.save);
   const discardRequest = useMutation(api.content.requests.discard);
   const deleteSlide = useMutation(api.content.requests.deleteSlide);
   const moveSlide = useMutation(api.content.requests.moveSlide);
-  const duplicateSlide = useAction(api.content.requests.duplicateSlide);
-  const updateSlideText = useAction(api.content.requests.updateSlideText);
+  const duplicateSlide = useMutation(api.content.requests.duplicateSlide);
+  const updateSlideText = useMutation(api.content.requests.updateSlideText);
   const [brandId, setBrandId] = useState("");
   const [socialAccountId, setSocialAccountId] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -37,23 +35,11 @@ export function CreatePage() {
     contentRequests?.find((request) => String(request._id) === selectedRequestId) ??
     contentRequests?.find((request) => request.status !== "discarded") ??
     contentRequests?.[0];
-  const requestArtifacts = useMemo(
-    () =>
-      artifacts?.filter(
-        (artifact) =>
-          activeRequest &&
-          artifact.contentRequestId === activeRequest._id &&
-          artifact.lifecycle !== "discarded"
-      ) ?? [],
-    [activeRequest, artifacts]
+  const slideshows = useQuery(
+    api.content.slideshows.list,
+    activeRequest ? { contentRequestId: activeRequest._id } : "skip"
   );
-  const renderedSlides = useMemo(
-    () =>
-      requestArtifacts
-        .filter((artifact) => artifact.type === "rendered_slide_image")
-        .sort((first, second) => slideNumber(first) - slideNumber(second)),
-    [requestArtifacts]
-  );
+  const activeSlideshow = slideshows?.[0];
   const plan = activeRequest?.plan && typeof activeRequest.plan === "object"
     ? activeRequest.plan as {
         title?: string;
@@ -77,7 +63,7 @@ export function CreatePage() {
       }
     : undefined;
   const isWorking = activeRequest
-    ? ["queued", "planning", "generating", "rendering"].includes(activeRequest.status)
+    ? ["queued", "planning", "generating"].includes(activeRequest.status)
     : false;
 
   const handleSubmit = async (event: FormEvent) => {
@@ -142,23 +128,28 @@ export function CreatePage() {
     }
   };
 
-  const handleDeleteSlide = async (artifact: (typeof renderedSlides)[number]) => {
-    if (renderedSlides.length <= 1) return;
+  const handleDeleteSlide = async (slide: CanonicalSlideshowSlide) => {
+    if (!activeSlideshow) return;
+    const activeSlides = activeSlideshow.spec && typeof activeSlideshow.spec === "object"
+      ? (activeSlideshow.spec as { slides?: CanonicalSlideshowSlide[] }).slides?.filter((item) => item.status !== "deleted") ?? []
+      : [];
+    if (activeSlides.length <= 1) return;
     if (!window.confirm("Delete this slide from the preview?")) return;
 
     setStatusMessage("Deleting slide");
     try {
-      await deleteSlide({ artifactId: artifact._id });
+      await deleteSlide({ slideshowId: activeSlideshow._id, slideId: slide.slideId });
       setStatusMessage("Slide deleted");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Delete slide failed");
     }
   };
 
-  const handleDuplicateSlide = async (artifact: (typeof renderedSlides)[number]) => {
+  const handleDuplicateSlide = async (slide: CanonicalSlideshowSlide) => {
+    if (!activeSlideshow) return;
     setStatusMessage("Duplicating slide");
     try {
-      await duplicateSlide({ artifactId: artifact._id });
+      await duplicateSlide({ slideshowId: activeSlideshow._id, slideId: slide.slideId });
       setStatusMessage("Slide duplicated");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Duplicate slide failed");
@@ -166,12 +157,13 @@ export function CreatePage() {
   };
 
   const handleMoveSlide = async (
-    artifact: (typeof renderedSlides)[number],
+    slide: CanonicalSlideshowSlide,
     direction: "left" | "right"
   ) => {
+    if (!activeSlideshow) return;
     setStatusMessage("Reordering slides");
     try {
-      await moveSlide({ artifactId: artifact._id, direction });
+      await moveSlide({ slideshowId: activeSlideshow._id, slideId: slide.slideId, direction });
       setStatusMessage("Slides reordered");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Move slide failed");
@@ -179,12 +171,17 @@ export function CreatePage() {
   };
 
   const handleUpdateSlideText = async (
-    artifact: (typeof renderedSlides)[number],
+    slide: CanonicalSlideshowSlide,
     args: { primaryText: string; secondaryText?: string; bullets: string[] }
   ) => {
+    if (!activeSlideshow) return;
     setStatusMessage("Updating slide text");
     try {
-      await updateSlideText({ artifactId: artifact._id, ...args });
+      await updateSlideText({
+        slideshowId: activeSlideshow._id,
+        slideId: slide.slideId,
+        ...args,
+      });
       setStatusMessage("Slide text updated");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Update slide failed");
@@ -292,15 +289,15 @@ export function CreatePage() {
 
       <Panel title="Preview">
         {isWorking && <div className="empty-state">The agent is creating your slideshow preview...</div>}
-        {!isWorking && activeRequest && renderedSlides.length === 0 && (
-          <div className="empty-state">No rendered preview yet.</div>
+        {!isWorking && activeRequest && !activeSlideshow && (
+          <div className="empty-state">No slideshow preview yet.</div>
         )}
-        {activeRequest && renderedSlides.length > 0 && (
+        {activeRequest && activeSlideshow && (
           <>
             <CreateSlideshowPreview
               title={plan?.title || "Generated slideshow"}
-              subtitle={`${renderedSlides.length} slides · ${activeRequest.status}`}
-              artifacts={renderedSlides}
+              subtitle={`${activeSlideshow.title} · ${activeRequest.status}`}
+              slideshow={activeSlideshow}
               onDeleteSlide={handleDeleteSlide}
               onDuplicateSlide={handleDuplicateSlide}
               onMoveSlide={handleMoveSlide}

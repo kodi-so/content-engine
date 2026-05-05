@@ -241,8 +241,6 @@ export default defineSchema({
     caption: v.optional(v.string()),
     status: slideshowStatusValidator,
     spec: v.any(),
-    renderVersion: v.number(),
-    revisionHistory: v.optional(v.array(v.any())),
     savedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),

@@ -383,7 +383,7 @@ export function buildPlannerPrompt(args: {
     "- Set creativeBrief.layoutStrategy.contentPlacement to one shared placement for all non-title slides. Default to center unless the visual style clearly needs top or bottom.",
     "- Let the slideshow-level layout strategy control placement for every slide; use each slide's layout.intent to describe readability and composition needs.",
     "- For each slide, describe layout.intent in natural language. This is internal metadata, not display copy.",
-    "- Choose density and contrastStrategy per slide as semantic rendering hints, not exact pixel values.",
+    "- Choose density and contrastStrategy per slide as semantic layout hints, not exact pixel values.",
     "- Use shadow or gradient_scrim by default. Use solid_scrim only if the slide has unusually dense text.",
     "- The backend renderer will decide exact font sizes and positions.",
     "",

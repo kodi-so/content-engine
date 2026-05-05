@@ -1,4 +1,4 @@
-import { getSlideDimensions } from "./slideshowRenderer";
+import { getSlideDimensions } from "./slideshowDimensions";
 import type { SlideshowSlide, SlideshowTextBlock } from "./types";
 
 type SlideRole = SlideshowSlide["role"];
@@ -113,7 +113,7 @@ export function slideFromCopy(args: {
   };
 }
 
-export function getRenderedSlideDimensions(data: Record<string, unknown>): {
+export function getSlideDimensionsFromData(data: Record<string, unknown>): {
   width: number;
   height: number;
 } {
