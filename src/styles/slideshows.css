@@ -44,6 +44,34 @@
     #e8e6de;
 }
 
+.create-slide-canvas {
+  @apply grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 overflow-hidden rounded-2xl px-3 py-4;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.82), transparent 24%),
+    linear-gradient(135deg, #e9e7df 0%, #d9d7cf 100%);
+}
+
+.create-slide-stage {
+  @apply flex max-h-[500px] snap-x snap-mandatory items-center gap-6 overflow-x-auto px-[max(10px,6vw)] pb-3 pt-1;
+  scrollbar-width: thin;
+}
+
+.create-slide-card {
+  @apply grid flex-none snap-center cursor-pointer place-items-center border-0 bg-transparent p-0 opacity-80 transition duration-200;
+}
+
+.create-slide-card.active {
+  @apply scale-[1.02] opacity-100;
+}
+
+.create-slide-card .slideshow-phone-frame {
+  @apply max-h-[470px] min-h-[300px] shadow-xl;
+}
+
+.create-slide-card:not(.active) .slideshow-phone-frame {
+  @apply max-h-[340px] min-h-[260px] border-4 opacity-80;
+}
+
 .slideshow-phone-frame {
   @apply relative grid aspect-[9/16] max-h-[620px] min-h-[420px] overflow-hidden rounded-[28px] border-8 border-[#17201b] bg-[#17201b] shadow-2xl;
   touch-action: pan-y;
@@ -67,7 +95,7 @@
 }
 
 .slideshow-nav-button {
-  @apply grid size-11 cursor-pointer place-items-center rounded-full border border-[#cfc9bc] bg-[#fffdf8]/80 text-[#17201b];
+  @apply grid size-10 cursor-pointer place-items-center rounded-full border border-[#cfc9bc] bg-[#fffdf8]/80 text-[#17201b];
 }
 
 .slideshow-nav-button:disabled {
@@ -94,4 +122,52 @@
 
 .slideshow-current-slide {
   @apply grid gap-3 border-t border-[#ded9ce] pt-4;
+}
+
+.create-slide-actions {
+  @apply flex flex-wrap justify-center gap-2;
+}
+
+.icon-action-button {
+  @apply inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[#d7d1c4] bg-[#fffdf8] px-3 py-2 text-xs font-extrabold text-[#17201b] shadow-sm;
+}
+
+.icon-action-button:hover {
+  @apply border-[#8ca45a] bg-[#fbffe8];
+}
+
+.icon-action-button:disabled {
+  @apply cursor-not-allowed opacity-40;
+}
+
+.icon-action-button.danger {
+  @apply border-[#ffd5d0] bg-[#fff4f2] text-[#bd2d20];
+}
+
+.slide-inspector,
+.slide-text-editor {
+  @apply grid gap-3 rounded-2xl border border-[#ded9ce] bg-[#fffdf8] p-4;
+}
+
+.slide-inspector p,
+.slide-inspector small {
+  @apply m-0 leading-[1.5];
+}
+
+.slide-inspector small {
+  @apply text-[#687169];
+}
+
+.slide-text-editor label {
+  @apply grid gap-1.5 text-sm font-bold text-[#17201b];
+}
+
+.slide-text-editor input,
+.slide-text-editor textarea {
+  @apply w-full rounded-xl border border-[#d8d2c5] bg-white px-3 py-2 text-sm text-[#17201b] outline-none;
+}
+
+.slide-text-editor input:focus,
+.slide-text-editor textarea:focus {
+  @apply border-[#8ca45a] shadow-[0_0_0_3px_rgba(140,164,90,0.18)];
 }

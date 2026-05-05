@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Check, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { api } from "../../convex/_generated/api";
@@ -16,6 +16,10 @@ export function CreatePage() {
   const reviseSlideshow = useMutation(api.content.requests.reviseSlideshow);
   const saveRequest = useMutation(api.content.requests.save);
   const discardRequest = useMutation(api.content.requests.discard);
+  const deleteSlide = useMutation(api.content.requests.deleteSlide);
+  const moveSlide = useMutation(api.content.requests.moveSlide);
+  const duplicateSlide = useAction(api.content.requests.duplicateSlide);
+  const updateSlideText = useAction(api.content.requests.updateSlideText);
   const [brandId, setBrandId] = useState("");
   const [socialAccountId, setSocialAccountId] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -56,7 +60,16 @@ export function CreatePage() {
         creativeBrief?: string;
         hook?: string;
         caption?: string;
+        strategy?: {
+          narrativePattern?: string;
+          targetSlideCount?: number;
+          reasoning?: string;
+          visualStyle?: string;
+          tone?: string;
+        };
         slides?: Array<{
+          slideId?: string;
+          purpose?: string;
           role?: string;
           visualPrompt?: string;
           textBlocks?: Array<{ role?: string; text?: string; items?: string[] }>;
@@ -126,6 +139,55 @@ export function CreatePage() {
       setStatusMessage("Preview discarded");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Discard failed");
+    }
+  };
+
+  const handleDeleteSlide = async (artifact: (typeof renderedSlides)[number]) => {
+    if (renderedSlides.length <= 1) return;
+    if (!window.confirm("Delete this slide from the preview?")) return;
+
+    setStatusMessage("Deleting slide");
+    try {
+      await deleteSlide({ artifactId: artifact._id });
+      setStatusMessage("Slide deleted");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Delete slide failed");
+    }
+  };
+
+  const handleDuplicateSlide = async (artifact: (typeof renderedSlides)[number]) => {
+    setStatusMessage("Duplicating slide");
+    try {
+      await duplicateSlide({ artifactId: artifact._id });
+      setStatusMessage("Slide duplicated");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Duplicate slide failed");
+    }
+  };
+
+  const handleMoveSlide = async (
+    artifact: (typeof renderedSlides)[number],
+    direction: "left" | "right"
+  ) => {
+    setStatusMessage("Reordering slides");
+    try {
+      await moveSlide({ artifactId: artifact._id, direction });
+      setStatusMessage("Slides reordered");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Move slide failed");
+    }
+  };
+
+  const handleUpdateSlideText = async (
+    artifact: (typeof renderedSlides)[number],
+    args: { primaryText: string; secondaryText?: string; bullets: string[] }
+  ) => {
+    setStatusMessage("Updating slide text");
+    try {
+      await updateSlideText({ artifactId: artifact._id, ...args });
+      setStatusMessage("Slide text updated");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Update slide failed");
     }
   };
 
@@ -211,6 +273,18 @@ export function CreatePage() {
                   <strong>{plan.hook}</strong>
                 </div>
               )}
+              {plan?.strategy && (
+                <>
+                  <div className="status-row">
+                    <span>Pattern</span>
+                    <strong>{plan.strategy.narrativePattern}</strong>
+                  </div>
+                  <div className="status-row">
+                    <span>Tone</span>
+                    <strong>{plan.strategy.tone}</strong>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </Panel>
@@ -227,6 +301,10 @@ export function CreatePage() {
               title={plan?.title || "Generated slideshow"}
               subtitle={`${renderedSlides.length} slides · ${activeRequest.status}`}
               artifacts={renderedSlides}
+              onDeleteSlide={handleDeleteSlide}
+              onDuplicateSlide={handleDuplicateSlide}
+              onMoveSlide={handleMoveSlide}
+              onUpdateSlideText={handleUpdateSlideText}
             />
             <label className="revision-field">
               <span>Regenerate with changes</span>

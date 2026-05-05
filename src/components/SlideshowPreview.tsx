@@ -1,5 +1,18 @@
-import { Check, ChevronLeft, ChevronRight, RefreshCw, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Edit3,
+  FileText,
+  Image,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { ArtifactDoc, SlideshowBundle } from "../types";
 import {
   artifactImageUrl,
@@ -188,16 +201,62 @@ export function CreateSlideshowPreview({
   title,
   subtitle,
   artifacts,
+  onDeleteSlide,
+  onDuplicateSlide,
+  onMoveSlide,
+  onUpdateSlideText,
 }: {
   title: string;
   subtitle: string;
   artifacts: ArtifactDoc[];
+  onDeleteSlide?: (artifact: ArtifactDoc) => Promise<void>;
+  onDuplicateSlide?: (artifact: ArtifactDoc) => Promise<void>;
+  onMoveSlide?: (artifact: ArtifactDoc, direction: "left" | "right") => Promise<void>;
+  onUpdateSlideText?: (
+    artifact: ArtifactDoc,
+    args: { primaryText: string; secondaryText?: string; bullets: string[] }
+  ) => Promise<void>;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [showImagePrompt, setShowImagePrompt] = useState(false);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [primaryText, setPrimaryText] = useState("");
+  const [secondaryText, setSecondaryText] = useState("");
+  const [bulletsText, setBulletsText] = useState("");
+  const stageRef = useRef<HTMLDivElement>(null);
+  const slideRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activeArtifact =
     artifacts[Math.min(activeIndex, Math.max(artifacts.length - 1, 0))];
   if (!activeArtifact) return null;
+  const activeData = activeArtifact.data && typeof activeArtifact.data === "object"
+    ? activeArtifact.data as {
+        textBlocks?: Array<{ role?: string; text?: string; items?: string[] }>;
+        visualPrompt?: string;
+        prompt?: string;
+        layout?: { intent?: string };
+      }
+    : {};
+  const headlineBlock = activeData.textBlocks?.find((block) =>
+    block.role === "headline" || block.role === "cta"
+  );
+  const bodyBlock = activeData.textBlocks?.find((block) => block.role === "body");
+  const bulletBlock = activeData.textBlocks?.find((block) => block.role === "bullet_list");
+  const imagePrompt = activeData.visualPrompt || activeData.prompt || activeArtifact.prompt || "No image prompt saved for this slide.";
+
+  useEffect(() => {
+    slideRefs.current[activeIndex]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [activeIndex, artifacts.length]);
+
+  useEffect(() => {
+    if (activeIndex > artifacts.length - 1) {
+      setActiveIndex(Math.max(artifacts.length - 1, 0));
+    }
+  }, [activeIndex, artifacts.length]);
 
   const moveSlide = (direction: -1 | 1) => {
     setActiveIndex((current) =>
@@ -214,8 +273,29 @@ export function CreateSlideshowPreview({
     setTouchStart(null);
   };
 
+  const beginTextEdit = () => {
+    setPrimaryText(headlineBlock?.text ?? "");
+    setSecondaryText(bodyBlock?.text ?? "");
+    setBulletsText((bulletBlock?.items ?? []).join("\n"));
+    setIsEditingText(true);
+  };
+
+  const saveTextEdit = async () => {
+    if (!onUpdateSlideText || !primaryText.trim()) return;
+
+    await onUpdateSlideText(activeArtifact, {
+      primaryText: primaryText.trim(),
+      secondaryText: secondaryText.trim() || undefined,
+      bullets: bulletsText
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    });
+    setIsEditingText(false);
+  };
+
   return (
-    <article className="slideshow-bundle-card create-preview-card">
+    <article className="slideshow-bundle-card create-preview-card create-workbench-card">
       <div className="slideshow-bundle-header">
         <div>
           <div className="entity-eyebrow">Create preview</div>
@@ -227,7 +307,7 @@ export function CreateSlideshowPreview({
         </div>
       </div>
 
-      <div className="slideshow-editor">
+      <div className="create-slide-canvas" aria-label="Slideshow canvas">
         <button
           className="slideshow-nav-button"
           type="button"
@@ -237,19 +317,37 @@ export function CreateSlideshowPreview({
         >
           <ChevronLeft size={22} />
         </button>
-        <div
-          className="slideshow-phone-frame"
-          onTouchStart={(event) => setTouchStart(event.touches[0]?.clientX ?? null)}
-          onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
-        >
-          {artifactImageUrl(activeArtifact) ? (
-            <img src={artifactImageUrl(activeArtifact)} alt={activeArtifact.title || "Rendered slide"} />
-          ) : (
-            <ArtifactPreview artifact={activeArtifact} />
-          )}
-          <div className="slideshow-slide-count">
-            {activeIndex + 1}/{artifacts.length}
-          </div>
+        <div className="create-slide-stage" ref={stageRef}>
+          {artifacts.map((artifact, index) => (
+            <button
+              className={`create-slide-card ${index === activeIndex ? "active" : ""}`}
+              key={artifact._id}
+              ref={(node) => {
+                slideRefs.current[index] = node;
+              }}
+              type="button"
+              onClick={() => {
+                setActiveIndex(index);
+                setShowImagePrompt(false);
+                setIsEditingText(false);
+              }}
+            >
+              <div
+                className="slideshow-phone-frame"
+                onTouchStart={(event) => setTouchStart(event.touches[0]?.clientX ?? null)}
+                onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
+              >
+                {artifactImageUrl(artifact) ? (
+                  <img src={artifactImageUrl(artifact)} alt={artifact.title || "Rendered slide"} />
+                ) : (
+                  <ArtifactPreview artifact={artifact} />
+                )}
+                <div className="slideshow-slide-count">
+                  {index + 1}/{artifacts.length}
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
         <button
           className="slideshow-nav-button"
@@ -262,13 +360,100 @@ export function CreateSlideshowPreview({
         </button>
       </div>
 
+      <div className="create-slide-actions" aria-label="Slide actions">
+        <button className="icon-action-button" type="button" onClick={() => setShowImagePrompt((value) => !value)}>
+          <Image size={16} />
+          Image prompt
+        </button>
+        <button className="icon-action-button" type="button" onClick={beginTextEdit}>
+          <Edit3 size={16} />
+          Edit text
+        </button>
+        <button
+          className="icon-action-button"
+          type="button"
+          disabled={!onMoveSlide || activeIndex === 0}
+          onClick={() => void onMoveSlide?.(activeArtifact, "left")}
+        >
+          <ArrowLeft size={16} />
+          Move left
+        </button>
+        <button
+          className="icon-action-button"
+          type="button"
+          disabled={!onMoveSlide || activeIndex === artifacts.length - 1}
+          onClick={() => void onMoveSlide?.(activeArtifact, "right")}
+        >
+          <ArrowRight size={16} />
+          Move right
+        </button>
+        <button
+          className="icon-action-button"
+          type="button"
+          disabled={!onDuplicateSlide}
+          onClick={() => void onDuplicateSlide?.(activeArtifact)}
+        >
+          <Copy size={16} />
+          Duplicate
+        </button>
+        <button
+          className="icon-action-button danger"
+          type="button"
+          disabled={!onDeleteSlide || artifacts.length <= 1}
+          onClick={() => void onDeleteSlide?.(activeArtifact)}
+        >
+          <Trash2 size={16} />
+          Delete
+        </button>
+      </div>
+
+      {showImagePrompt && (
+        <div className="slide-inspector">
+          <div className="entity-eyebrow">
+            <FileText size={13} />
+            Slide image prompt
+          </div>
+          <p>{imagePrompt}</p>
+          {activeData.layout?.intent && <small>Layout intent: {activeData.layout.intent}</small>}
+        </div>
+      )}
+
+      {isEditingText && (
+        <div className="slide-text-editor">
+          <label>
+            <span>Primary text</span>
+            <input value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} />
+          </label>
+          <label>
+            <span>Secondary text</span>
+            <textarea value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={2} />
+          </label>
+          <label>
+            <span>Bullets, one per line</span>
+            <textarea value={bulletsText} onChange={(event) => setBulletsText(event.target.value)} rows={3} />
+          </label>
+          <div className="button-row">
+            <button className="primary-button" type="button" disabled={!primaryText.trim()} onClick={() => void saveTextEdit()}>
+              Save text
+            </button>
+            <button className="secondary-button" type="button" onClick={() => setIsEditingText(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="slideshow-thumb-row" aria-label="Slides">
         {artifacts.map((artifact, index) => (
           <button
             className={`slideshow-thumb ${index === activeIndex ? "active" : ""}`}
             key={artifact._id}
             type="button"
-            onClick={() => setActiveIndex(index)}
+            onClick={() => {
+              setActiveIndex(index);
+              setShowImagePrompt(false);
+              setIsEditingText(false);
+            }}
           >
             {artifactImageUrl(artifact) ? (
               <img src={artifactImageUrl(artifact)} alt="" />

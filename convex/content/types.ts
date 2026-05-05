@@ -1,6 +1,14 @@
 export type TextBlockRole = "eyebrow" | "headline" | "body" | "bullet_list" | "cta";
 export type TextBlockEmphasis = "primary" | "secondary" | "muted";
 export type SlideTemplate = "center_punch" | "bottom_stack" | "top_hook_bottom_body" | "checklist";
+export type TextPlacement = "top" | "center" | "bottom" | "split";
+export type TextDensity = "sparse" | "medium" | "dense";
+export type ContrastStrategy = "none" | "shadow" | "gradient_scrim" | "solid_scrim";
+
+export type LayoutStrategy = {
+  hookPlacement: Exclude<TextPlacement, "split">;
+  contentPlacement: Exclude<TextPlacement, "split">;
+};
 
 export type SlideshowTextBlock = {
   role: TextBlockRole;
@@ -10,16 +18,29 @@ export type SlideshowTextBlock = {
 };
 
 export type SlideshowSlide = {
+  slideId: string;
   index: number;
   role: "hook" | "setup" | "insight" | "proof" | "payoff" | "cta";
+  purpose: string;
   visualPrompt: string;
   textBlocks: SlideshowTextBlock[];
   layout: {
+    intent: string;
     template: SlideTemplate;
-    textZone: "top" | "center" | "bottom" | "split";
-    contrast: "none" | "shadow" | "gradient_scrim" | "solid_scrim";
+    textZone: TextPlacement;
+    density: TextDensity;
+    contrast: ContrastStrategy;
     stylePreset: "dark_minimal_tiktok";
   };
+};
+
+export type CreativeBrief = {
+  narrativePattern: string;
+  targetSlideCount: number;
+  reasoning: string;
+  visualStyle: string;
+  tone: string;
+  layoutStrategy: LayoutStrategy;
 };
 
 export type SlideshowPlan = {
@@ -29,20 +50,69 @@ export type SlideshowPlan = {
   hook: string;
   caption: string;
   creativeBrief: string;
+  strategy: CreativeBrief;
   slides: SlideshowSlide[];
+};
+
+export type PlannerSlide = {
+  slideId?: string;
+  purpose: string;
+  primaryText: string;
+  secondaryText?: string;
+  bullets: string[];
+  imagePrompt: string;
+  layout: {
+    intent: string;
+    density: TextDensity;
+    contrastStrategy: ContrastStrategy;
+  };
+};
+
+export type SlideshowPlannerOutput = {
+  format: "slideshow";
+  creativeBrief: CreativeBrief;
+  title: string;
+  caption: string;
+  aspectRatio: "9:16" | "4:5" | "1:1";
+  slides: PlannerSlide[];
 };
 
 export const slideshowPlanSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["format", "aspectRatio", "title", "hook", "caption", "creativeBrief", "slides"],
+  required: ["format", "creativeBrief", "title", "caption", "aspectRatio", "slides"],
   properties: {
     format: { type: "string", enum: ["slideshow"] },
-    aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
+    creativeBrief: {
+      type: "object",
+      additionalProperties: false,
+      required: ["narrativePattern", "targetSlideCount", "reasoning", "visualStyle", "tone", "layoutStrategy"],
+      properties: {
+        narrativePattern: { type: "string" },
+        targetSlideCount: { type: "number" },
+        reasoning: { type: "string" },
+        visualStyle: { type: "string" },
+        tone: { type: "string" },
+        layoutStrategy: {
+          type: "object",
+          additionalProperties: false,
+          required: ["hookPlacement", "contentPlacement"],
+          properties: {
+            hookPlacement: {
+              type: "string",
+              enum: ["top", "center", "bottom"],
+            },
+            contentPlacement: {
+              type: "string",
+              enum: ["top", "center", "bottom"],
+            },
+          },
+        },
+      },
+    },
     title: { type: "string" },
-    hook: { type: "string" },
     caption: { type: "string" },
-    creativeBrief: { type: "string" },
+    aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
     slides: {
       type: "array",
       minItems: 4,
@@ -50,58 +120,32 @@ export const slideshowPlanSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["index", "role", "visualPrompt", "textBlocks", "layout"],
+        required: ["slideId", "purpose", "primaryText", "secondaryText", "bullets", "imagePrompt", "layout"],
         properties: {
-          index: { type: "number" },
-          role: {
-            type: "string",
-            enum: ["hook", "setup", "insight", "proof", "payoff", "cta"],
-          },
-          visualPrompt: { type: "string" },
-          textBlocks: {
+          slideId: { type: "string" },
+          purpose: { type: "string" },
+          primaryText: { type: "string" },
+          secondaryText: { type: "string" },
+          bullets: {
             type: "array",
-            minItems: 1,
             maxItems: 4,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["role", "text", "items", "emphasis"],
-              properties: {
-                role: {
-                  type: "string",
-                  enum: ["eyebrow", "headline", "body", "bullet_list", "cta"],
-                },
-                text: { type: "string" },
-                items: {
-                  type: "array",
-                  maxItems: 4,
-                  items: { type: "string" },
-                },
-                emphasis: {
-                  type: "string",
-                  enum: ["primary", "secondary", "muted"],
-                },
-              },
-            },
+            items: { type: "string" },
           },
+          imagePrompt: { type: "string" },
           layout: {
             type: "object",
             additionalProperties: false,
-            required: ["template", "textZone", "contrast", "stylePreset"],
+            required: ["intent", "density", "contrastStrategy"],
             properties: {
-              template: {
+              intent: { type: "string" },
+              density: {
                 type: "string",
-                enum: ["center_punch", "bottom_stack", "top_hook_bottom_body", "checklist"],
+                enum: ["sparse", "medium", "dense"],
               },
-              textZone: {
-                type: "string",
-                enum: ["top", "center", "bottom", "split"],
-              },
-              contrast: {
+              contrastStrategy: {
                 type: "string",
                 enum: ["none", "shadow", "gradient_scrim", "solid_scrim"],
               },
-              stylePreset: { type: "string", enum: ["dark_minimal_tiktok"] },
             },
           },
         },

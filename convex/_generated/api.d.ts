@@ -12,6 +12,7 @@ import type * as accounts_brands from "../accounts/brands.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as artifacts_records from "../artifacts/records.js";
 import type * as artifacts_regeneration from "../artifacts/regeneration.js";
+import type * as content_fonts_tiktokSans from "../content/fonts/tiktokSans.js";
 import type * as content_formatContracts from "../content/formatContracts.js";
 import type * as content_planning from "../content/planning.js";
 import type * as content_requests from "../content/requests.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "artifacts/records": typeof artifacts_records;
   "artifacts/regeneration": typeof artifacts_regeneration;
+  "content/fonts/tiktokSans": typeof content_fonts_tiktokSans;
   "content/formatContracts": typeof content_formatContracts;
   "content/planning": typeof content_planning;
   "content/requests": typeof content_requests;

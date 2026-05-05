@@ -178,14 +178,14 @@ export async function getArtifactsForRefs(
   type?: ArtifactType
 ): Promise<Doc<"artifacts">[]> {
   const artifactIds = artifactIdsForRefs(outputs, refs);
-  const artifacts = await Promise.all(
+  const artifacts: Array<Doc<"artifacts"> | null> = await Promise.all(
     artifactIds.map((artifactId) =>
       ctx.runQuery(internal.artifacts.records.getForRunner, { artifactId })
     )
   );
 
   return artifacts.filter(
-    (artifact): artifact is Doc<"artifacts"> =>
+    (artifact: Doc<"artifacts"> | null): artifact is Doc<"artifacts"> =>
       Boolean(artifact && (!type || artifact.type === type))
   );
 }

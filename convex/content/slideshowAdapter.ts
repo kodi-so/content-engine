@@ -7,6 +7,7 @@ type SlideLayout = SlideshowSlide["layout"];
 const slideRoles: SlideRole[] = ["hook", "setup", "insight", "proof", "payoff", "cta"];
 const textZones: SlideLayout["textZone"][] = ["top", "center", "bottom", "split"];
 const contrasts: SlideLayout["contrast"][] = ["none", "shadow", "gradient_scrim", "solid_scrim"];
+const densities: SlideLayout["density"][] = ["sparse", "medium", "dense"];
 
 function normalizeSlideRole(value: unknown, fallback: SlideRole = "insight"): SlideRole {
   return typeof value === "string" && slideRoles.includes(value as SlideRole)
@@ -20,14 +21,22 @@ function normalizeLayout(value: unknown): SlideLayout {
     : {};
   const textZone = typeof layout.textZone === "string" && textZones.includes(layout.textZone as SlideLayout["textZone"])
     ? layout.textZone as SlideLayout["textZone"]
-    : "bottom";
+    : "center";
   const contrast = typeof layout.contrast === "string" && contrasts.includes(layout.contrast as SlideLayout["contrast"])
     ? layout.contrast as SlideLayout["contrast"]
     : "gradient_scrim";
+  const density = typeof layout.density === "string" && densities.includes(layout.density as SlideLayout["density"])
+    ? layout.density as SlideLayout["density"]
+    : "medium";
+  const intent = typeof layout.intent === "string" && layout.intent.trim()
+    ? layout.intent.trim()
+    : "Readable mobile social slide with clear text hierarchy.";
 
   return {
-    template: "bottom_stack",
+    intent,
+    template: textZone === "center" ? "center_punch" : textZone === "top" ? "top_hook_bottom_body" : "bottom_stack",
     textZone,
+    density,
     contrast,
     stylePreset: "dark_minimal_tiktok",
   };
@@ -51,14 +60,6 @@ function textBlocksFromCopy(args: {
 }): SlideshowTextBlock[] {
   const blocks: SlideshowTextBlock[] = [];
 
-  if (args.role && args.role !== "insight") {
-    blocks.push({
-      role: "eyebrow",
-      text: args.role.toUpperCase(),
-      items: [],
-      emphasis: "muted",
-    });
-  }
   if (args.headline?.trim()) {
     blocks.push({
       role: args.role === "cta" ? "cta" : "headline",
@@ -96,8 +97,10 @@ export function slideFromCopy(args: {
     : [];
 
   return {
+    slideId: `slide-${args.index}`,
     index: args.index,
     role,
+    purpose: typeof args.role === "string" ? args.role : "Slide",
     visualPrompt: args.visualPrompt ?? "",
     textBlocks: existingBlocks.length
       ? existingBlocks

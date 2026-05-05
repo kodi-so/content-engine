@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -10,10 +11,12 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { buildPlannerPrompt, normalizePlan } from "./planning";
+import { buildPlannerPrompt, inferSlideCount, normalizePlan } from "./planning";
 import {
   slideshowPlanSchema,
+  type SlideshowPlannerOutput,
   type SlideshowPlan,
+  type SlideshowTextBlock,
 } from "./types";
 import {
   fetchImageDataUri,
@@ -35,6 +38,18 @@ function currentUserId(identity: { subject: string } | null) {
 
 function sumCost(current: number, metadata?: ModelInvocationMetadata) {
   return current + (metadata?.costUsd ?? 0);
+}
+
+function providerImagePrompt(slidePrompt: string, aspectRatio: SlideshowPlan["aspectRatio"]) {
+  const trimmed = slidePrompt.trim().replace(/\s+/g, " ");
+  const hasBackgroundConstraint = /background image only/i.test(trimmed);
+  return [
+    trimmed,
+    `Vertical ${aspectRatio} full-bleed image.`,
+    hasBackgroundConstraint
+      ? undefined
+      : "Background image only, without embedded writing or graphic design elements.",
+  ].filter(Boolean).join(" ");
 }
 
 async function createRequestArtifact(
@@ -275,6 +290,269 @@ export const transition = internalMutation({
   },
 });
 
+function textBlocksFromEdit(args: {
+  primaryText: string;
+  secondaryText?: string;
+  bullets?: string[];
+}): SlideshowTextBlock[] {
+  const blocks: SlideshowTextBlock[] = [
+    {
+      role: "headline",
+      text: args.primaryText.trim(),
+      items: [],
+      emphasis: "primary",
+    },
+  ];
+
+  const bullets = (args.bullets ?? []).filter((item) => item.trim()).slice(0, 4);
+  if (bullets.length > 0) {
+    blocks.push({
+      role: "bullet_list",
+      text: "",
+      items: bullets,
+      emphasis: "secondary",
+    });
+  } else if (args.secondaryText?.trim()) {
+    blocks.push({
+      role: "body",
+      text: args.secondaryText.trim(),
+      items: [],
+      emphasis: "secondary",
+    });
+  }
+
+  return blocks;
+}
+
+function slideFromArtifactData(data: Record<string, unknown>, textBlocks: SlideshowTextBlock[]) {
+  const layout = data.layout && typeof data.layout === "object"
+    ? data.layout as SlideshowPlan["slides"][number]["layout"]
+    : {
+        intent: "Readable mobile social slide with clear text hierarchy.",
+        template: "center_punch" as const,
+        textZone: "center" as const,
+        density: "medium" as const,
+        contrast: "gradient_scrim" as const,
+        stylePreset: "dark_minimal_tiktok" as const,
+      };
+
+  return {
+    slideId: typeof data.slideId === "string" ? data.slideId : `slide-${String(data.slideIndex ?? 1)}`,
+    index: typeof data.slideIndex === "number" ? data.slideIndex : 1,
+    role: typeof data.role === "string" ? data.role as SlideshowPlan["slides"][number]["role"] : "insight" as const,
+    purpose: typeof data.purpose === "string" ? data.purpose : "Edited slide",
+    visualPrompt: typeof data.visualPrompt === "string" ? data.visualPrompt : "",
+    textBlocks,
+    layout,
+  };
+}
+
+export const deleteSlide = mutation({
+  args: { artifactId: v.id("artifacts") },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const artifact = await ctx.db.get(args.artifactId);
+    if (!artifact || artifact.userId !== userId || artifact.type !== "rendered_slide") {
+      throw new Error("Rendered slide not found");
+    }
+
+    const data = artifact.data && typeof artifact.data === "object"
+      ? artifact.data as Record<string, unknown>
+      : {};
+    const storageId = typeof data.storageId === "string" ? data.storageId as Id<"_storage"> : undefined;
+    if (storageId) {
+      try {
+        await ctx.storage.delete(storageId);
+      } catch {
+        // Best-effort cleanup; deleting the artifact row is the durable state change.
+      }
+    }
+
+    await ctx.db.delete(args.artifactId);
+  },
+});
+
+export const duplicateSlide = action({
+  args: { artifactId: v.id("artifacts") },
+  handler: async (ctx, args): Promise<Id<"artifacts">> => {
+    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const artifact: Doc<"artifacts"> | null = await ctx.runQuery(internal.artifacts.records.getForRunner, {
+      artifactId: args.artifactId,
+    });
+    if (!artifact || artifact.userId !== userId || artifact.type !== "rendered_slide") {
+      throw new Error("Rendered slide not found");
+    }
+
+    const siblings: Doc<"artifacts">[] = artifact.contentRequestId
+      ? await ctx.runQuery(internal.artifacts.records.listForContentRequest, {
+          requestId: artifact.contentRequestId,
+          userId,
+        })
+      : [];
+    const slideIndexes: number[] = siblings
+      .filter((item: Doc<"artifacts">) => item.type === "rendered_slide")
+      .map((item: Doc<"artifacts">) => {
+        const data = item.data && typeof item.data === "object" ? item.data as Record<string, unknown> : {};
+        return typeof data.slideIndex === "number" ? data.slideIndex : 0;
+      });
+    const nextSlideIndex: number = Math.max(0, ...slideIndexes) + 1;
+    const data = artifact.data && typeof artifact.data === "object"
+      ? artifact.data as Record<string, unknown>
+      : {};
+    const textBlocks = Array.isArray(data.textBlocks)
+      ? data.textBlocks as SlideshowTextBlock[]
+      : textBlocksFromEdit({ primaryText: artifact.title || "Duplicated slide" });
+    const dimensions = getSlideDimensions(typeof data.aspectRatio === "string" ? data.aspectRatio : "9:16");
+    const backgroundImageUrl =
+      typeof data.backgroundImageUrl === "string" ? data.backgroundImageUrl : undefined;
+    const backgroundImageDataUri = await fetchImageDataUri(backgroundImageUrl);
+    const slide = slideFromArtifactData({
+      ...data,
+      slideIndex: nextSlideIndex,
+      slideId: `slide-${nextSlideIndex}-copy-${Date.now()}`,
+    }, textBlocks);
+    const svg = renderSlideSvg({ dimensions, backgroundImageDataUri, slide });
+    const storageId = await ctx.storage.store(new Blob([svg], { type: "image/svg+xml" }));
+    const renderedImageUrl = await ctx.storage.getUrl(storageId) ?? undefined;
+    return await ctx.runMutation(internal.artifacts.records.createFromRunner, {
+      userId,
+      brandId: artifact.brandId,
+      contentRequestId: artifact.contentRequestId,
+      workflowId: artifact.workflowId,
+      workflowRunId: artifact.workflowRunId,
+      parentArtifactIds: [artifact._id],
+      type: "rendered_slide",
+      title: `Slide ${nextSlideIndex}`,
+      storageUrl: renderedImageUrl,
+      data: {
+        ...data,
+        slideIndex: nextSlideIndex,
+        slideId: slide.slideId,
+        storageId,
+        renderedImageUrl,
+        backgroundEmbedded: Boolean(backgroundImageDataUri),
+        duplicatedFromArtifactId: artifact._id,
+      },
+      provider: "manual",
+      prompt: artifact.prompt,
+      lifecycle: artifact.lifecycle,
+      reviewStatus: "pending",
+    });
+  },
+});
+
+export const moveSlide = mutation({
+  args: {
+    artifactId: v.id("artifacts"),
+    direction: v.union(v.literal("left"), v.literal("right")),
+  },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const artifact = await ctx.db.get(args.artifactId);
+    if (!artifact || artifact.userId !== userId || artifact.type !== "rendered_slide" || !artifact.contentRequestId) {
+      throw new Error("Rendered slide not found");
+    }
+
+    const siblings = await ctx.db
+      .query("artifacts")
+      .withIndex("by_content_request", (q) => q.eq("contentRequestId", artifact.contentRequestId!))
+      .collect();
+    const slides = siblings
+      .filter((item) => item.type === "rendered_slide" && item.userId === userId)
+      .sort((first, second) => {
+        const firstData = first.data && typeof first.data === "object" ? first.data as Record<string, unknown> : {};
+        const secondData = second.data && typeof second.data === "object" ? second.data as Record<string, unknown> : {};
+        const firstIndex = typeof firstData.slideIndex === "number" ? firstData.slideIndex : first.createdAt;
+        const secondIndex = typeof secondData.slideIndex === "number" ? secondData.slideIndex : second.createdAt;
+        return firstIndex - secondIndex;
+      });
+    const currentIndex = slides.findIndex((item) => item._id === args.artifactId);
+    const targetIndex = args.direction === "left" ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= slides.length) return;
+
+    const current = slides[currentIndex];
+    const target = slides[targetIndex];
+    const currentData = current.data && typeof current.data === "object" ? current.data as Record<string, unknown> : {};
+    const targetData = target.data && typeof target.data === "object" ? target.data as Record<string, unknown> : {};
+    const currentSlideIndex = typeof currentData.slideIndex === "number" ? currentData.slideIndex : currentIndex + 1;
+    const targetSlideIndex = typeof targetData.slideIndex === "number" ? targetData.slideIndex : targetIndex + 1;
+    const now = Date.now();
+
+    await ctx.db.patch(current._id, {
+      title: `Slide ${targetSlideIndex}`,
+      data: { ...currentData, slideIndex: targetSlideIndex },
+      updatedAt: now,
+    });
+    await ctx.db.patch(target._id, {
+      title: `Slide ${currentSlideIndex}`,
+      data: { ...targetData, slideIndex: currentSlideIndex },
+      updatedAt: now,
+    });
+  },
+});
+
+export const updateSlideText = action({
+  args: {
+    artifactId: v.id("artifacts"),
+    primaryText: v.string(),
+    secondaryText: v.optional(v.string()),
+    bullets: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const artifact = await ctx.runQuery(internal.artifacts.records.getForRunner, {
+      artifactId: args.artifactId,
+    });
+    if (!artifact || artifact.userId !== userId || artifact.type !== "rendered_slide") {
+      throw new Error("Rendered slide not found");
+    }
+    const primaryText = args.primaryText.trim();
+    if (!primaryText) throw new Error("Primary text is required");
+
+    const data = artifact.data && typeof artifact.data === "object"
+      ? artifact.data as Record<string, unknown>
+      : {};
+    const textBlocks = textBlocksFromEdit({
+      primaryText,
+      secondaryText: args.secondaryText,
+      bullets: args.bullets,
+    });
+    const dimensions = getSlideDimensions(typeof data.aspectRatio === "string" ? data.aspectRatio : "9:16");
+    const backgroundImageUrl =
+      typeof data.backgroundImageUrl === "string" ? data.backgroundImageUrl : undefined;
+    const backgroundImageDataUri = await fetchImageDataUri(backgroundImageUrl);
+    const slide = slideFromArtifactData(data, textBlocks);
+    const svg = renderSlideSvg({ dimensions, backgroundImageDataUri, slide });
+    const storageId = await ctx.storage.store(new Blob([svg], { type: "image/svg+xml" }));
+    const renderedImageUrl = await ctx.storage.getUrl(storageId) ?? undefined;
+    const previousStorageId = typeof data.storageId === "string" ? data.storageId as Id<"_storage"> : undefined;
+    if (previousStorageId) {
+      try {
+        await ctx.storage.delete(previousStorageId);
+      } catch {
+        // Best-effort cleanup; the artifact now points at the new render.
+      }
+    }
+
+    await ctx.runMutation(internal.artifacts.records.updateFromRunner, {
+      artifactId: args.artifactId,
+      userId,
+      storageUrl: renderedImageUrl,
+      data: {
+        ...data,
+        textBlocks,
+        renderedImageUrl,
+        storageId,
+        backgroundEmbedded: Boolean(backgroundImageDataUri),
+        editedAt: Date.now(),
+      },
+      reviewStatus: "pending",
+    });
+
+    return { renderedImageUrl };
+  },
+});
+
 export const execute = internalAction({
   args: { requestId: v.id("contentRequests") },
   handler: async (ctx, args) => {
@@ -290,23 +568,31 @@ export const execute = internalAction({
         status: "planning",
       });
 
+      const slideCountHint = inferSlideCount(context.request.prompt);
       const textProvider = getModelProvider("openrouter");
-      const structured = await textProvider.generateStructured<SlideshowPlan>({
+      const structured = await textProvider.generateStructured<SlideshowPlannerOutput>({
         systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
         prompt: buildPlannerPrompt({
           prompt: context.request.prompt,
           revisionPrompt: context.request.revisionPrompt,
           brand: context.brand,
           socialAccount: context.socialAccount,
+          targetSlideCount: slideCountHint.targetSlideCount,
+          slideCountReasoning: slideCountHint.reasoning,
         }),
         schema: slideshowPlanSchema,
         schemaName: "slideshow_create_plan",
         model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || undefined,
         temperature: 0.7,
-        parser: (text) => normalizePlan(JSON.parse(text), context.request.prompt, context.request.revisionPrompt),
+        parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
       });
       costUsd = sumCost(costUsd, structured.metadata);
-      const plan = normalizePlan(structured.object, context.request.prompt, context.request.revisionPrompt);
+      const plan = normalizePlan(
+        structured.object,
+        context.request.prompt,
+        context.request.revisionPrompt,
+        slideCountHint.targetSlideCount
+      );
 
       await ctx.runMutation(internal.content.requests.transition, {
         requestId: args.requestId,
@@ -331,7 +617,7 @@ export const execute = internalAction({
       const imageBySlideIndex = new Map<number, { artifactId: Id<"artifacts">; url?: string }>();
 
       for (const slide of plan.slides) {
-        const prompt = `${slide.visualPrompt}. Vertical ${plan.aspectRatio} composition. Leave clean negative space for overlaid white text. No words, no captions, no logos, no watermark.`;
+        const prompt = providerImagePrompt(slide.visualPrompt, plan.aspectRatio);
         try {
           const image = await imageProvider.generateImage({
             prompt,
@@ -420,6 +706,8 @@ export const execute = internalAction({
             storageId,
             backgroundImageUrl: image?.url,
             backgroundEmbedded: Boolean(backgroundImageDataUri),
+            slideId: slide.slideId,
+            purpose: slide.purpose,
             textBlocks: slide.textBlocks,
             visualPrompt: slide.visualPrompt,
             layout: slide.layout,

@@ -209,6 +209,20 @@ export const getForRunner = internalQuery({
   },
 });
 
+export const listForContentRequest = internalQuery({
+  args: {
+    requestId: v.id("contentRequests"),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const artifacts = await ctx.db
+      .query("artifacts")
+      .withIndex("by_content_request", (q) => q.eq("contentRequestId", args.requestId))
+      .collect();
+    return artifacts.filter((artifact) => artifact.userId === args.userId);
+  },
+});
+
 export const getRegenerationContext = internalQuery({
   args: {
     artifactId: v.id("artifacts"),
