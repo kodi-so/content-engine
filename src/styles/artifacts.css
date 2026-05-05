@@ -1,0 +1,71 @@
+.artifact-grid {
+  @apply grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3.5;
+}
+
+.artifact-card {
+  @apply grid gap-3 rounded-lg border border-[#ded9ce] bg-[#fffdf8] p-3;
+}
+
+.artifact-preview {
+  @apply grid min-h-[180px] overflow-hidden rounded-md bg-[#ebe6db];
+}
+
+.image-preview img,
+.rendered-slide-preview img {
+  @apply size-full max-h-[260px] object-cover;
+}
+
+.rendered-slide-preview {
+  @apply relative min-h-[260px] items-end bg-[#17201b];
+}
+
+.rendered-slide-preview img {
+  @apply absolute inset-0 max-h-none opacity-70;
+}
+
+.rendered-slide-preview > div {
+  @apply relative grid gap-2 p-4 text-white;
+}
+
+.rendered-slide-preview strong {
+  @apply text-xl leading-[1.15];
+}
+
+.rendered-slide-preview span {
+  @apply text-sm leading-[1.35] text-[#f1f1ed];
+}
+
+.spec-preview,
+.text-preview {
+  @apply content-start gap-2 p-3.5;
+}
+
+.spec-preview strong {
+  @apply text-[15px] leading-[1.35];
+}
+
+.spec-preview span,
+.text-preview span {
+  @apply text-[13px] leading-[1.35] text-[#59645b];
+}
+
+.artifact-copy {
+  @apply grid gap-[7px];
+}
+
+.artifact-copy h3,
+.artifact-copy p {
+  @apply m-0;
+}
+
+.artifact-copy h3 {
+  @apply text-[17px];
+}
+
+.artifact-copy p {
+  @apply text-sm leading-[1.45] text-[#59645b];
+}
+
+.artifact-copy > span {
+  @apply w-fit rounded-full bg-[#e8f0d0] px-[9px] py-1 text-xs font-bold text-[#304018];
+}

@@ -1,0 +1,45 @@
+@media (max-width: 900px) {
+  .app-shell {
+    @apply grid-cols-1;
+  }
+
+  .sidebar {
+    @apply static h-auto;
+  }
+
+  .metric-grid,
+  .two-column,
+  .form-grid,
+  .filter-grid {
+    @apply grid-cols-1;
+  }
+
+  .prompt-field {
+    @apply col-span-1;
+  }
+
+  .workspace {
+    @apply p-[22px];
+  }
+
+  .slideshow-bundle-header,
+  .section-toolbar {
+    @apply flex-col items-stretch;
+  }
+
+  .slideshow-bundle-actions {
+    @apply items-start;
+  }
+
+  .slideshow-editor {
+    @apply grid-cols-1;
+  }
+
+  .slideshow-nav-button {
+    @apply hidden;
+  }
+
+  .slideshow-phone-frame {
+    @apply min-h-[360px];
+  }
+}

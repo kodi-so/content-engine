@@ -1,12 +1,12 @@
 import { v } from "convex/values";
-import { action, internalMutation, mutation, query } from "./_generated/server";
-import { internal } from "./_generated/api";
-import { getPublishingProvider } from "./providers";
+import { action, internalMutation, mutation, query } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { getPublishingProvider } from "../providers";
 import {
   platformValidator,
   publishingProviderValidator,
   socialAccountStatusValidator,
-} from "./validators";
+} from "../validators";
 
 export const list = query({
   handler: async (ctx) => {
@@ -94,7 +94,7 @@ export const syncProviderAccounts = action({
       })
       .filter((account): account is NonNullable<typeof account> => account !== null);
 
-    await ctx.runMutation(internal.socialAccounts.upsertSyncedAccounts, {
+    await ctx.runMutation(internal.accounts.socialAccounts.upsertSyncedAccounts, {
       userId: identity.subject,
       brandId: args.brandId,
       provider: args.provider,

@@ -2,7 +2,9 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   approvalPolicyValidator,
+  artifactLifecycleValidator,
   artifactTypeValidator,
+  contentRequestStatusValidator,
   contentFormatValidator,
   distributionStatusValidator,
   metricsValidator,
@@ -141,6 +143,28 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workflow", ["workflowId"]),
 
+  contentRequests: defineTable({
+    userId: v.string(),
+    brandId: v.id("brands"),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    contentFormat: contentFormatValidator,
+    prompt: v.string(),
+    revisionPrompt: v.optional(v.string()),
+    status: contentRequestStatusValidator,
+    plan: v.optional(v.any()),
+    summary: v.optional(v.string()),
+    costUsd: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    savedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandId"])
+    .index("by_user_status", ["userId", "status"]),
+
   workflowRuns: defineTable({
     userId: v.string(),
     workflowId: v.id("workflows"),
@@ -183,6 +207,7 @@ export default defineSchema({
   artifacts: defineTable({
     userId: v.string(),
     brandId: v.optional(v.id("brands")),
+    contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
@@ -193,12 +218,14 @@ export default defineSchema({
     provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
     prompt: v.optional(v.string()),
+    lifecycle: v.optional(artifactLifecycleValidator),
     reviewStatus: reviewStatusValidator,
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_brand", ["brandId"])
+    .index("by_content_request", ["contentRequestId"])
     .index("by_workflow_run", ["workflowRunId"])
     .index("by_type", ["type"]),
 

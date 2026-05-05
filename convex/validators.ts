@@ -60,6 +60,17 @@ export const workflowRunStatusValidator = v.union(
   v.literal("canceled")
 );
 
+export const contentRequestStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("planning"),
+  v.literal("generating"),
+  v.literal("rendering"),
+  v.literal("ready"),
+  v.literal("saved"),
+  v.literal("failed"),
+  v.literal("discarded")
+);
+
 export const workflowRunEventTypeValidator = v.union(
   v.literal("run_created"),
   v.literal("step_started"),
@@ -99,6 +110,12 @@ export const reviewStatusValidator = v.union(
   v.literal("approved"),
   v.literal("rejected"),
   v.literal("needs_revision")
+);
+
+export const artifactLifecycleValidator = v.union(
+  v.literal("preview"),
+  v.literal("saved"),
+  v.literal("discarded")
 );
 
 export const distributionStatusValidator = v.union(

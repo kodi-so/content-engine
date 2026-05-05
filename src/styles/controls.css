@@ -1,0 +1,106 @@
+.nav-link,
+.quiet-button,
+.primary-button,
+.secondary-button,
+.danger-button {
+  @apply inline-flex min-h-[38px] cursor-pointer items-center justify-center gap-2 rounded-lg border-0 no-underline transition-colors;
+}
+
+.quiet-button:disabled,
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+  @apply cursor-not-allowed opacity-55;
+}
+
+.quiet-button {
+  @apply w-full border border-[#31513f] bg-transparent text-[#dce6dd];
+}
+
+.quiet-button:hover {
+  @apply bg-[#20382b];
+}
+
+.primary-button {
+  @apply min-w-[140px] bg-[#d7f36b] px-[15px] font-extrabold text-[#17201b];
+}
+
+.primary-button:hover {
+  @apply bg-[#c7e557];
+}
+
+.secondary-button {
+  @apply border border-[#cfc9bc] bg-[#fffdf8] px-3 text-[#17201b];
+}
+
+.secondary-button:hover {
+  @apply border-[#5d7b48];
+}
+
+.danger-button {
+  @apply border border-[#d8b6ad] bg-[#fff8f6] px-3 text-[#8c2d22];
+}
+
+.danger-button:hover {
+  @apply border-[#ba4a36] bg-[#fff0ec];
+}
+
+.button-row {
+  @apply flex flex-wrap gap-2.5;
+}
+
+.form-grid {
+  @apply mb-4 grid grid-cols-4 items-end;
+}
+
+.form-grid h2 {
+  @apply col-span-full;
+}
+
+.prompt-field {
+  @apply col-span-2;
+}
+
+.field,
+.revision-field {
+  @apply grid gap-1.5;
+}
+
+.revision-field {
+  @apply gap-[7px];
+}
+
+.field span {
+  @apply text-[13px] font-bold text-[#4e5a51];
+}
+
+.revision-field span {
+  @apply text-xs font-bold text-[#4e5a51];
+}
+
+.field input,
+.field select,
+.field textarea,
+.revision-field textarea {
+  @apply w-full rounded-lg border border-[#cfc9bc] bg-white text-[#17201b];
+}
+
+.field input,
+.field select {
+  @apply min-h-10 px-[11px];
+}
+
+.field textarea {
+  @apply min-h-[98px] resize-y px-[11px] py-2.5 leading-[1.35];
+}
+
+.revision-field textarea {
+  @apply min-h-[78px] resize-y px-[11px] py-2.5 leading-[1.35];
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.revision-field textarea:focus {
+  @apply border-[#5d7b48] outline-3 outline-[#dcebb9];
+}

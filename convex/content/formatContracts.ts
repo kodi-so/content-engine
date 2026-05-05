@@ -1,4 +1,4 @@
-import type { Doc } from "./_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 
 export type ArtifactType = Doc<"artifacts">["type"];
 export type ContentFormat = Doc<"workflows">["contentFormat"];

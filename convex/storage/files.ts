@@ -1,8 +1,8 @@
 // Convex File Storage utilities for handling images
-import { action, mutation } from "./_generated/server";
-import { api } from "./_generated/api";
+import { action, mutation } from "../_generated/server";
+import { api } from "../_generated/api";
 import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { Id } from "../_generated/dataModel";
 
 /**
  * Extract storage ID from a Convex storage URL
@@ -103,7 +103,7 @@ export const uploadBase64Images = action({
   handler: async (ctx, args): Promise<string[]> => {
     // Upload all images in parallel
     const uploadPromises = args.base64DataArray.map((base64Data, index) =>
-      ctx.runAction(api.storage.uploadBase64Image, {
+      ctx.runAction(api.storage.files.uploadBase64Image, {
         base64Data,
         filename: `image-${index}`,
       })

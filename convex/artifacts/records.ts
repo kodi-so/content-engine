@@ -5,13 +5,14 @@ import {
   mutation,
   query,
   type MutationCtx,
-} from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+} from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import {
+  artifactLifecycleValidator,
   artifactTypeValidator,
   modelProviderValidator,
   reviewStatusValidator,
-} from "./validators";
+} from "../validators";
 
 function reviewResolution(
   artifacts: Array<{ reviewStatus: string } | null>
@@ -161,6 +162,7 @@ async function reconcileApprovalForArtifact(
 export const list = query({
   args: {
     brandId: v.optional(v.id("brands")),
+    contentRequestId: v.optional(v.id("contentRequests")),
     workflowRunId: v.optional(v.id("workflowRuns")),
   },
   handler: async (ctx, args) => {
@@ -172,6 +174,15 @@ export const list = query({
         .query("artifacts")
         .withIndex("by_workflow_run", (q) =>
           q.eq("workflowRunId", args.workflowRunId!)
+        )
+        .collect();
+    }
+
+    if (args.contentRequestId) {
+      return await ctx.db
+        .query("artifacts")
+        .withIndex("by_content_request", (q) =>
+          q.eq("contentRequestId", args.contentRequestId!)
         )
         .collect();
     }
@@ -234,6 +245,7 @@ export const getRegenerationContext = internalQuery({
 export const create = mutation({
   args: {
     brandId: v.optional(v.id("brands")),
+    contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
@@ -244,6 +256,7 @@ export const create = mutation({
     provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
     prompt: v.optional(v.string()),
+    lifecycle: v.optional(artifactLifecycleValidator),
     reviewStatus: v.optional(reviewStatusValidator),
   },
   handler: async (ctx, args) => {
@@ -265,6 +278,7 @@ export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
     brandId: v.optional(v.id("brands")),
+    contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
@@ -275,6 +289,7 @@ export const createFromRunner = internalMutation({
     provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
     prompt: v.optional(v.string()),
+    lifecycle: v.optional(artifactLifecycleValidator),
     reviewStatus: v.optional(reviewStatusValidator),
   },
   handler: async (ctx, args) => {

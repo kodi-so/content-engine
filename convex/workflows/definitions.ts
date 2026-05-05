@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query } from "../_generated/server";
 import {
   approvalPolicyValidator,
   contentFormatValidator,
@@ -7,7 +7,7 @@ import {
   scheduleConfigValidator,
   workflowStepValidator,
   workflowTriggerValidator,
-} from "./validators";
+} from "../validators";
 
 export const list = query({
   handler: async (ctx) => {

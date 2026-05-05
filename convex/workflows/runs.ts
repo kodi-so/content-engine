@@ -1,10 +1,10 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internalMutation, internalQuery, mutation, query } from "../_generated/server";
+import { internal } from "../_generated/api";
 import {
   workflowRunEventTypeValidator,
   workflowRunStatusValidator,
-} from "./validators";
+} from "../validators";
 
 export const list = query({
   args: { workflowId: v.optional(v.id("workflows")) },
@@ -83,7 +83,7 @@ export const createManualRun = mutation({
       createdAt: now,
     });
 
-    await ctx.scheduler.runAfter(0, internal.workflowRunner.executeRun, { runId });
+    await ctx.scheduler.runAfter(0, internal.workflows.runner.executeRun, { runId });
 
     return runId;
   },

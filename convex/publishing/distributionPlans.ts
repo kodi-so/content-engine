@@ -5,22 +5,21 @@ import {
   internalQuery,
   mutation,
   query,
-  type ActionCtx,
-} from "./_generated/server";
-import { internal } from "./_generated/api";
-import { getPublishingProvider } from "./providers";
-import type { Doc, Id } from "./_generated/dataModel";
-import type { PublishContentInput, UploadedMedia } from "./providers/publishing";
+} from "../_generated/server";
+import { internal } from "../_generated/api";
+import { getPublishingProvider } from "../providers";
+import type { Doc } from "../_generated/dataModel";
 import {
   distributionStatusValidator,
   publishingProviderValidator,
-} from "./validators";
-
-type DistributionPublishContext = {
-  plan: Doc<"distributionPlans">;
-  artifacts: Doc<"artifacts">[];
-  socialAccounts: Doc<"socialAccounts">[];
-};
+} from "../validators";
+import { replaceArtifactInPlan } from "./approval";
+import {
+  compactMetrics,
+  getDistributionPlanContext,
+  loadPublishInput,
+  mapProviderStatus,
+} from "./publishInput";
 
 export const list = query({
   handler: async (ctx) => {
@@ -204,57 +203,6 @@ export const updateFromProvider = internalMutation({
   },
 });
 
-function reviewResolution(
-  artifacts: Array<{ reviewStatus: string } | null>
-): "approved" | "needs_revision" | "pending" {
-  if (
-    artifacts.some(
-      (artifact) =>
-        artifact?.reviewStatus === "needs_revision" ||
-        artifact?.reviewStatus === "rejected"
-    )
-  ) {
-    return "needs_revision";
-  }
-
-  if (
-    artifacts.every(
-      (artifact) =>
-        artifact &&
-        (artifact.reviewStatus === "approved" ||
-          artifact.reviewStatus === "not_required")
-    )
-  ) {
-    return "approved";
-  }
-
-  return "pending";
-}
-
-function statusFromReviewResolution(
-  resolution: "approved" | "needs_revision" | "pending"
-): "draft" | "needs_revision" | "waiting_for_approval" {
-  if (resolution === "approved") return "draft";
-  if (resolution === "needs_revision") return "needs_revision";
-  return "waiting_for_approval";
-}
-
-function replacementSourceId(artifact: Doc<"artifacts">): string | undefined {
-  if (!artifact.data || typeof artifact.data !== "object") return undefined;
-
-  const data = artifact.data as Record<string, unknown>;
-  if (typeof data.sourceArtifactId === "string") return data.sourceArtifactId;
-
-  const regeneration = data.regeneration;
-  if (!regeneration || typeof regeneration !== "object") return undefined;
-
-  const requestedFromArtifactId = (regeneration as Record<string, unknown>)
-    .requestedFromArtifactId;
-  return typeof requestedFromArtifactId === "string"
-    ? requestedFromArtifactId
-    : undefined;
-}
-
 export const replaceArtifact = mutation({
   args: {
     id: v.id("distributionPlans"),
@@ -265,273 +213,9 @@ export const replaceArtifact = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const plan = await ctx.db.get(args.id);
-    if (!plan || plan.userId !== identity.subject) {
-      throw new Error("Distribution plan not found");
-    }
-    if (!plan.artifactIds.some((artifactId) => artifactId === args.oldArtifactId)) {
-      throw new Error("Original artifact is not in this distribution plan");
-    }
-
-    const oldArtifact = await ctx.db.get(args.oldArtifactId);
-    const newArtifact = await ctx.db.get(args.newArtifactId);
-    if (!oldArtifact || oldArtifact.userId !== identity.subject) {
-      throw new Error("Original artifact not found");
-    }
-    if (!newArtifact || newArtifact.userId !== identity.subject) {
-      throw new Error("Replacement artifact not found");
-    }
-    if (oldArtifact.workflowRunId !== plan.workflowRunId) {
-      throw new Error("Original artifact does not belong to this plan's workflow run");
-    }
-    if (newArtifact.workflowRunId !== plan.workflowRunId) {
-      throw new Error("Replacement artifact must belong to the same workflow run");
-    }
-
-    const parentIds = new Set((newArtifact.parentArtifactIds ?? []).map(String));
-    const sourceId = replacementSourceId(newArtifact);
-    if (!parentIds.has(String(args.oldArtifactId)) && sourceId !== String(args.oldArtifactId)) {
-      throw new Error("Replacement artifact is not linked to the original artifact");
-    }
-
-    const artifactIds = plan.artifactIds.map((artifactId) =>
-      artifactId === args.oldArtifactId ? args.newArtifactId : artifactId
-    );
-    const planArtifacts = await Promise.all(
-      artifactIds.map((artifactId) => ctx.db.get(artifactId))
-    );
-    const nextStatus = statusFromReviewResolution(reviewResolution(planArtifacts));
-    const now = Date.now();
-
-    await ctx.db.patch(plan._id, {
-      artifactIds,
-      status: nextStatus,
-      errorMessage: undefined,
-      providerPayload: {
-        ...(plan.providerPayload &&
-        typeof plan.providerPayload === "object" &&
-        !Array.isArray(plan.providerPayload)
-          ? (plan.providerPayload as Record<string, unknown>)
-          : {}),
-        replacement: {
-          oldArtifactId: args.oldArtifactId,
-          newArtifactId: args.newArtifactId,
-          replacedAt: now,
-        },
-      },
-      updatedAt: now,
-    });
-
-    if (plan.workflowRunId && plan.workflowId) {
-      await ctx.db.insert("workflowRunEvents", {
-        userId: identity.subject,
-        workflowRunId: plan.workflowRunId,
-        workflowId: plan.workflowId,
-        type: "approval_resolved",
-        message: "Distribution plan artifact replaced with regenerated output.",
-        data: {
-          distributionPlanId: plan._id,
-          oldArtifactId: args.oldArtifactId,
-          newArtifactId: args.newArtifactId,
-          status: nextStatus,
-        },
-        createdAt: now,
-      });
-
-      const run = await ctx.db.get(plan.workflowRunId);
-      if (
-        run &&
-        (run.status === "waiting_for_approval" ||
-          run.status === "needs_revision" ||
-          run.status === "completed")
-      ) {
-        await ctx.db.patch(run._id, {
-          status: nextStatus === "draft" ? "completed" : nextStatus,
-          summary:
-            nextStatus === "draft"
-              ? "Approved and ready for publishing."
-              : nextStatus === "needs_revision"
-                ? "Review requested revisions before publishing."
-                : run.summary,
-          completedAt: nextStatus === "draft" ? now : run.completedAt,
-          updatedAt: now,
-        });
-      }
-    }
-
-    return { status: nextStatus, artifactIds };
+    return await replaceArtifactInPlan(ctx, args, identity.subject);
   },
 });
-
-function extractArtifactText(artifacts: Doc<"artifacts">[]): string | undefined {
-  for (const artifact of artifacts) {
-    if (artifact.type !== "caption" && artifact.type !== "text_draft") continue;
-    if (!artifact.data || typeof artifact.data !== "object") continue;
-
-    const data = artifact.data as Record<string, unknown>;
-    const text = data.text ?? data.caption ?? data.content;
-    if (typeof text === "string" && text.trim()) {
-      return text.trim();
-    }
-  }
-
-  return undefined;
-}
-
-function inferMimeType(artifact: Doc<"artifacts">): string {
-  if (artifact.data && typeof artifact.data === "object") {
-    const data = artifact.data as Record<string, unknown>;
-    if (typeof data.mimeType === "string") return data.mimeType;
-  }
-  if (artifact.type === "video") return "video/mp4";
-  if (artifact.type === "rendered_slide") return "image/svg+xml";
-  if (!artifact.storageUrl) return "image/png";
-  if (artifact.storageUrl.endsWith(".jpg") || artifact.storageUrl.endsWith(".jpeg")) {
-    return "image/jpeg";
-  }
-  if (artifact.storageUrl.endsWith(".webp")) return "image/webp";
-  return "image/png";
-}
-
-async function mediaFromArtifact(
-  provider: ReturnType<typeof getPublishingProvider>,
-  artifact: Doc<"artifacts">
-): Promise<UploadedMedia | null> {
-  if (
-    artifact.type !== "image" &&
-    artifact.type !== "video" &&
-    artifact.type !== "rendered_slide" &&
-    artifact.type !== "rendered_asset" &&
-    artifact.type !== "thumbnail"
-  ) {
-    return null;
-  }
-
-  const data = artifact.data && typeof artifact.data === "object"
-    ? (artifact.data as Record<string, unknown>)
-    : {};
-  const externalMediaId = data.externalMediaId;
-  if (typeof externalMediaId === "string") {
-    return {
-      externalMediaId,
-      url: typeof data.url === "string" ? data.url : artifact.storageUrl,
-      metadata: data,
-    };
-  }
-
-  const source = typeof data.url === "string" ? data.url : artifact.storageUrl;
-  if (!source) return null;
-
-  const mimeType =
-    typeof data.mimeType === "string" ? data.mimeType : inferMimeType(artifact);
-
-  if (source.startsWith("data:")) {
-    return await provider.uploadMedia({
-      filename: `${artifact._id}.${mimeType.split("/").pop() ?? "bin"}`,
-      mimeType,
-      data: source,
-      encoding: "base64",
-    });
-  }
-
-  const response = await fetch(source);
-  if (!response.ok) {
-    throw new Error(`Could not fetch artifact media: ${response.status}`);
-  }
-
-  return await provider.uploadMedia({
-    filename: `${artifact._id}.${mimeType.split("/").pop() ?? "bin"}`,
-    mimeType: response.headers.get("content-type") ?? mimeType,
-    data: await response.arrayBuffer(),
-  });
-}
-
-function mapProviderStatus(status: string):
-  | "draft"
-  | "scheduled"
-  | "publishing"
-  | "published"
-  | "failed"
-  | "canceled" {
-  if (
-    status === "draft" ||
-    status === "scheduled" ||
-    status === "publishing" ||
-    status === "published" ||
-    status === "failed" ||
-    status === "canceled"
-  ) {
-    return status;
-  }
-
-  return "publishing";
-}
-
-function compactMetrics(metrics: {
-  views?: number;
-  likes?: number;
-  comments?: number;
-  shares?: number;
-  saves?: number;
-  clicks?: number;
-  followersGained?: number;
-}) {
-  return Object.fromEntries(
-    Object.entries(metrics).filter(([, value]) => value !== undefined)
-  ) as {
-    views?: number;
-    likes?: number;
-    comments?: number;
-    shares?: number;
-    saves?: number;
-    clicks?: number;
-    followersGained?: number;
-  };
-}
-
-async function loadPublishInput(
-  provider: ReturnType<typeof getPublishingProvider>,
-  context: DistributionPublishContext
-): Promise<PublishContentInput> {
-  const text = context.plan.caption ?? extractArtifactText(context.artifacts);
-  const media = (
-    await Promise.all(
-      context.artifacts.map((artifact) => mediaFromArtifact(provider, artifact))
-    )
-  ).filter((item): item is UploadedMedia => item !== null);
-
-  return {
-    targets: context.socialAccounts.map((account) => ({
-      accountId: account.externalAccountId,
-      platform:
-        account.metadata &&
-        typeof account.metadata === "object" &&
-        typeof (account.metadata as Record<string, unknown>).identifier === "string"
-          ? ((account.metadata as Record<string, unknown>).identifier as string)
-          : account.platform,
-      content: text,
-      media,
-    })),
-    text,
-    media,
-    publishAt: context.plan.scheduledFor,
-    timezone: context.plan.timezone,
-    metadata: {
-      distributionPlanId: context.plan._id,
-    },
-  };
-}
-
-async function getDistributionPlanContext(
-  ctx: ActionCtx,
-  id: Id<"distributionPlans">,
-  userId: string
-) : Promise<DistributionPublishContext | null> {
-  return await ctx.runQuery(internal.distributionPlans.getPublishContext, {
-    id,
-    userId,
-  });
-}
 
 export const publish = action({
   args: {
@@ -559,7 +243,7 @@ export const publish = action({
 
     const provider = getPublishingProvider(context.plan.provider);
 
-    await ctx.runMutation(internal.distributionPlans.updateFromProvider, {
+    await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
       id: context.plan._id,
       userId: identity.subject,
       status: "publishing",
@@ -572,7 +256,7 @@ export const publish = action({
           ? await provider.schedulePost(input)
           : await provider.publishNow(input);
 
-      await ctx.runMutation(internal.distributionPlans.updateFromProvider, {
+      await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
         id: context.plan._id,
         userId: identity.subject,
         status: mapProviderStatus(result.status),
@@ -582,7 +266,7 @@ export const publish = action({
       });
 
       if (context.plan.workflowRunId && context.plan.workflowId) {
-        await ctx.runMutation(internal.workflowRuns.recordEvent, {
+        await ctx.runMutation(internal.workflows.runs.recordEvent, {
           userId: identity.subject,
           workflowRunId: context.plan.workflowRunId,
           workflowId: context.plan.workflowId,
@@ -598,7 +282,7 @@ export const publish = action({
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Publishing failed";
-      await ctx.runMutation(internal.distributionPlans.updateFromProvider, {
+      await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
         id: context.plan._id,
         userId: identity.subject,
         status: "failed",
@@ -606,7 +290,7 @@ export const publish = action({
       });
 
       if (context.plan.workflowRunId && context.plan.workflowId) {
-        await ctx.runMutation(internal.workflowRuns.recordEvent, {
+        await ctx.runMutation(internal.workflows.runs.recordEvent, {
           userId: identity.subject,
           workflowRunId: context.plan.workflowRunId,
           workflowId: context.plan.workflowId,
@@ -646,7 +330,7 @@ export const syncStatus = action({
           ? "publishing"
           : "scheduled";
 
-    await ctx.runMutation(internal.distributionPlans.updateFromProvider, {
+    await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
       id: context.plan._id,
       userId: identity.subject,
       status: nextStatus,
@@ -682,7 +366,7 @@ export const syncMetrics = action({
     }
 
     for (const metric of result.metrics) {
-      await ctx.runMutation(internal.metrics.recordFromProvider, {
+      await ctx.runMutation(internal.publishing.metrics.recordFromProvider, {
         userId: identity.subject,
         brandId: context.plan.brandId,
         workflowId: context.plan.workflowId,

@@ -1,0 +1,91 @@
+.app-shell {
+  @apply grid min-h-screen grid-cols-[260px_minmax(0,1fr)];
+}
+
+.sidebar {
+  @apply sticky top-0 flex h-screen flex-col border-r border-[#d8d4c8] bg-[#13231b] px-[18px] py-6 text-[#f6f2e8];
+}
+
+.brand-mark {
+  @apply flex items-center gap-2.5 px-2 pb-[22px] text-lg font-bold;
+}
+
+.nav-list {
+  @apply grid gap-1.5;
+}
+
+.nav-link {
+  @apply justify-start px-3 py-2.5 text-[#b9c6bc];
+}
+
+.nav-link:hover,
+.nav-link.active {
+  @apply bg-[#244634] text-white;
+}
+
+.user-panel {
+  @apply mt-auto grid gap-3 border-t border-[#2c4637] pt-[18px];
+}
+
+.user-meta {
+  @apply grid grid-cols-[34px_minmax(0,1fr)] items-center gap-2.5;
+}
+
+.avatar {
+  @apply grid size-[34px] place-items-center overflow-hidden rounded-full bg-[#d7f36b] font-extrabold text-[#13231b];
+}
+
+.avatar img {
+  @apply size-full object-cover;
+}
+
+.user-name,
+.user-email {
+  @apply overflow-hidden text-ellipsis whitespace-nowrap;
+}
+
+.user-name {
+  @apply text-sm font-bold;
+}
+
+.user-email {
+  @apply text-xs text-[#9cac9f];
+}
+
+.workspace {
+  @apply p-[34px];
+}
+
+.page-header {
+  @apply mb-[26px] max-w-[880px];
+}
+
+.page-header h1 {
+  @apply my-1.5 text-[34px] leading-[1.1];
+}
+
+.page-header p {
+  @apply m-0 text-[#59645b];
+}
+
+.metric-grid,
+.entity-grid,
+.two-column {
+  @apply grid gap-4;
+}
+
+.metric-grid {
+  @apply mb-4 grid-cols-4;
+}
+
+.two-column {
+  @apply grid-cols-2;
+}
+
+.entity-grid {
+  @apply mt-4 grid-cols-[repeat(auto-fill,minmax(260px,1fr))];
+}
+
+.filter-grid {
+  @apply mb-3 grid grid-cols-6 items-end gap-3;
+}

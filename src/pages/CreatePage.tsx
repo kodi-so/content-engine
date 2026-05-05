@@ -1,0 +1,274 @@
+import { useMutation, useQuery } from "convex/react";
+import { Check, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { api } from "../../convex/_generated/api";
+import { CreateSlideshowPreview } from "../components/SlideshowPreview";
+import { FormPanel, Page, Panel, Select, TextArea } from "../components/ui";
+import { slideNumber } from "../lib/artifactUtils";
+import type { BrandId, SocialAccountId } from "../types";
+
+export function CreatePage() {
+  const brands = useQuery(api.accounts.brands.list);
+  const accounts = useQuery(api.accounts.socialAccounts.list);
+  const contentRequests = useQuery(api.content.requests.list, {});
+  const artifacts = useQuery(api.artifacts.records.list, {});
+  const createSlideshow = useMutation(api.content.requests.createSlideshow);
+  const reviseSlideshow = useMutation(api.content.requests.reviseSlideshow);
+  const saveRequest = useMutation(api.content.requests.save);
+  const discardRequest = useMutation(api.content.requests.discard);
+  const [brandId, setBrandId] = useState("");
+  const [socialAccountId, setSocialAccountId] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [revisionPrompt, setRevisionPrompt] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const selectedBrandId = brandId || brands?.[0]?._id || "";
+  const brandAccounts = useMemo(
+    () =>
+      accounts?.filter((account) => !selectedBrandId || account.brandId === selectedBrandId) ?? [],
+    [accounts, selectedBrandId]
+  );
+  const activeRequest =
+    contentRequests?.find((request) => String(request._id) === selectedRequestId) ??
+    contentRequests?.find((request) => request.status !== "discarded") ??
+    contentRequests?.[0];
+  const requestArtifacts = useMemo(
+    () =>
+      artifacts?.filter(
+        (artifact) =>
+          activeRequest &&
+          artifact.contentRequestId === activeRequest._id &&
+          artifact.lifecycle !== "discarded"
+      ) ?? [],
+    [activeRequest, artifacts]
+  );
+  const renderedSlides = useMemo(
+    () =>
+      requestArtifacts
+        .filter((artifact) => artifact.type === "rendered_slide")
+        .sort((first, second) => slideNumber(first) - slideNumber(second)),
+    [requestArtifacts]
+  );
+  const plan = activeRequest?.plan && typeof activeRequest.plan === "object"
+    ? activeRequest.plan as {
+        title?: string;
+        creativeBrief?: string;
+        hook?: string;
+        caption?: string;
+        slides?: Array<{
+          role?: string;
+          visualPrompt?: string;
+          textBlocks?: Array<{ role?: string; text?: string; items?: string[] }>;
+        }>;
+      }
+    : undefined;
+  const isWorking = activeRequest
+    ? ["queued", "planning", "generating", "rendering"].includes(activeRequest.status)
+    : false;
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const targetBrandId = selectedBrandId;
+    if (!targetBrandId || !prompt.trim()) return;
+
+    setStatusMessage("Creating slideshow preview");
+    try {
+      const requestId = await createSlideshow({
+        brandId: targetBrandId as BrandId,
+        socialAccountId: socialAccountId ? (socialAccountId as SocialAccountId) : undefined,
+        prompt: prompt.trim(),
+      });
+      setSelectedRequestId(String(requestId));
+      setPrompt("");
+      setRevisionPrompt("");
+      setStatusMessage("Preview queued");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Create failed");
+    }
+  };
+
+  const handleRevise = async () => {
+    if (!activeRequest || !revisionPrompt.trim()) return;
+
+    setStatusMessage("Regenerating preview");
+    try {
+      await reviseSlideshow({
+        id: activeRequest._id,
+        revisionPrompt: revisionPrompt.trim(),
+      });
+      setRevisionPrompt("");
+      setStatusMessage("Revision queued");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Revision failed");
+    }
+  };
+
+  const handleSave = async () => {
+    if (!activeRequest) return;
+
+    setStatusMessage("Saving slideshow");
+    try {
+      await saveRequest({ id: activeRequest._id });
+      setStatusMessage("Slideshow saved to Library");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Save failed");
+    }
+  };
+
+  const handleDiscard = async () => {
+    if (!activeRequest) return;
+    if (!window.confirm("Discard this preview and delete its generated artifacts?")) return;
+
+    setStatusMessage("Discarding preview");
+    try {
+      await discardRequest({ id: activeRequest._id });
+      setStatusMessage("Preview discarded");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Discard failed");
+    }
+  };
+
+  return (
+    <Page title="Create" description="Turn a rough idea into a reviewable one-off slideshow.">
+      <FormPanel title="Generate Slideshow Preview" onSubmit={handleSubmit}>
+        <Select label="Brand" value={selectedBrandId} onChange={setBrandId}>
+          <option value="">Select brand</option>
+          {brands?.map((brand) => (
+            <option key={brand._id} value={brand._id}>
+              {brand.name}
+            </option>
+          ))}
+        </Select>
+        <Select label="Account" value={socialAccountId} onChange={setSocialAccountId}>
+          <option value="">No account yet</option>
+          {brandAccounts.map((account) => (
+            <option key={account._id} value={account._id}>
+              {account.username}
+            </option>
+          ))}
+        </Select>
+        <Select label="Format" value="slideshow" onChange={() => undefined}>
+          <option value="slideshow">Slideshow</option>
+        </Select>
+        <TextArea
+          label="Prompt"
+          value={prompt}
+          onChange={setPrompt}
+          placeholder="Create a slideshow for five habits you should do every morning. Use a dark minimalist style."
+          rows={4}
+        />
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={!selectedBrandId || !prompt.trim()}
+        >
+          <Sparkles size={16} />
+          Generate preview
+        </button>
+        {brands?.length === 0 && <p className="muted">Create a brand before generating content.</p>}
+      </FormPanel>
+
+      {statusMessage && <p className="muted">{statusMessage}</p>}
+
+      <div className="two-column create-workspace">
+        <Panel title="Recent Requests">
+          {!contentRequests && <p className="muted">Loading requests...</p>}
+          {contentRequests?.length === 0 && <p className="muted">No one-off content requests yet.</p>}
+          <div className="request-list">
+            {contentRequests?.map((request) => (
+              <button
+                className={`request-list-item ${activeRequest?._id === request._id ? "active" : ""}`}
+                key={request._id}
+                type="button"
+                onClick={() => setSelectedRequestId(String(request._id))}
+              >
+                <span>{request.status}</span>
+                <strong>{request.summary || request.prompt}</strong>
+                <small>{new Date(request.createdAt).toLocaleString()}</small>
+              </button>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Creative Plan">
+          {!activeRequest && <p className="muted">Generate a preview to see the agent's plan.</p>}
+          {activeRequest && (
+            <div className="create-plan">
+              <div className="entity-eyebrow">{activeRequest.status}</div>
+              <h3>{plan?.title || activeRequest.prompt}</h3>
+              <p>{plan?.creativeBrief || activeRequest.summary || "The creative plan will appear here once planning finishes."}</p>
+              {activeRequest.errorMessage && <p className="error-note">{activeRequest.errorMessage}</p>}
+              {plan?.slides && (
+                <div className="status-row">
+                  <span>Planned slides</span>
+                  <strong>{plan.slides.length}</strong>
+                </div>
+              )}
+              {plan?.hook && (
+                <div className="status-row">
+                  <span>Hook</span>
+                  <strong>{plan.hook}</strong>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <Panel title="Preview">
+        {isWorking && <div className="empty-state">The agent is creating your slideshow preview...</div>}
+        {!isWorking && activeRequest && renderedSlides.length === 0 && (
+          <div className="empty-state">No rendered preview yet.</div>
+        )}
+        {activeRequest && renderedSlides.length > 0 && (
+          <>
+            <CreateSlideshowPreview
+              title={plan?.title || "Generated slideshow"}
+              subtitle={`${renderedSlides.length} slides · ${activeRequest.status}`}
+              artifacts={renderedSlides}
+            />
+            <label className="revision-field">
+              <span>Regenerate with changes</span>
+              <textarea
+                value={revisionPrompt}
+                onChange={(event) => setRevisionPrompt(event.target.value)}
+                placeholder="Make it more premium, remove the CTA, use a harsher gym tone..."
+                rows={3}
+              />
+            </label>
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={isWorking || !revisionPrompt.trim()}
+                onClick={() => void handleRevise()}
+              >
+                <RefreshCw size={16} />
+                Regenerate preview
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={isWorking || activeRequest.status === "saved"}
+                onClick={() => void handleSave()}
+              >
+                <Check size={16} />
+                Save to Library
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={isWorking}
+                onClick={() => void handleDiscard()}
+              >
+                <Trash2 size={16} />
+                Discard preview
+              </button>
+            </div>
+          </>
+        )}
+      </Panel>
+    </Page>
+  );
+}

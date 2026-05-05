@@ -1,0 +1,97 @@
+.slideshow-stack {
+  @apply mb-[18px] grid gap-[18px];
+}
+
+.slideshow-bundle-card {
+  @apply grid gap-[18px] overflow-hidden rounded-[14px] border border-[#d8d2c5] p-[18px];
+  background:
+    radial-gradient(circle at 12% 14%, rgba(215, 243, 107, 0.18), transparent 30%),
+    linear-gradient(145deg, #fffdf8 0%, #efede5 100%);
+}
+
+.slideshow-bundle-header,
+.slideshow-bundle-actions {
+  @apply flex items-start justify-between gap-3.5;
+}
+
+.slideshow-bundle-header h3,
+.slideshow-bundle-header p {
+  @apply m-0;
+}
+
+.slideshow-bundle-header h3 {
+  @apply text-[22px] leading-[1.15];
+}
+
+.slideshow-bundle-header p {
+  @apply text-sm leading-[1.45] text-[#59645b];
+}
+
+.slideshow-bundle-actions {
+  @apply flex-col items-end;
+}
+
+.slideshow-bundle-actions span,
+.slideshow-slide-count,
+.slideshow-current-slide .artifact-copy > span {
+  @apply w-fit rounded-full bg-[#e8f0d0] px-[9px] py-1 text-xs font-bold text-[#304018];
+}
+
+.slideshow-editor {
+  @apply grid grid-cols-[44px_minmax(240px,380px)_44px] items-center justify-center gap-4 rounded-2xl px-4 py-6;
+  background:
+    linear-gradient(90deg, rgba(19, 35, 27, 0.08), transparent 16%, transparent 84%, rgba(19, 35, 27, 0.08)),
+    #e8e6de;
+}
+
+.slideshow-phone-frame {
+  @apply relative grid aspect-[9/16] max-h-[620px] min-h-[420px] overflow-hidden rounded-[28px] border-8 border-[#17201b] bg-[#17201b] shadow-2xl;
+  touch-action: pan-y;
+}
+
+.slideshow-phone-frame > img,
+.slideshow-phone-frame .artifact-preview {
+  @apply size-full;
+}
+
+.slideshow-phone-frame > img {
+  @apply object-cover;
+}
+
+.slideshow-phone-frame .artifact-preview {
+  @apply min-h-full rounded-none;
+}
+
+.slideshow-slide-count {
+  @apply absolute bottom-3 right-3 bg-[#fffdf8]/90;
+}
+
+.slideshow-nav-button {
+  @apply grid size-11 cursor-pointer place-items-center rounded-full border border-[#cfc9bc] bg-[#fffdf8]/80 text-[#17201b];
+}
+
+.slideshow-nav-button:disabled {
+  @apply cursor-not-allowed opacity-35;
+}
+
+.slideshow-thumb-row {
+  @apply flex gap-2.5 overflow-x-auto px-0.5 pb-2.5 pt-0.5;
+  scroll-snap-type: x mandatory;
+}
+
+.slideshow-thumb {
+  @apply grid size-[58px] flex-none cursor-pointer place-items-center overflow-hidden rounded-xl border-2 border-transparent bg-[#ebe6db] p-0 text-[#59645b];
+  scroll-snap-align: start;
+}
+
+.slideshow-thumb.active {
+  @apply border-[#5d7b48] shadow-[0_0_0_3px_#dcebb9];
+}
+
+.slideshow-thumb img {
+  @apply size-full object-cover;
+}
+
+.slideshow-current-slide {
+  @apply grid gap-3 border-t border-[#ded9ce] pt-4;
+}

@@ -1,9 +1,17 @@
 import { v } from "convex/values";
-import { action } from "./_generated/server";
-import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
-import { getModelProvider } from "./providers";
-import type { ModelProviderName } from "./providers/model";
+import { action } from "../_generated/server";
+import { internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
+import {
+  getRenderedSlideDimensions,
+  slideFromCopy,
+} from "../content/slideshowAdapter";
+import {
+  fetchImageDataUri,
+  renderSlideSvg,
+} from "../content/slideshowRenderer";
+import { getModelProvider } from "../providers";
+import type { ModelProviderName } from "../providers/model";
 
 function latestRevisionNote(artifact: Doc<"artifacts">): string {
   if (!artifact.data || typeof artifact.data !== "object") {
@@ -48,134 +56,6 @@ function getModelProviderName(
     : fallback;
 }
 
-function escapeXml(value: unknown): string {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function wrapText(value: string | undefined, maxChars: number): string[] {
-  if (!value?.trim()) return [];
-
-  const words = value.trim().split(/\s+/);
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    const nextLine = currentLine ? `${currentLine} ${word}` : word;
-    if (nextLine.length > maxChars && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = nextLine;
-    }
-  }
-
-  if (currentLine) lines.push(currentLine);
-  return lines;
-}
-
-async function fetchImageDataUri(url: string | undefined): Promise<string | undefined> {
-  if (!url) return undefined;
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return undefined;
-
-    const contentType = response.headers.get("content-type") ?? "image/png";
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    let binary = "";
-    const chunkSize = 8192;
-
-    for (let index = 0; index < bytes.length; index += chunkSize) {
-      binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
-    }
-
-    return `data:${contentType};base64,${btoa(binary)}`;
-  } catch {
-    return undefined;
-  }
-}
-
-function getRenderedSlideDimensions(data: Record<string, unknown>): {
-  width: number;
-  height: number;
-} {
-  const dimensions = data.dimensions;
-  if (dimensions && typeof dimensions === "object") {
-    const width = (dimensions as Record<string, unknown>).width;
-    const height = (dimensions as Record<string, unknown>).height;
-    if (typeof width === "number" && typeof height === "number") {
-      return { width, height };
-    }
-  }
-
-  if (data.aspectRatio === "1:1") return { width: 1080, height: 1080 };
-  if (data.aspectRatio === "4:5") return { width: 1080, height: 1350 };
-  if (data.aspectRatio === "16:9") return { width: 1920, height: 1080 };
-  return { width: 1080, height: 1920 };
-}
-
-function renderSlideSvg(args: {
-  dimensions: { width: number; height: number };
-  backgroundImageDataUri?: string;
-  headline?: string;
-  body?: string;
-  role?: string;
-  slideIndex: number;
-}): string {
-  const { width, height } = args.dimensions;
-  const margin = Math.round(width * 0.075);
-  const panelHeight = Math.round(height * 0.36);
-  const panelY = height - panelHeight;
-  const headlineSize = Math.round(width * 0.065);
-  const bodySize = Math.round(width * 0.036);
-  const eyebrowSize = Math.round(width * 0.026);
-  const maxHeadlineChars = width > height ? 34 : 21;
-  const maxBodyChars = width > height ? 72 : 42;
-  const headlineLines = wrapText(args.headline, maxHeadlineChars).slice(0, 4);
-  const bodyLines = wrapText(args.body, maxBodyChars).slice(0, 4);
-  const background = args.backgroundImageDataUri
-    ? `<image href="${args.backgroundImageDataUri}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />`
-    : `<linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#203428" />
-        <stop offset="48%" stop-color="#877c5e" />
-        <stop offset="100%" stop-color="#f2bd5f" />
-      </linearGradient>
-      <rect width="${width}" height="${height}" fill="url(#background)" />`;
-  const headlineText = headlineLines
-    .map(
-      (line, index) =>
-        `<tspan x="${margin}" dy="${index === 0 ? 0 : headlineSize * 1.08}">${escapeXml(line)}</tspan>`
-    )
-    .join("");
-  const bodyText = bodyLines
-    .map(
-      (line, index) =>
-        `<tspan x="${margin}" dy="${index === 0 ? 0 : bodySize * 1.35}">${escapeXml(line)}</tspan>`
-    )
-    .join("");
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Rendered slide ${args.slideIndex}">
-    <defs>
-      <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#101712" stop-opacity="0" />
-        <stop offset="38%" stop-color="#101712" stop-opacity="0.74" />
-        <stop offset="100%" stop-color="#101712" stop-opacity="0.96" />
-      </linearGradient>
-    </defs>
-    ${background}
-    <rect width="${width}" height="${height}" fill="#101712" opacity="${args.backgroundImageDataUri ? 0.18 : 0}" />
-    <rect y="${panelY}" width="${width}" height="${panelHeight}" fill="url(#panel)" />
-    <text x="${margin}" y="${panelY + margin * 0.9}" fill="#f8f3e7" font-family="Georgia, 'Times New Roman', serif" font-size="${eyebrowSize}" font-weight="700" letter-spacing="${Math.round(width * 0.004)}">${escapeXml(args.role ?? `Slide ${args.slideIndex}`)}</text>
-    <text x="${margin}" y="${panelY + margin * 1.72}" fill="#ffffff" font-family="Georgia, 'Times New Roman', serif" font-size="${headlineSize}" font-weight="800" letter-spacing="-2">${headlineText}</text>
-    <text x="${margin}" y="${panelY + margin * 1.95 + headlineLines.length * headlineSize * 1.08}" fill="#f2eee3" font-family="Arial, sans-serif" font-size="${bodySize}" font-weight="500">${bodyText}</text>
-  </svg>`;
-}
-
 function parseRenderedSlideRevision(
   text: string,
   fallback: { headline?: string; body?: string }
@@ -197,13 +77,45 @@ function parseRenderedSlideRevision(
   }
 }
 
+function renderedSlideCopy(data: Record<string, unknown>): {
+  headline?: string;
+  body?: string;
+} {
+  const headline = typeof data.headline === "string" ? data.headline : undefined;
+  const body = typeof data.body === "string" ? data.body : undefined;
+  if (headline || body) return { headline, body };
+
+  const textBlocks = Array.isArray(data.textBlocks) ? data.textBlocks : [];
+  const blockText = (roles: string[]) => {
+    const block = textBlocks.find((item) =>
+      item &&
+      typeof item === "object" &&
+      roles.includes(String((item as Record<string, unknown>).role))
+    );
+    if (!block || typeof block !== "object") return undefined;
+
+    const record = block as Record<string, unknown>;
+    if (typeof record.text === "string" && record.text.trim()) return record.text.trim();
+    if (Array.isArray(record.items)) {
+      const items = record.items.filter((item): item is string => typeof item === "string");
+      if (items.length) return items.join("\n");
+    }
+    return undefined;
+  };
+
+  return {
+    headline: blockText(["headline", "cta"]),
+    body: blockText(["body", "bullet_list"]),
+  };
+}
+
 export const regenerate = action({
   args: { id: v.id("artifacts") },
   handler: async (ctx, args): Promise<{ artifactIds: Id<"artifacts">[] }> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const context = await ctx.runQuery(internal.artifacts.getRegenerationContext, {
+    const context = await ctx.runQuery(internal.artifacts.records.getRegenerationContext, {
       artifactId: args.id,
       userId: identity.subject,
     });
@@ -241,7 +153,7 @@ export const regenerate = action({
         artifact.data && typeof artifact.data === "object" && !Array.isArray(artifact.data)
           ? (artifact.data as Record<string, unknown>)
           : {};
-      const artifactId = await ctx.runMutation(internal.artifacts.createFromRunner, {
+      const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
         brandId: artifact.brandId,
         workflowId: artifact.workflowId,
@@ -266,7 +178,7 @@ export const regenerate = action({
       });
 
       if (artifact.workflowRunId && artifact.workflowId) {
-        await ctx.runMutation(internal.workflowRuns.recordEvent, {
+        await ctx.runMutation(internal.workflows.runs.recordEvent, {
           userId: identity.subject,
           workflowRunId: artifact.workflowRunId,
           workflowId: artifact.workflowId,
@@ -298,7 +210,7 @@ export const regenerate = action({
         metadata: { sourceArtifactId: artifact._id },
       });
       const revisedPrompt = rewrite.text.trim() || sourcePrompt;
-      const promptArtifactId = await ctx.runMutation(internal.artifacts.createFromRunner, {
+      const promptArtifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
         brandId: artifact.brandId,
         workflowId: artifact.workflowId,
@@ -347,7 +259,7 @@ export const regenerate = action({
 
       for (const [index, image] of imageResult.images.entries()) {
         artifactIds.push(
-          await ctx.runMutation(internal.artifacts.createFromRunner, {
+          await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
             brandId: artifact.brandId,
             workflowId: artifact.workflowId,
@@ -367,7 +279,7 @@ export const regenerate = action({
 
       if (imageResult.jobId) {
         artifactIds.push(
-          await ctx.runMutation(internal.artifacts.createFromRunner, {
+          await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
             brandId: artifact.brandId,
             workflowId: artifact.workflowId,
@@ -390,7 +302,7 @@ export const regenerate = action({
       }
 
       if (artifact.workflowRunId && artifact.workflowId) {
-        await ctx.runMutation(internal.workflowRuns.recordEvent, {
+        await ctx.runMutation(internal.workflows.runs.recordEvent, {
           userId: identity.subject,
           workflowRunId: artifact.workflowRunId,
           workflowId: artifact.workflowId,
@@ -414,17 +326,14 @@ export const regenerate = action({
         artifact.data && typeof artifact.data === "object" && !Array.isArray(artifact.data)
           ? (artifact.data as Record<string, unknown>)
           : {};
-      const currentHeadline =
-        typeof sourceData.headline === "string" ? sourceData.headline : undefined;
-      const currentBody =
-        typeof sourceData.body === "string" ? sourceData.body : undefined;
+      const currentCopy = renderedSlideCopy(sourceData);
       const response = await textProvider.generateText({
         systemPrompt:
           "You revise short-form slideshow overlay copy. Return compact JSON only: {\"headline\":\"...\",\"body\":\"...\"}.",
         prompt: [
           "Revise this rendered slide using the review note.",
-          `Current headline: ${currentHeadline ?? ""}`,
-          `Current body: ${currentBody ?? ""}`,
+          `Current headline: ${currentCopy.headline ?? ""}`,
+          `Current body: ${currentCopy.body ?? ""}`,
           `Review note: ${note}`,
           "Keep the headline punchy and the body readable on a phone screen.",
         ].join("\n"),
@@ -434,8 +343,8 @@ export const regenerate = action({
         metadata: { sourceArtifactId: artifact._id },
       });
       const revisedCopy = parseRenderedSlideRevision(response.text, {
-        headline: currentHeadline,
-        body: currentBody,
+        headline: currentCopy.headline,
+        body: currentCopy.body,
       });
       const dimensions = getRenderedSlideDimensions(sourceData);
       const backgroundImageUrl =
@@ -446,19 +355,24 @@ export const regenerate = action({
       const slideIndex =
         typeof sourceData.slideIndex === "number" ? sourceData.slideIndex : 1;
       const role = typeof sourceData.role === "string" ? sourceData.role : undefined;
+      const renderableSlide = slideFromCopy({
+        index: slideIndex,
+        role,
+        headline: revisedCopy.headline,
+        body: revisedCopy.body,
+        visualPrompt: typeof sourceData.visualPrompt === "string" ? sourceData.visualPrompt : undefined,
+        layout: sourceData.layout,
+      });
       const svg = renderSlideSvg({
         dimensions,
         backgroundImageDataUri,
-        headline: revisedCopy.headline,
-        body: revisedCopy.body,
-        role,
-        slideIndex,
+        slide: renderableSlide,
       });
       const storageId = await ctx.storage.store(
         new Blob([svg], { type: "image/svg+xml" })
       );
       const renderedImageUrl = (await ctx.storage.getUrl(storageId)) ?? undefined;
-      const artifactId = await ctx.runMutation(internal.artifacts.createFromRunner, {
+      const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
         brandId: artifact.brandId,
         workflowId: artifact.workflowId,
@@ -471,6 +385,9 @@ export const regenerate = action({
           ...sourceData,
           headline: revisedCopy.headline,
           body: revisedCopy.body,
+          role: renderableSlide.role,
+          textBlocks: renderableSlide.textBlocks,
+          layout: renderableSlide.layout,
           renderedImageUrl,
           storageId,
           backgroundEmbedded: Boolean(backgroundImageDataUri),
@@ -490,7 +407,7 @@ export const regenerate = action({
       });
 
       if (artifact.workflowRunId && artifact.workflowId) {
-        await ctx.runMutation(internal.workflowRuns.recordEvent, {
+        await ctx.runMutation(internal.workflows.runs.recordEvent, {
           userId: identity.subject,
           workflowRunId: artifact.workflowRunId,
           workflowId: artifact.workflowId,

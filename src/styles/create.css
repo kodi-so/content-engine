@@ -1,0 +1,41 @@
+.create-workspace {
+  @apply mb-4 items-start;
+}
+
+.request-list {
+  @apply grid gap-2.5;
+}
+
+.request-list-item {
+  @apply grid w-full cursor-pointer gap-1 rounded-lg border border-[#e3ded3] bg-[#fffdf8] p-3 text-left text-[#17201b];
+}
+
+.request-list-item.active,
+.request-list-item:hover {
+  @apply border-[#8ca45a] bg-[#fbffe8];
+}
+
+.request-list-item span {
+  @apply w-fit rounded-full bg-[#e8f0d0] px-2 py-[3px] text-[11px] font-extrabold uppercase text-[#304018];
+}
+
+.request-list-item strong {
+  @apply text-sm leading-[1.3];
+}
+
+.request-list-item small {
+  @apply text-[#687169];
+}
+
+.create-plan {
+  @apply grid gap-3;
+}
+
+.create-plan h3,
+.create-plan p {
+  @apply m-0;
+}
+
+.create-preview-card {
+  @apply mb-3.5;
+}

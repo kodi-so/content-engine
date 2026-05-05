@@ -1,0 +1,123 @@
+.eyebrow,
+.entity-eyebrow {
+  @apply text-xs font-extrabold uppercase tracking-[0.08em] text-[#657164];
+}
+
+.panel,
+.metric-card,
+.entity-card,
+.empty-state {
+  @apply rounded-lg border border-[#ded9ce] bg-[#fffdf8];
+}
+
+.panel {
+  @apply p-5;
+}
+
+.panel h2 {
+  @apply mb-4 mt-0 text-[17px];
+}
+
+.metric-card {
+  @apply grid min-h-[104px] content-end gap-1 p-[18px];
+}
+
+.metric-card strong {
+  @apply text-[32px] leading-none;
+}
+
+.metric-card span,
+.muted {
+  @apply text-sm text-[#687169];
+}
+
+.entity-card {
+  @apply grid min-h-[178px] gap-2 p-[18px];
+}
+
+.entity-card h3,
+.entity-card p {
+  @apply m-0;
+}
+
+.entity-card h3 {
+  @apply text-lg;
+}
+
+.entity-card p {
+  @apply text-sm leading-[1.45] text-[#59645b];
+}
+
+.entity-card span {
+  @apply self-end w-fit rounded-full bg-[#e8f0d0] px-[9px] py-1 text-xs font-bold text-[#304018];
+}
+
+.revision-note {
+  @apply border-l-[3px] border-[#d7f36b] pl-2.5 text-[13px] text-[#3d4b40];
+}
+
+.error-note {
+  @apply border-l-[3px] border-[#ba4a36] pl-2.5 text-[13px] text-[#8c2d22]!;
+}
+
+.debug-note {
+  @apply font-mono text-xs text-[#7a756a]!;
+}
+
+.section-toolbar {
+  @apply mb-3.5 flex items-center justify-between gap-3.5;
+}
+
+.status-row,
+.check-item {
+  @apply flex items-center justify-between gap-3 border-t border-[#ebe6db] py-3;
+}
+
+.status-row:first-of-type,
+.check-item:first-of-type {
+  @apply border-t-0;
+}
+
+.check-item {
+  @apply justify-start;
+}
+
+.check-item svg {
+  @apply text-[#b5b8ad];
+}
+
+.check-item svg.done {
+  @apply text-[#5b7f2f];
+}
+
+.empty-state,
+.center-screen,
+.signin-screen {
+  @apply grid place-items-center;
+}
+
+.empty-state {
+  @apply min-h-[180px] p-6 text-[#657164];
+}
+
+.center-screen,
+.signin-screen {
+  @apply min-h-screen bg-[#f4f3ee];
+}
+
+.signin-copy {
+  @apply grid w-[min(440px,calc(100vw-40px))] justify-items-start gap-3.5;
+}
+
+.signin-copy h1,
+.signin-copy p {
+  @apply m-0;
+}
+
+.signin-copy h1 {
+  @apply text-[44px] leading-none;
+}
+
+.signin-copy p {
+  @apply leading-normal text-[#59645b];
+}
