@@ -1,7 +1,9 @@
 "use node";
 
 import { v } from "convex/values";
-import { createRequire } from "node:module";
+import { existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as PImage from "pureimage";
 import type { Bitmap, Context } from "pureimage";
@@ -9,6 +11,7 @@ import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { CanonicalSlideshowSlide, CanonicalSlideshowSpec, SlideshowTextBlock } from "./types";
+import { DEJAVU_SANS_CONDENSED_BOLD_BASE64 } from "./fonts/dejavuSansCondensedBold";
 import { SLIDESHOW_RENDERER_VERSION } from "./slideshowRenderer";
 
 type Dimensions = { width: number; height: number };
@@ -25,7 +28,6 @@ type RenderedBlock = {
   height: number;
 };
 
-const require = createRequire(import.meta.url);
 const SLIDE_FONT_FAMILY = "SlideSansCondensedBold";
 let fontLoaded = false;
 
@@ -44,7 +46,10 @@ class BufferSink extends Writable {
 
 function ensureFontLoaded() {
   if (fontLoaded) return;
-  const fontPath = require.resolve("dejavu-fonts-ttf/ttf/DejaVuSansCondensed-Bold.ttf");
+  const fontPath = join(tmpdir(), "content-engine-dejavu-sans-condensed-bold.ttf");
+  if (!existsSync(fontPath)) {
+    writeFileSync(fontPath, Buffer.from(DEJAVU_SANS_CONDENSED_BOLD_BASE64, "base64"));
+  }
   PImage.registerFont(fontPath, SLIDE_FONT_FAMILY).loadSync();
   fontLoaded = true;
 }
