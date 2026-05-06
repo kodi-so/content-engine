@@ -1,6 +1,6 @@
 import { SignInButton } from "@clerk/clerk-react";
 import { CheckCircle2, BrainCircuit } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 
 export function Page({
   title,
@@ -22,9 +22,19 @@ export function Page({
   );
 }
 
-export function Panel({ title, children }: { title: string; children: ReactNode }) {
+export function Panel({
+  title,
+  children,
+  className,
+  style,
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
-    <section className="panel">
+    <section className={["panel", className].filter(Boolean).join(" ")} style={style}>
       <h2>{title}</h2>
       {children}
     </section>

@@ -3,13 +3,13 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  Copy,
   Edit3,
   FileText,
   Image,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   CanonicalSlideshowSlide,
   CanonicalSlideshowSpec,
@@ -70,6 +70,28 @@ const inspectorClass =
 
 const inspectorTextClass = "m-0 leading-[1.5] [overflow-wrap:anywhere]";
 
+const promptTextareaClass =
+  "min-h-[18rem] w-full resize-none overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-3)] text-[0.9rem] leading-[1.48] text-[var(--color-ink)] [overflow-wrap:anywhere] focus:border-[var(--color-primary)] focus:bg-[var(--color-surface-raised)] focus:shadow-[var(--focus-ring)] focus:outline-none";
+
+const promptHeadingPrefixes = [
+  "Visible text exact line breaks",
+  "Camera and framing",
+  "Style consistency",
+  "Negative prompt",
+  "Shared style",
+  "Typography",
+  "Composition",
+  "Background",
+  "Lighting",
+  "Subject",
+  "Scene",
+  "Layout",
+  "Color",
+  "Mood",
+  "Text",
+  "Create",
+];
+
 const editorLabelClass =
   "grid gap-[var(--space-2)] text-[0.86rem] font-[650] text-[var(--color-ink)]";
 
@@ -125,6 +147,119 @@ function slideTitle(slide: CanonicalSlideshowSlide) {
 function blockText(block: SlideshowTextBlock) {
   if (block.text?.trim()) return block.text.trim();
   return block.items?.filter(Boolean).join("\n") ?? "";
+}
+
+function inferPromptSection(content: string): { heading?: string; body: string } {
+  const trimmed = content.trim();
+  const firstLineBreak = trimmed.indexOf("\n");
+
+  if (firstLineBreak > -1) {
+    return {
+      heading: trimmed.slice(0, firstLineBreak).trim(),
+      body: trimmed.slice(firstLineBreak + 1).trim(),
+    };
+  }
+
+  const colonMatch = trimmed.match(/^(.{2,48}?):\s+(.+)$/);
+  if (colonMatch) return { heading: colonMatch[1].trim(), body: colonMatch[2].trim() };
+
+  const prefix = promptHeadingPrefixes.find((item) =>
+    trimmed.toLowerCase().startsWith(`${item.toLowerCase()} `)
+  );
+  if (prefix) {
+    return {
+      heading: prefix,
+      body: trimmed.slice(prefix.length).trim(),
+    };
+  }
+
+  return { heading: undefined, body: trimmed };
+}
+
+function splitMarkdownHeadingSections(text?: string): Array<{ heading?: string; body: string }> {
+  const prompt = text?.trim();
+  if (!prompt) return [{ heading: undefined, body: "No image prompt saved for this slide." }];
+
+  const headingPattern = /(?:^|\s)(#{1,6})\s+/g;
+  const matches = [...prompt.matchAll(headingPattern)];
+
+  if (matches.length === 0) return [{ heading: undefined, body: prompt }];
+
+  const sections: Array<{ heading?: string; body: string }> = [];
+  const leadingText = prompt.slice(0, matches[0].index).trim();
+  if (leadingText) sections.push({ body: leadingText });
+
+  matches.forEach((match, index) => {
+    const contentStart = (match.index ?? 0) + match[0].length;
+    const nextStart = matches[index + 1]?.index ?? prompt.length;
+    sections.push(inferPromptSection(prompt.slice(contentStart, nextStart)));
+  });
+
+  return sections;
+}
+
+function formatPromptForEditing(text?: string) {
+  return splitMarkdownHeadingSections(text)
+    .map((section) => {
+      const body = section.body.trim();
+      if (!section.heading) return body;
+      return [section.heading.toUpperCase(), body].filter(Boolean).join("\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function promptHeadingForLine(line: string) {
+  const normalized = line.trim().replace(/\s+/g, " ").toLowerCase();
+  return promptHeadingPrefixes.find((heading) => heading.toLowerCase() === normalized);
+}
+
+function serializeEditablePrompt(text: string) {
+  return text
+    .split("\n")
+    .map((line) => {
+      const heading = promptHeadingForLine(line);
+      return heading ? `### ${heading}` : line;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function AutoHeightTextarea({
+  value,
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const resizeTextarea = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
+
+  useLayoutEffect(resizeTextarea, [value]);
+
+  return (
+    <textarea
+      className={promptTextareaClass}
+      ref={textareaRef}
+      value={value}
+      onChange={(event) => {
+        onChange(event.target.value);
+        requestAnimationFrame(resizeTextarea);
+      }}
+      onBlur={onBlur}
+      onFocus={resizeTextarea}
+      rows={1}
+    />
+  );
 }
 
 function textZoneClass(slide: CanonicalSlideshowSlide) {
@@ -359,19 +494,27 @@ export function CreateSlideshowPreview({
   subtitle,
   slideshow,
   onDeleteSlide,
-  onDuplicateSlide,
   onMoveSlide,
+  onRegenerateSlideImage,
+  onUpdateSlideImagePrompt,
   onUpdateSlideText,
 }: {
   title: string;
   subtitle: string;
   slideshow: SlideshowDoc;
   onDeleteSlide?: (slide: CanonicalSlideshowSlide) => Promise<void>;
-  onDuplicateSlide?: (slide: CanonicalSlideshowSlide) => Promise<void>;
   onMoveSlide?: (slide: CanonicalSlideshowSlide, direction: "left" | "right") => Promise<void>;
   onUpdateSlideText?: (
     slide: CanonicalSlideshowSlide,
     args: { primaryText: string; secondaryText?: string; bullets: string[] }
+  ) => Promise<void>;
+  onRegenerateSlideImage?: (
+    slide: CanonicalSlideshowSlide,
+    prompt: string
+  ) => Promise<void>;
+  onUpdateSlideImagePrompt?: (
+    slide: CanonicalSlideshowSlide,
+    prompt: string
   ) => Promise<void>;
 }) {
   const slides = getActiveSlides(slideshow);
@@ -385,6 +528,8 @@ export function CreateSlideshowPreview({
   const hasCenteredPreviewOnce = useRef(false);
   const hasCenteredThumbnailOnce = useRef(false);
   const [showImagePrompt, setShowImagePrompt] = useState(false);
+  const [imagePromptText, setImagePromptText] = useState("");
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [isEditingText, setIsEditingText] = useState(false);
   const [primaryText, setPrimaryText] = useState("");
   const [secondaryText, setSecondaryText] = useState("");
@@ -406,6 +551,11 @@ export function CreateSlideshowPreview({
       ? activeSlide.finalImagePrompt
       : activeSlide.backgroundPrompt
     : "No image prompt saved for this slide.";
+
+  useEffect(() => {
+    if (!showImagePrompt) return;
+    setImagePromptText(formatPromptForEditing(imagePrompt));
+  }, [activeSlide?.slideId, imagePrompt, showImagePrompt]);
 
   useEffect(() => {
     if (activeIndex > slides.length - 1) {
@@ -473,6 +623,27 @@ export function CreateSlideshowPreview({
         .filter(Boolean),
     });
     setIsEditingText(false);
+  };
+
+  const regenerateActiveImage = async () => {
+    if (!onRegenerateSlideImage) return;
+    const prompt = serializeEditablePrompt(imagePromptText);
+    if (!prompt.trim()) return;
+
+    setIsRegeneratingImage(true);
+    try {
+      await onRegenerateSlideImage(activeSlide, prompt);
+    } finally {
+      setIsRegeneratingImage(false);
+    }
+  };
+
+  const saveImagePromptEdit = async () => {
+    if (!onUpdateSlideImagePrompt) return;
+    const prompt = serializeEditablePrompt(imagePromptText);
+    const savedPrompt = serializeEditablePrompt(formatPromptForEditing(imagePrompt));
+    if (!prompt.trim() || prompt === savedPrompt) return;
+    await onUpdateSlideImagePrompt(activeSlide, prompt);
   };
 
   return (
@@ -545,9 +716,16 @@ export function CreateSlideshowPreview({
       </div>
 
       <div className="flex flex-wrap justify-center gap-[var(--space-2)] max-[560px]:grid" aria-label="Slide actions">
-        <button className={actionButtonClass} type="button" onClick={() => setShowImagePrompt((value) => !value)}>
+        <button
+          className={actionButtonClass}
+          type="button"
+          onClick={() => {
+            setImagePromptText(formatPromptForEditing(imagePrompt));
+            setShowImagePrompt((value) => !value);
+          }}
+        >
           <Image size={16} />
-          Image prompt
+          Edit image prompt
         </button>
         <button className={actionButtonClass} type="button" disabled={isFullGraphic} onClick={beginTextEdit}>
           <Edit3 size={16} />
@@ -572,15 +750,6 @@ export function CreateSlideshowPreview({
           Move right
         </button>
         <button
-          className={actionButtonClass}
-          type="button"
-          disabled={!onDuplicateSlide}
-          onClick={() => void onDuplicateSlide?.(activeSlide)}
-        >
-          <Copy size={16} />
-          Duplicate
-        </button>
-        <button
           className={cx(actionButtonClass, dangerActionButtonClass)}
           type="button"
           disabled={!onDeleteSlide || slides.length <= 1}
@@ -595,14 +764,33 @@ export function CreateSlideshowPreview({
         <div className={inspectorClass}>
           <div className="entity-eyebrow">
             <FileText size={13} />
-            Slide image prompt
+            Edit slide image prompt
           </div>
-          <p className={inspectorTextClass}>{imagePrompt}</p>
+          <AutoHeightTextarea
+            value={imagePromptText}
+            onChange={setImagePromptText}
+            onBlur={() => void saveImagePromptEdit()}
+          />
           {activeSlide.layout?.intent && (
             <small className={cx(inspectorTextClass, "text-[var(--color-ink-muted)]")}>
               Layout intent: {activeSlide.layout.intent}
             </small>
           )}
+          <div className="button-row justify-end">
+            <button
+              className="primary-button"
+              type="button"
+              disabled={
+                isRegeneratingImage ||
+                !onRegenerateSlideImage ||
+                !serializeEditablePrompt(imagePromptText).trim()
+              }
+              onClick={() => void regenerateActiveImage()}
+            >
+              <RefreshCw size={16} />
+              {isRegeneratingImage ? "Regenerating..." : "Regenerate slide image"}
+            </button>
+          </div>
         </div>
       )}
 

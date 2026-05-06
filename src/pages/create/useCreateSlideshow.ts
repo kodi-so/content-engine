@@ -30,8 +30,9 @@ export function useCreateSlideshow() {
   const discardRequest = useMutation(api.content.requests.discard);
   const deleteSlide = useMutation(api.content.requests.deleteSlide);
   const moveSlide = useMutation(api.content.requests.moveSlide);
-  const duplicateSlide = useMutation(api.content.requests.duplicateSlide);
   const updateSlideText = useMutation(api.content.requests.updateSlideText);
+  const updateSlideImagePrompt = useMutation(api.content.requests.updateSlideImagePrompt);
+  const regenerateSlideImage = useAction(api.content.requests.regenerateSlideImage);
 
   const [brandId, setBrandId] = useState("");
   const [socialAccountId, setSocialAccountId] = useState("");
@@ -265,17 +266,6 @@ export function useCreateSlideshow() {
     }
   };
 
-  const handleDuplicateSlide = async (slide: CanonicalSlideshowSlide) => {
-    if (!activeSlideshow) return;
-    setStatusMessage("Duplicating slide");
-    try {
-      await duplicateSlide({ slideshowId: activeSlideshow._id, slideId: slide.slideId });
-      setStatusMessage("Slide duplicated");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Duplicate slide failed");
-    }
-  };
-
   const handleMoveSlide = async (
     slide: CanonicalSlideshowSlide,
     direction: "left" | "right"
@@ -305,6 +295,48 @@ export function useCreateSlideshow() {
       setStatusMessage("Slide text updated");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Update slide failed");
+    }
+  };
+
+  const handleRegenerateSlideImage = async (
+    slide: CanonicalSlideshowSlide,
+    imagePrompt: string
+  ) => {
+    if (!activeSlideshow) return;
+    const prompt = imagePrompt.trim();
+    if (!prompt) return;
+
+    setStatusMessage(`Regenerating slide ${slide.index} image`);
+    try {
+      await regenerateSlideImage({
+        slideshowId: activeSlideshow._id,
+        slideId: slide.slideId,
+        prompt,
+      });
+      setStatusMessage(`Slide ${slide.index} image regenerated`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Regenerate slide image failed");
+    }
+  };
+
+  const handleUpdateSlideImagePrompt = async (
+    slide: CanonicalSlideshowSlide,
+    imagePrompt: string
+  ) => {
+    if (!activeSlideshow) return;
+    const prompt = imagePrompt.trim();
+    if (!prompt) return;
+
+    setStatusMessage(`Saving slide ${slide.index} image prompt`);
+    try {
+      await updateSlideImagePrompt({
+        slideshowId: activeSlideshow._id,
+        slideId: slide.slideId,
+        prompt,
+      });
+      setStatusMessage(`Slide ${slide.index} image prompt saved`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Save image prompt failed");
     }
   };
 
@@ -357,9 +389,10 @@ export function useCreateSlideshow() {
       handleSave,
       handleDiscard,
       handleDeleteSlide,
-      handleDuplicateSlide,
       handleMoveSlide,
       handleUpdateSlideText,
+      handleRegenerateSlideImage,
+      handleUpdateSlideImagePrompt,
     },
     selectedRequestId,
     setSelectedRequestId,

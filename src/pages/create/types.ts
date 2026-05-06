@@ -102,7 +102,6 @@ export type PreviewActions = {
   handleSave: () => Promise<void>;
   handleDiscard: () => Promise<void>;
   handleDeleteSlide: (slide: CanonicalSlideshowSlide) => Promise<void>;
-  handleDuplicateSlide: (slide: CanonicalSlideshowSlide) => Promise<void>;
   handleMoveSlide: (
     slide: CanonicalSlideshowSlide,
     direction: "left" | "right"
@@ -110,5 +109,13 @@ export type PreviewActions = {
   handleUpdateSlideText: (
     slide: CanonicalSlideshowSlide,
     args: SlideTextUpdate
+  ) => Promise<void>;
+  handleRegenerateSlideImage: (
+    slide: CanonicalSlideshowSlide,
+    prompt: string
+  ) => Promise<void>;
+  handleUpdateSlideImagePrompt: (
+    slide: CanonicalSlideshowSlide,
+    prompt: string
   ) => Promise<void>;
 };

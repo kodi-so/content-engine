@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { Page } from "../components/ui";
 import { CreateSlideshowForm } from "./create/CreateSlideshowForm";
 import { CreativePlanPanel } from "./create/CreativePlanPanel";
@@ -6,6 +7,8 @@ import { RecentRequestsPanel } from "./create/RecentRequestsPanel";
 import { useCreateSlideshow } from "./create/useCreateSlideshow";
 
 export function CreatePage() {
+  const creativePlanPanelRef = useRef<HTMLDivElement>(null);
+  const [creativePlanHeight, setCreativePlanHeight] = useState<number>();
   const {
     data,
     form,
@@ -14,6 +17,21 @@ export function CreatePage() {
     setSelectedRequestId,
     statusMessage,
   } = useCreateSlideshow();
+
+  useLayoutEffect(() => {
+    const creativePlanPanel = creativePlanPanelRef.current;
+    if (!creativePlanPanel) return;
+
+    const updateCreativePlanHeight = () => {
+      setCreativePlanHeight(Math.ceil(creativePlanPanel.getBoundingClientRect().height));
+    };
+
+    updateCreativePlanHeight();
+
+    const resizeObserver = new ResizeObserver(updateCreativePlanHeight);
+    resizeObserver.observe(creativePlanPanel);
+    return () => resizeObserver.disconnect();
+  }, [data.activeRequest?._id, data.plan]);
 
   return (
     <Page title="Create" description="Turn a rough idea into a reviewable one-off slideshow.">
@@ -31,9 +49,12 @@ export function CreatePage() {
         <RecentRequestsPanel
           activeRequest={data.activeRequest}
           contentRequests={data.contentRequests}
+          maxDesktopHeight={creativePlanHeight}
           onSelectRequest={setSelectedRequestId}
         />
-        <CreativePlanPanel activeRequest={data.activeRequest} plan={data.plan} />
+        <div ref={creativePlanPanelRef} className="min-w-0">
+          <CreativePlanPanel activeRequest={data.activeRequest} plan={data.plan} />
+        </div>
       </div>
 
       <PreviewPanel

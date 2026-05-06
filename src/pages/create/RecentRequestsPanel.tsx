@@ -1,24 +1,35 @@
+import type { CSSProperties } from "react";
 import { Panel } from "../../components/ui";
 import type { ContentRequestDoc } from "./viewTypes";
 
 type RecentRequestsPanelProps = {
   activeRequest?: ContentRequestDoc;
   contentRequests?: ContentRequestDoc[];
+  maxDesktopHeight?: number;
   onSelectRequest: (requestId: string) => void;
 };
 
 export function RecentRequestsPanel({
   activeRequest,
   contentRequests,
+  maxDesktopHeight,
   onSelectRequest,
 }: RecentRequestsPanelProps) {
   return (
-    <Panel title="Recent Requests">
+    <Panel
+      className="min-[901px]:grid-rows-[auto_minmax(0,1fr)] min-[901px]:overflow-hidden min-[901px]:max-h-[var(--recent-requests-max-height)]"
+      style={
+        maxDesktopHeight
+          ? ({ "--recent-requests-max-height": `${maxDesktopHeight}px` } as CSSProperties)
+          : undefined
+      }
+      title="Recent Requests"
+    >
       {!contentRequests && <p className="muted">Loading requests...</p>}
       {contentRequests?.length === 0 && (
         <p className="muted">No one-off content requests yet.</p>
       )}
-      <div className="grid gap-[var(--space-2)]">
+      <div className="grid min-h-0 gap-[var(--space-2)] min-[901px]:overflow-y-auto min-[901px]:pr-[var(--space-1)] min-[901px]:[-webkit-overflow-scrolling:touch]">
         {contentRequests?.map((request) => (
           <button
             className={[

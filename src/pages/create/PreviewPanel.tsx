@@ -32,8 +32,9 @@ export function PreviewPanel({
             subtitle={`${activeSlideshow.title} · ${activeRequest.status}`}
             slideshow={activeSlideshow}
             onDeleteSlide={actions.handleDeleteSlide}
-            onDuplicateSlide={actions.handleDuplicateSlide}
             onMoveSlide={actions.handleMoveSlide}
+            onRegenerateSlideImage={actions.handleRegenerateSlideImage}
+            onUpdateSlideImagePrompt={actions.handleUpdateSlideImagePrompt}
             onUpdateSlideText={actions.handleUpdateSlideText}
           />
           <label className="revision-field">
