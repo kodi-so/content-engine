@@ -145,9 +145,15 @@ export async function renderSlideToBlob(
     const image = await loadImage(slide.backgroundImageUrl);
     drawCoverImage(ctx, image, width, height);
   }
-  ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
-  ctx.fillRect(0, 0, width, height);
-  drawTextBlocks(ctx, slide, width, height);
+  const isFullGraphic =
+    spec.renderingMode === "full_graphic_generation" ||
+    slide.renderingMode === "full_graphic_generation";
+
+  if (!isFullGraphic) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+    ctx.fillRect(0, 0, width, height);
+    drawTextBlocks(ctx, slide, width, height);
+  }
 
   return await new Promise((resolve, reject) => {
     canvas.toBlob(

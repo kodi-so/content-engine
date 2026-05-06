@@ -17,10 +17,93 @@ import type {
   SlideshowTextBlock,
 } from "../types";
 
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const statusPillClass =
+  "w-fit max-w-full rounded-full bg-[var(--color-primary-soft)] px-[0.58rem] py-[0.32rem] text-[0.72rem] font-bold leading-[1.1] text-[var(--color-primary-strong)] [overflow-wrap:anywhere]";
+
+const bundleCardClass =
+  "grid min-w-0 gap-[var(--space-4)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[linear-gradient(180deg,var(--color-surface-raised)_0%,var(--color-surface)_100%)] p-[var(--space-5)] shadow-[var(--shadow-sm)]";
+
+const createBundleCardClass =
+  "grid min-w-0 gap-[var(--space-4)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[radial-gradient(circle_at_100%_0%,oklch(79%_0.15_92_/_0.16),transparent_28rem),linear-gradient(180deg,var(--color-surface-raised)_0%,var(--color-surface)_100%)] p-[var(--space-5)] shadow-[var(--shadow-sm)] mb-[var(--space-4)]";
+
+const bundleHeaderClass =
+  "flex flex-col items-stretch justify-between gap-[var(--space-3)] min-[901px]:flex-row min-[901px]:items-start";
+
+const bundleActionsClass =
+  "flex flex-col items-start justify-between gap-[var(--space-3)] min-[901px]:items-end";
+
+const bundleTitleClass =
+  "m-0 text-[1.35rem] font-[680] leading-[1.15] text-[var(--color-ink)] [overflow-wrap:anywhere]";
+
+const bundleSubtitleClass =
+  "m-0 text-[0.9rem] leading-[1.45] text-[var(--color-ink-muted)]";
+
+const navButtonClass =
+  "grid size-10 cursor-pointer place-items-center rounded-full border border-[var(--color-border)] bg-[oklch(100%_0.002_232_/_0.88)] text-[var(--color-ink)] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary-strong)] hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:transform-none max-[900px]:hidden";
+
+const phoneFrameClass =
+  "relative grid aspect-[9/16] max-h-[38.75rem] min-h-[26.25rem] overflow-hidden rounded-[1.75rem] border-8 border-[var(--color-ink)] bg-[var(--color-ink)] shadow-[var(--shadow-md)] touch-pan-y max-[900px]:min-h-[22rem]";
+
+const thumbnailRowClass =
+  "w-full overflow-x-auto px-0.5 pb-[var(--space-2)] pt-0.5 [scroll-snap-type:x_mandatory]";
+
+const thumbnailInnerClass = "mx-auto flex w-max gap-[var(--space-2)]";
+
+const thumbnailButtonClass =
+  "grid size-[3.625rem] shrink-0 cursor-pointer place-items-center overflow-hidden rounded-[var(--radius-md)] border-2 bg-[var(--color-page-quiet)] p-0 text-[var(--color-ink-muted)] [scroll-snap-align:start] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)]";
+
+const currentSlideClass =
+  "grid gap-[var(--space-3)] border-t border-[var(--color-border)] pt-[var(--space-4)]";
+
+const actionButtonClass =
+  "inline-flex min-h-9 cursor-pointer items-center gap-[var(--space-2)] rounded-full border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-[0.78rem] py-[0.46rem] text-[0.78rem] font-bold text-[var(--color-ink)] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-primary-strong)] disabled:cursor-not-allowed disabled:opacity-52 max-[560px]:w-full max-[560px]:justify-center";
+
+const dangerActionButtonClass =
+  "border-[oklch(85%_0.05_27)] bg-[var(--color-danger-soft)] text-[var(--color-danger)]";
+
+const inspectorClass =
+  "grid gap-[var(--space-3)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-[var(--space-4)]";
+
+const inspectorTextClass = "m-0 leading-[1.5] [overflow-wrap:anywhere]";
+
+const editorLabelClass =
+  "grid gap-[var(--space-2)] text-[0.86rem] font-[650] text-[var(--color-ink)]";
+
+const editorInputClass =
+  "w-full min-w-0 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-[var(--space-3)] text-[0.9rem] text-[var(--color-ink)] focus:border-[var(--color-primary)] focus:shadow-[var(--focus-ring)] focus:outline-none";
+
+function centerItemInScrollContainer({
+  behavior,
+  container,
+  item,
+  targetRatio = 0.5,
+}: {
+  behavior: ScrollBehavior;
+  container: HTMLElement;
+  item: HTMLElement;
+  targetRatio?: number;
+}) {
+  const containerRect = container.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  const itemCenter =
+    itemRect.left - containerRect.left + container.scrollLeft + itemRect.width / 2;
+  const targetLeft = itemCenter - container.clientWidth * targetRatio;
+  const maxLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+
+  container.scrollTo({
+    left: Math.min(Math.max(0, targetLeft), maxLeft),
+    behavior,
+  });
+}
+
 function getSlideshowSpec(slideshow: SlideshowDoc): CanonicalSlideshowSpec {
   return slideshow.spec && typeof slideshow.spec === "object"
     ? slideshow.spec as CanonicalSlideshowSpec
-    : { slides: [] };
+    : { renderingMode: "background_plus_overlay", slides: [] };
 }
 
 export function getActiveSlides(slideshow: SlideshowDoc): CanonicalSlideshowSlide[] {
@@ -30,6 +113,9 @@ export function getActiveSlides(slideshow: SlideshowDoc): CanonicalSlideshowSlid
 }
 
 function slideTitle(slide: CanonicalSlideshowSlide) {
+  if (slide.renderingMode === "full_graphic_generation" && slide.visibleText) {
+    return slide.visibleText;
+  }
   const headline = slide.textBlocks?.find((block) =>
     block.role === "headline" || block.role === "cta"
   );
@@ -43,53 +129,99 @@ function blockText(block: SlideshowTextBlock) {
 
 function textZoneClass(slide: CanonicalSlideshowSlide) {
   const textZone = slide.layout?.textZone;
-  if (textZone === "top") return "top";
-  if (textZone === "bottom") return "bottom";
-  return "center";
+  if (textZone === "top") return "top-[14%] content-start";
+  if (textZone === "bottom") return "bottom-[14%] content-end";
+  return "top-1/2 content-center -translate-y-1/2";
+}
+
+function contrastOverlayClass(contrast: NonNullable<CanonicalSlideshowSlide["layout"]>["contrast"]) {
+  if (contrast === "shadow") return "bg-[oklch(0%_0_0_/_0.16)]";
+  if (contrast === "solid_scrim") return "bg-[oklch(0%_0_0_/_0.48)]";
+  return "bg-[linear-gradient(180deg,oklch(0%_0_0_/_0.54),transparent_30%,transparent_60%,oklch(0%_0_0_/_0.64)),oklch(0%_0_0_/_0.14)]";
+}
+
+function liveTextBlockClass(block: SlideshowTextBlock, thumbnail: boolean) {
+  const isPrimary =
+    block.role === "headline" ||
+    block.role === "cta" ||
+    block.emphasis === "primary";
+
+  if (thumbnail) {
+    return "mx-auto line-clamp-2 max-w-full overflow-hidden text-ellipsis whitespace-pre-line text-[0.44rem] font-extrabold leading-[1.05] [overflow-wrap:anywhere] [paint-order:stroke_fill] [-webkit-box-orient:vertical] [-webkit-text-stroke-color:oklch(0%_0_0_/_0.86)] [-webkit-text-stroke-width:0.45px]";
+  }
+
+  return cx(
+    "mx-auto max-w-full whitespace-pre-line font-extrabold leading-[1.08] [overflow-wrap:anywhere] [paint-order:stroke_fill] [-webkit-text-stroke-color:oklch(0%_0_0_/_0.86)]",
+    isPrimary
+      ? "text-[clamp(1.05rem,8cqw,2.35rem)] [-webkit-text-stroke-width:1.6px]"
+      : "text-[clamp(0.7rem,3.8cqw,1.15rem)] leading-[1.18] [-webkit-text-stroke-width:1.1px]"
+  );
 }
 
 function LiveSlideFrame({
   slide,
   index,
   total,
+  renderingMode,
   thumbnail = false,
 }: {
   slide: CanonicalSlideshowSlide;
   index: number;
   total: number;
+  renderingMode?: CanonicalSlideshowSpec["renderingMode"];
   thumbnail?: boolean;
 }) {
-  const blocks = slide.textBlocks?.filter((block) => blockText(block)) ?? [];
+  const slideRenderingMode = slide.renderingMode ?? renderingMode;
+  const blocks = slideRenderingMode === "background_plus_overlay"
+    ? slide.textBlocks?.filter((block) => blockText(block)) ?? []
+    : [];
   const contrast = slide.layout?.contrast ?? "gradient_scrim";
+  const isFullGraphic = slideRenderingMode === "full_graphic_generation";
 
   return (
-    <div className={`live-slide-preview ${thumbnail ? "thumbnail" : ""}`}>
+    <div className="relative h-full w-full overflow-hidden bg-[oklch(13%_0.028_220)] [container-type:inline-size]">
       {slide.backgroundImageUrl ? (
-        <img src={slide.backgroundImageUrl} alt="" />
+        <img
+          className="absolute inset-0 h-full w-full object-cover"
+          src={slide.backgroundImageUrl}
+          alt=""
+        />
       ) : (
-        <div className="live-slide-placeholder" />
+        <div className="absolute inset-0 h-full w-full bg-[linear-gradient(145deg,oklch(79%_0.15_92_/_0.18),transparent_42%),linear-gradient(160deg,oklch(20%_0.035_220)_0%,oklch(9%_0.02_220)_100%)] object-cover" />
       )}
-      {contrast !== "none" && <div className={`live-slide-overlay ${contrast}`} />}
-      <div className={`live-slide-text-layer ${textZoneClass(slide)}`}>
-        {blocks.map((block, blockIndex) => (
-          <div
-            className={`live-slide-text-block ${block.role ?? "body"} ${block.emphasis ?? "secondary"}`}
-            key={`${block.role ?? "block"}-${blockIndex}`}
-          >
-            {block.items?.length ? (
-              <ul>
-                {block.items.map((item, itemIndex) => (
-                  <li key={`${item}-${itemIndex}`}>{item}</li>
-                ))}
-              </ul>
-            ) : (
-              block.text
-            )}
-          </div>
-        ))}
-      </div>
+      {!thumbnail && !isFullGraphic && contrast !== "none" && (
+        <div className={cx("absolute inset-0", contrastOverlayClass(contrast))} />
+      )}
+      {!thumbnail && !isFullGraphic && (
+        <div
+          className={cx(
+            "absolute z-10 grid text-center text-white",
+            thumbnail
+              ? "inset-x-[8%] gap-0.5 [text-shadow:0_1px_3px_oklch(0%_0_0_/_0.6)]"
+              : "inset-x-[8%] gap-[var(--space-3)] [text-shadow:0_2px_8px_oklch(0%_0_0_/_0.35)]",
+            textZoneClass(slide)
+          )}
+        >
+          {blocks.map((block, blockIndex) => (
+            <div
+              className={liveTextBlockClass(block, thumbnail)}
+              key={`${block.role ?? "block"}-${blockIndex}`}
+            >
+              {block.items?.length ? (
+                <ul className="grid list-none gap-[var(--space-2)] p-0 m-0">
+                  {block.items.map((item, itemIndex) => (
+                    <li key={`${item}-${itemIndex}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                block.text
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {!thumbnail && (
-        <div className="slideshow-slide-count">
+        <div className={cx("absolute bottom-[var(--space-3)] right-[var(--space-3)] bg-[oklch(100%_0.002_232_/_0.92)]", statusPillClass)}>
           {index + 1}/{total}
         </div>
       )}
@@ -106,8 +238,26 @@ export function SavedSlideshowCard({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
+  const thumbnailTrackRef = useRef<HTMLDivElement | null>(null);
+  const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const hasCenteredThumbnailOnce = useRef(false);
+  const spec = getSlideshowSpec(slideshow);
   const slides = getActiveSlides(slideshow);
   const activeSlide = slides[Math.min(activeIndex, Math.max(slides.length - 1, 0))];
+
+  useEffect(() => {
+    const track = thumbnailTrackRef.current;
+    const thumbnail = thumbnailRefs.current[activeIndex];
+    if (!track || !thumbnail) return;
+
+    centerItemInScrollContainer({
+      behavior: hasCenteredThumbnailOnce.current ? "smooth" : "auto",
+      container: track,
+      item: thumbnail,
+    });
+    hasCenteredThumbnailOnce.current = true;
+  }, [activeIndex, slides.length]);
+
   if (!activeSlide) return null;
 
   const moveSlide = (direction: -1 | 1) => {
@@ -122,15 +272,15 @@ export function SavedSlideshowCard({
   };
 
   return (
-    <article className="slideshow-bundle-card">
-      <div className="slideshow-bundle-header">
+    <article className={bundleCardClass}>
+      <div className={bundleHeaderClass}>
         <div>
           <div className="entity-eyebrow">Slideshow</div>
-          <h3>{slideshow.title}</h3>
-          <p>{slides.length} slides · {new Date(slideshow.updatedAt).toLocaleString()}</p>
+          <h3 className={bundleTitleClass}>{slideshow.title}</h3>
+          <p className={bundleSubtitleClass}>{slides.length} slides · {new Date(slideshow.updatedAt).toLocaleString()}</p>
         </div>
-        <div className="slideshow-bundle-actions">
-          <span>{slideshow.status}</span>
+        <div className={bundleActionsClass}>
+          <span className={statusPillClass}>{slideshow.status}</span>
           <button
             className="danger-button"
             type="button"
@@ -142,9 +292,9 @@ export function SavedSlideshowCard({
         </div>
       </div>
 
-      <div className="slideshow-editor">
+      <div className="grid items-center justify-center gap-[var(--space-4)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[linear-gradient(90deg,oklch(18%_0.035_220_/_0.06),transparent_16%,transparent_84%,oklch(18%_0.035_220_/_0.06)),var(--color-page-quiet)] p-[var(--space-5)] min-[901px]:grid-cols-[2.75rem_minmax(15rem,24rem)_2.75rem] max-[900px]:grid-cols-1">
         <button
-          className="slideshow-nav-button"
+          className={navButtonClass}
           type="button"
           disabled={activeIndex === 0}
           onClick={() => moveSlide(-1)}
@@ -153,14 +303,14 @@ export function SavedSlideshowCard({
           <ChevronLeft size={22} />
         </button>
         <div
-          className="slideshow-phone-frame"
+          className={phoneFrameClass}
           onTouchStart={(event) => setTouchStart(event.touches[0]?.clientX ?? null)}
           onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
         >
-          <LiveSlideFrame slide={activeSlide} index={activeIndex} total={slides.length} />
+          <LiveSlideFrame slide={activeSlide} index={activeIndex} total={slides.length} renderingMode={spec.renderingMode} />
         </div>
         <button
-          className="slideshow-nav-button"
+          className={navButtonClass}
           type="button"
           disabled={activeIndex === slides.length - 1}
           onClick={() => moveSlide(1)}
@@ -170,24 +320,34 @@ export function SavedSlideshowCard({
         </button>
       </div>
 
-      <div className="slideshow-thumb-row" aria-label="Slides">
-        {slides.map((slide, index) => (
-          <button
-            className={`slideshow-thumb ${index === activeIndex ? "active" : ""}`}
-            key={slide.slideId}
-            type="button"
-            onClick={() => setActiveIndex(index)}
-          >
-            <LiveSlideFrame slide={slide} index={index} total={slides.length} thumbnail />
-          </button>
-        ))}
+      <div className={thumbnailRowClass} ref={thumbnailTrackRef} aria-label="Slides">
+        <div className={thumbnailInnerClass}>
+          {slides.map((slide, index) => (
+            <button
+              className={cx(
+                thumbnailButtonClass,
+                index === activeIndex
+                  ? "border-[var(--color-primary)] shadow-[var(--focus-ring)]"
+                  : "border-transparent"
+              )}
+              key={slide.slideId}
+              ref={(node) => {
+                thumbnailRefs.current[index] = node;
+              }}
+              type="button"
+              onClick={() => setActiveIndex(index)}
+            >
+              <LiveSlideFrame slide={slide} index={index} total={slides.length} renderingMode={spec.renderingMode} thumbnail />
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="slideshow-current-slide">
+      <div className={currentSlideClass}>
         <div className="artifact-copy">
           <div className="entity-eyebrow">Slide {activeSlide.index}</div>
           <h3>{slideTitle(activeSlide)}</h3>
-          <p>{activeSlide.purpose || activeSlide.visualPrompt || "Readable TikTok carousel slide."}</p>
+          <p>{activeSlide.purpose || "Readable TikTok carousel slide."}</p>
         </div>
       </div>
     </article>
@@ -215,21 +375,37 @@ export function CreateSlideshowPreview({
   ) => Promise<void>;
 }) {
   const slides = getActiveSlides(slideshow);
+  const spec = getSlideshowSpec(slideshow);
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
+  const previewTrackRef = useRef<HTMLDivElement | null>(null);
+  const previewSlideRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const thumbnailTrackRef = useRef<HTMLDivElement | null>(null);
+  const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const hasCenteredPreviewOnce = useRef(false);
+  const hasCenteredThumbnailOnce = useRef(false);
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [isEditingText, setIsEditingText] = useState(false);
   const [primaryText, setPrimaryText] = useState("");
   const [secondaryText, setSecondaryText] = useState("");
   const [bulletsText, setBulletsText] = useState("");
-  const slideRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activeSlide = slides[Math.min(activeIndex, Math.max(slides.length - 1, 0))];
-  const headlineBlock = activeSlide?.textBlocks?.find((block) =>
-    block.role === "headline" || block.role === "cta"
-  );
-  const bodyBlock = activeSlide?.textBlocks?.find((block) => block.role === "body");
-  const bulletBlock = activeSlide?.textBlocks?.find((block) => block.role === "bullet_list");
-  const imagePrompt = activeSlide?.visualPrompt || "No image prompt saved for this slide.";
+  const activeRenderingMode = activeSlide?.renderingMode ?? spec.renderingMode ?? "background_plus_overlay";
+  const isFullGraphic = activeRenderingMode === "full_graphic_generation";
+  const headlineBlock = !isFullGraphic
+    ? activeSlide?.textBlocks?.find((block) => block.role === "headline" || block.role === "cta")
+    : undefined;
+  const bodyBlock = !isFullGraphic
+    ? activeSlide?.textBlocks?.find((block) => block.role === "body")
+    : undefined;
+  const bulletBlock = !isFullGraphic
+    ? activeSlide?.textBlocks?.find((block) => block.role === "bullet_list")
+    : undefined;
+  const imagePrompt = activeSlide
+    ? activeRenderingMode === "full_graphic_generation"
+      ? activeSlide.finalImagePrompt
+      : activeSlide.backgroundPrompt
+    : "No image prompt saved for this slide.";
 
   useEffect(() => {
     if (activeIndex > slides.length - 1) {
@@ -238,11 +414,30 @@ export function CreateSlideshowPreview({
   }, [activeIndex, slides.length]);
 
   useEffect(() => {
-    slideRefs.current[activeIndex]?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
+    const track = previewTrackRef.current;
+    const slide = previewSlideRefs.current[activeIndex];
+    if (!track || !slide) return;
+
+    centerItemInScrollContainer({
+      behavior: hasCenteredPreviewOnce.current ? "smooth" : "auto",
+      container: track,
+      item: slide,
+      targetRatio: 0.50,
     });
+    hasCenteredPreviewOnce.current = true;
+  }, [activeIndex, slides.length]);
+
+  useEffect(() => {
+    const track = thumbnailTrackRef.current;
+    const thumbnail = thumbnailRefs.current[activeIndex];
+    if (!track || !thumbnail) return;
+
+    centerItemInScrollContainer({
+      behavior: hasCenteredThumbnailOnce.current ? "smooth" : "auto",
+      container: track,
+      item: thumbnail,
+    });
+    hasCenteredThumbnailOnce.current = true;
   }, [activeIndex, slides.length]);
 
   if (!activeSlide) return null;
@@ -259,6 +454,7 @@ export function CreateSlideshowPreview({
   };
 
   const beginTextEdit = () => {
+    if (isFullGraphic) return;
     setPrimaryText(headlineBlock?.text ?? "");
     setSecondaryText(bodyBlock?.text ?? "");
     setBulletsText((bulletBlock?.items ?? []).join("\n"));
@@ -280,21 +476,21 @@ export function CreateSlideshowPreview({
   };
 
   return (
-    <article className="slideshow-bundle-card create-preview-card create-workbench-card">
-      <div className="slideshow-bundle-header">
+    <article className={createBundleCardClass}>
+      <div className={bundleHeaderClass}>
         <div>
           <div className="entity-eyebrow">Create preview</div>
-          <h3>{title}</h3>
-          <p>{subtitle}</p>
+          <h3 className={bundleTitleClass}>{title}</h3>
+          <p className={bundleSubtitleClass}>{subtitle}</p>
         </div>
-        <div className="slideshow-bundle-actions">
-          <span>{slideshow.status}</span>
+        <div className={bundleActionsClass}>
+          <span className={statusPillClass}>{slideshow.status}</span>
         </div>
       </div>
 
-      <div className="create-slide-canvas" aria-label="Slideshow canvas">
+      <div className="grid items-center gap-[var(--space-3)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[radial-gradient(circle_at_18%_20%,oklch(100%_0_0_/_0.75),transparent_24%),linear-gradient(135deg,var(--color-page)_0%,var(--color-page-quiet)_100%)] px-[var(--space-3)] py-[var(--space-5)] min-[901px]:grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] max-[900px]:grid-cols-1">
         <button
-          className="slideshow-nav-button"
+          className={navButtonClass}
           type="button"
           disabled={activeIndex === 0}
           onClick={() => moveSlide(-1)}
@@ -302,13 +498,19 @@ export function CreateSlideshowPreview({
         >
           <ChevronLeft size={22} />
         </button>
-        <div className="create-slide-stage">
+        <div
+          className="flex min-h-[29rem] max-h-[38.75rem] items-center gap-[var(--space-4)] overflow-x-auto [padding-left:max(0px,calc(50%_-_7.8125rem))] [padding-right:max(0px,calc(75%_-_7.8125rem))] [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden"
+          ref={previewTrackRef}
+        >
           {slides.map((slide, index) => (
             <button
-              className={`create-slide-card ${index === activeIndex ? "active" : ""}`}
+              className={cx(
+                "grid w-[15.625rem] shrink-0 cursor-pointer place-items-center border-0 bg-transparent p-0 [scroll-snap-align:center] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)]",
+                index === activeIndex ? "scale-100 opacity-100" : "scale-[0.72] opacity-[0.58]"
+              )}
               key={slide.slideId}
               ref={(node) => {
-                slideRefs.current[index] = node;
+                previewSlideRefs.current[index] = node;
               }}
               type="button"
               onClick={() => {
@@ -318,17 +520,21 @@ export function CreateSlideshowPreview({
               }}
             >
               <div
-                className="slideshow-phone-frame"
+                className={cx(
+                  phoneFrameClass,
+                  "w-full min-h-0",
+                  index === activeIndex ? "" : "border-4"
+                )}
                 onTouchStart={(event) => setTouchStart(event.touches[0]?.clientX ?? null)}
                 onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
               >
-                <LiveSlideFrame slide={slide} index={index} total={slides.length} />
+                <LiveSlideFrame slide={slide} index={index} total={slides.length} renderingMode={spec.renderingMode} />
               </div>
             </button>
           ))}
         </div>
         <button
-          className="slideshow-nav-button"
+          className={navButtonClass}
           type="button"
           disabled={activeIndex === slides.length - 1}
           onClick={() => moveSlide(1)}
@@ -338,17 +544,17 @@ export function CreateSlideshowPreview({
         </button>
       </div>
 
-      <div className="create-slide-actions" aria-label="Slide actions">
-        <button className="icon-action-button" type="button" onClick={() => setShowImagePrompt((value) => !value)}>
+      <div className="flex flex-wrap justify-center gap-[var(--space-2)] max-[560px]:grid" aria-label="Slide actions">
+        <button className={actionButtonClass} type="button" onClick={() => setShowImagePrompt((value) => !value)}>
           <Image size={16} />
           Image prompt
         </button>
-        <button className="icon-action-button" type="button" onClick={beginTextEdit}>
+        <button className={actionButtonClass} type="button" disabled={isFullGraphic} onClick={beginTextEdit}>
           <Edit3 size={16} />
           Edit text
         </button>
         <button
-          className="icon-action-button"
+          className={actionButtonClass}
           type="button"
           disabled={!onMoveSlide || activeIndex === 0}
           onClick={() => void onMoveSlide?.(activeSlide, "left")}
@@ -357,7 +563,7 @@ export function CreateSlideshowPreview({
           Move left
         </button>
         <button
-          className="icon-action-button"
+          className={actionButtonClass}
           type="button"
           disabled={!onMoveSlide || activeIndex === slides.length - 1}
           onClick={() => void onMoveSlide?.(activeSlide, "right")}
@@ -366,7 +572,7 @@ export function CreateSlideshowPreview({
           Move right
         </button>
         <button
-          className="icon-action-button"
+          className={actionButtonClass}
           type="button"
           disabled={!onDuplicateSlide}
           onClick={() => void onDuplicateSlide?.(activeSlide)}
@@ -375,7 +581,7 @@ export function CreateSlideshowPreview({
           Duplicate
         </button>
         <button
-          className="icon-action-button danger"
+          className={cx(actionButtonClass, dangerActionButtonClass)}
           type="button"
           disabled={!onDeleteSlide || slides.length <= 1}
           onClick={() => void onDeleteSlide?.(activeSlide)}
@@ -386,29 +592,33 @@ export function CreateSlideshowPreview({
       </div>
 
       {showImagePrompt && (
-        <div className="slide-inspector">
+        <div className={inspectorClass}>
           <div className="entity-eyebrow">
             <FileText size={13} />
             Slide image prompt
           </div>
-          <p>{imagePrompt}</p>
-          {activeSlide.layout?.intent && <small>Layout intent: {activeSlide.layout.intent}</small>}
+          <p className={inspectorTextClass}>{imagePrompt}</p>
+          {activeSlide.layout?.intent && (
+            <small className={cx(inspectorTextClass, "text-[var(--color-ink-muted)]")}>
+              Layout intent: {activeSlide.layout.intent}
+            </small>
+          )}
         </div>
       )}
 
       {isEditingText && (
-        <div className="slide-text-editor">
-          <label>
+        <div className={inspectorClass}>
+          <label className={editorLabelClass}>
             <span>Primary text</span>
-            <input value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} />
+            <input className={editorInputClass} value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} />
           </label>
-          <label>
+          <label className={editorLabelClass}>
             <span>Secondary text</span>
-            <textarea value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={2} />
+            <textarea className={editorInputClass} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={2} />
           </label>
-          <label>
+          <label className={editorLabelClass}>
             <span>Bullets, one per line</span>
-            <textarea value={bulletsText} onChange={(event) => setBulletsText(event.target.value)} rows={3} />
+            <textarea className={editorInputClass} value={bulletsText} onChange={(event) => setBulletsText(event.target.value)} rows={3} />
           </label>
           <div className="button-row">
             <button className="primary-button" type="button" disabled={!primaryText.trim()} onClick={() => void saveTextEdit()}>
@@ -421,24 +631,34 @@ export function CreateSlideshowPreview({
         </div>
       )}
 
-      <div className="slideshow-thumb-row" aria-label="Slides">
-        {slides.map((slide, index) => (
-          <button
-            className={`slideshow-thumb ${index === activeIndex ? "active" : ""}`}
-            key={slide.slideId}
-            type="button"
-            onClick={() => {
-              setActiveIndex(index);
-              setShowImagePrompt(false);
-              setIsEditingText(false);
-            }}
-          >
-            <LiveSlideFrame slide={slide} index={index} total={slides.length} thumbnail />
-          </button>
-        ))}
+      <div className={thumbnailRowClass} ref={thumbnailTrackRef} aria-label="Slides">
+        <div className={thumbnailInnerClass}>
+          {slides.map((slide, index) => (
+            <button
+              className={cx(
+                thumbnailButtonClass,
+                index === activeIndex
+                  ? "border-[var(--color-primary)] shadow-[var(--focus-ring)]"
+                  : "border-transparent"
+              )}
+              key={slide.slideId}
+              ref={(node) => {
+                thumbnailRefs.current[index] = node;
+              }}
+              type="button"
+              onClick={() => {
+                setActiveIndex(index);
+                setShowImagePrompt(false);
+                setIsEditingText(false);
+              }}
+            >
+              <LiveSlideFrame slide={slide} index={index} total={slides.length} renderingMode={spec.renderingMode} thumbnail />
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="slideshow-current-slide">
+      <div className={currentSlideClass}>
         <div className="artifact-copy">
           <div className="entity-eyebrow">Slide {activeSlide.index}</div>
           <h3>{slideTitle(activeSlide)}</h3>

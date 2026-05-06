@@ -3,19 +3,39 @@ import { clampText, compactText } from "../lib/text";
 import type {
   ContrastStrategy,
   CreativeBrief,
+  FullGraphicPlannerSlide,
+  FullGraphicSlideshowPlannerOutput,
   LayoutStrategy,
-  PlannerSlide,
+  OverlayPlannerSlide,
+  OverlaySlideshowPlannerOutput,
   SlideTemplate,
   SlideshowPlan,
-  SlideshowPlannerOutput,
+  SlideshowRenderingMode,
   SlideshowSlide,
+  SlideshowSlideRole,
   SlideshowTextBlock,
   TextDensity,
   TextPlacement,
 } from "./types";
 
-type LegacyPlannerSlide = PlannerSlide & {
-  layout: PlannerSlide["layout"] & { textPlacement?: unknown };
+export type PlannerReference = {
+  assetId: string;
+  name: string;
+  type: string;
+  description?: string;
+  instruction?: string;
+};
+
+export type RequestedRenderingMode = SlideshowRenderingMode;
+
+type PromptArgs = {
+  prompt: string;
+  revisionPrompt?: string;
+  brand: Doc<"brands">;
+  socialAccount?: Doc<"socialAccounts"> | null;
+  targetSlideCount: number;
+  slideCountReasoning: string;
+  references: PlannerReference[];
 };
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -84,23 +104,6 @@ export function inferSlideCount(prompt: string, explicitSlideCount?: number): {
   };
 }
 
-function normalizeBrief(
-  value: unknown,
-  prompt: string,
-  targetSlideCount: number,
-  layoutStrategy: LayoutStrategy
-): CreativeBrief {
-  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  return {
-    narrativePattern: clampText(compactText(data.narrativePattern, "Flexible educational slideshow with a strong hook and practical payoff."), 160),
-    targetSlideCount,
-    reasoning: clampText(compactText(data.reasoning, `Planned around the user's request: ${prompt}`), 240),
-    visualStyle: clampText(compactText(data.visualStyle, "modern, minimal, high-contrast social visuals"), 120),
-    tone: clampText(compactText(data.tone, "direct, confident, useful"), 120),
-    layoutStrategy,
-  };
-}
-
 function normalizePlacement(value: unknown, fallback: TextPlacement): TextPlacement {
   return value === "top" || value === "center" || value === "bottom" || value === "split"
     ? value
@@ -112,34 +115,46 @@ function normalizeLayoutPlacement(value: unknown, fallback: LayoutStrategy["hook
   return placement === "split" ? fallback : placement;
 }
 
-function fallbackContentPlacement(slides: PlannerSlide[]): LayoutStrategy["contentPlacement"] {
-  const placements = slides
-    .slice(1)
-    .map((slide) => normalizePlacement((slide as LegacyPlannerSlide).layout.textPlacement, "center"))
-    .filter((placement) => placement !== "split");
-  const uniquePlacements = Array.from(new Set(placements));
-  return uniquePlacements.length === 1 ? uniquePlacements[0] : "center";
-}
-
-function normalizeLayoutStrategy(value: unknown, slides: PlannerSlide[]): LayoutStrategy {
-  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  return {
-    hookPlacement: normalizeLayoutPlacement(data.hookPlacement, "center"),
-    contentPlacement: normalizeLayoutPlacement(data.contentPlacement, fallbackContentPlacement(slides)),
-  };
-}
-
 function normalizeDensity(value: unknown): TextDensity {
   return value === "sparse" || value === "medium" || value === "dense" ? value : "medium";
 }
 
 function normalizeContrast(value: unknown): ContrastStrategy {
-  if (value === "none" || value === "shadow" || value === "gradient_scrim") return value;
+  if (value === "none" || value === "shadow" || value === "gradient_scrim" || value === "solid_scrim") return value;
   return "shadow";
 }
 
+function normalizeAspectRatio(value: unknown): SlideshowPlan["aspectRatio"] {
+  return value === "9:16" || value === "4:5" || value === "1:1" ? value : "9:16";
+}
+
+function normalizeLayoutStrategy(value: unknown): LayoutStrategy {
+  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    hookPlacement: normalizeLayoutPlacement(data.hookPlacement, "center"),
+    contentPlacement: normalizeLayoutPlacement(data.contentPlacement, "center"),
+  };
+}
+
+function normalizeBrief(
+  value: unknown,
+  prompt: string,
+  targetSlideCount: number,
+  layoutStrategy: LayoutStrategy
+): CreativeBrief {
+  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    narrativePattern: clampText(compactText(data.narrativePattern, "Flexible slideshow with a strong hook and clear payoff."), 160),
+    targetSlideCount,
+    reasoning: clampText(compactText(data.reasoning, `Planned around the user's request: ${prompt}`), 240),
+    visualStyle: clampText(compactText(data.visualStyle, "cohesive social-first visuals"), 140),
+    tone: clampText(compactText(data.tone, "direct, confident, useful"), 120),
+    layoutStrategy,
+  };
+}
+
 function templateForSlide(
-  slide: Pick<PlannerSlide, "bullets"> & { layout: PlannerSlide["layout"] & { textPlacement: TextPlacement } },
+  slide: Pick<OverlayPlannerSlide, "bullets"> & { layout: OverlayPlannerSlide["layout"] & { textPlacement: TextPlacement } },
   index: number
 ): SlideTemplate {
   if (slide.bullets.length > 0) return "checklist";
@@ -148,25 +163,25 @@ function templateForSlide(
   return "bottom_stack";
 }
 
-function roleForSlide(slide: PlannerSlide, index: number, total: number): SlideshowSlide["role"] {
-  const purpose = slide.purpose.toLowerCase();
-  if (index === 0 || purpose.includes("hook") || purpose.includes("title")) return "hook";
-  if (index === total - 1 && (purpose.includes("cta") || purpose.includes("save") || purpose.includes("payoff"))) return "cta";
-  if (purpose.includes("proof") || purpose.includes("example")) return "proof";
-  if (purpose.includes("setup") || purpose.includes("problem")) return "setup";
-  if (purpose.includes("payoff") || purpose.includes("takeaway")) return "payoff";
+function roleForPurpose(purpose: string, index: number, total: number): SlideshowSlideRole {
+  const normalized = purpose.toLowerCase();
+  if (index === 0 || normalized.includes("hook") || normalized.includes("title")) return "hook";
+  if (index === total - 1 && (normalized.includes("cta") || normalized.includes("save") || normalized.includes("payoff"))) return "cta";
+  if (normalized.includes("proof") || normalized.includes("example")) return "proof";
+  if (normalized.includes("setup") || normalized.includes("problem")) return "setup";
+  if (normalized.includes("payoff") || normalized.includes("takeaway")) return "payoff";
   return "insight";
 }
 
-function textBlocksForSlide(slide: PlannerSlide, role: SlideshowSlide["role"]): SlideshowTextBlock[] {
-  const blocks: SlideshowTextBlock[] = [];
-
-  blocks.push({
-    role: role === "cta" ? "cta" : "headline",
-    text: clampText(slide.primaryText, 82),
-    items: [],
-    emphasis: "primary",
-  });
+function textBlocksForSlide(slide: OverlayPlannerSlide, role: SlideshowSlideRole): SlideshowTextBlock[] {
+  const blocks: SlideshowTextBlock[] = [
+    {
+      role: role === "cta" ? "cta" : "headline",
+      text: clampText(slide.primaryText, 82),
+      items: [],
+      emphasis: "primary",
+    },
+  ];
 
   if (slide.bullets.length > 0) {
     blocks.push({
@@ -187,7 +202,7 @@ function textBlocksForSlide(slide: PlannerSlide, role: SlideshowSlide["role"]): 
   return blocks.filter((block) => block.text || block.items.length).slice(0, 4);
 }
 
-function normalizePlannerSlide(value: unknown, index: number): PlannerSlide {
+function normalizeOverlayPlannerSlide(value: unknown, index: number): OverlayPlannerSlide {
   const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const layout = data.layout && typeof data.layout === "object"
     ? data.layout as Record<string, unknown>
@@ -203,32 +218,44 @@ function normalizePlannerSlide(value: unknown, index: number): PlannerSlide {
     primaryText: clampText(primaryText, 90),
     secondaryText: clampText(compactText(data.secondaryText), 160),
     bullets: bullets.map((item) => clampText(item, 58)),
-    imagePrompt: compactText(
-      data.imagePrompt,
-      "Full-bleed vertical lifestyle photograph with a clear subject, natural setting, soft cinematic light, uncluttered composition, and room for app-rendered overlay copy. Background image only, without embedded writing or graphic design elements."
+    backgroundPrompt: compactText(
+      data.backgroundPrompt,
+      `Full-bleed vertical image representing ${primaryText}, composed to remain readable behind app-rendered overlay text.`
     ),
-      layout: {
-        intent: clampText(compactText(layout.intent, "Readable mobile social slide with clear text hierarchy."), 140),
-        density: normalizeDensity(layout.density),
-        contrastStrategy: normalizeContrast(layout.contrastStrategy),
-      },
+    layout: {
+      intent: clampText(compactText(layout.intent, "Readable mobile social slide with clear text hierarchy."), 140),
+      density: normalizeDensity(layout.density),
+      contrastStrategy: normalizeContrast(layout.contrastStrategy),
+    },
   };
 }
 
-function fallbackPlannerOutput(prompt: string, targetSlideCount: number, revisionPrompt?: string): SlideshowPlannerOutput {
+function normalizeFullGraphicPlannerSlide(value: unknown, index: number): FullGraphicPlannerSlide {
+  const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const visibleText = clampText(compactText(data.visibleText, `Slide ${index + 1}`), 140);
+  return {
+    slideId: compactText(data.slideId, `slide-${index + 1}-${slug(visibleText, "generated")}`),
+    purpose: clampText(compactText(data.purpose, index === 0 ? "Hook/title slide" : "Content slide"), 90),
+    visibleText,
+    finalImagePrompt: compactText(
+      data.finalImagePrompt,
+      `Create a finished 9:16 social slideshow graphic. Include visible text: "${visibleText}".`
+    ),
+  };
+}
+
+function fallbackOverlayOutput(prompt: string, targetSlideCount: number, revisionPrompt?: string): OverlaySlideshowPlannerOutput {
   const mergedPrompt = revisionPrompt ? `${prompt}. Revision: ${revisionPrompt}` : prompt;
-  const itemMatch = mergedPrompt.match(countablePattern);
-  const itemCount = itemMatch?.[1] ? numberFromToken(itemMatch[1]) : undefined;
-  const contentCount = Math.max(3, Math.min((itemCount ?? targetSlideCount - 1), targetSlideCount - 1));
   const topic = clampText(mergedPrompt, 84);
-  const slides: PlannerSlide[] = [
+  const contentCount = Math.max(3, targetSlideCount - 1);
+  const slides: OverlayPlannerSlide[] = [
     {
       slideId: `slide-1-${slug(topic, "title")}`,
       purpose: "Hook/title slide",
       primaryText: topic,
       secondaryText: "",
       bullets: [],
-      imagePrompt: `Full-bleed vertical lifestyle photograph evoking ${topic}, clear subject, natural setting, soft cinematic morning light, uncluttered composition, room in the center for app-rendered overlay copy. Background image only, without embedded writing or graphic design elements.`,
+      backgroundPrompt: `Full-bleed vertical image evoking ${topic}, clear subject, uncluttered composition, and space for app-rendered overlay text.`,
       layout: {
         intent: "Large centered title over atmospheric hero image.",
         density: "sparse",
@@ -244,7 +271,7 @@ function fallbackPlannerOutput(prompt: string, targetSlideCount: number, revisio
       primaryText: `Point ${index}`,
       secondaryText: `Make this point specific and actionable for: ${topic}`,
       bullets: [],
-      imagePrompt: `Full-bleed vertical lifestyle photograph representing point ${index} of ${topic}, clear subject, natural setting, soft cinematic light, uncluttered composition, room in the center for app-rendered overlay copy. Background image only, without embedded writing or graphic design elements.`,
+      backgroundPrompt: `Full-bleed vertical image representing point ${index} of ${topic}, clear subject, uncluttered composition, and space for app-rendered overlay text.`,
       layout: {
         intent: "Strong heading with concise supporting text over a clean background.",
         density: "medium",
@@ -255,17 +282,16 @@ function fallbackPlannerOutput(prompt: string, targetSlideCount: number, revisio
 
   return {
     format: "slideshow",
+    renderingMode: "background_plus_overlay",
     creativeBrief: {
       narrativePattern: "Title slide followed by concise practical content slides.",
       targetSlideCount: slides.length,
       reasoning: `Fallback plan generated from the prompt: ${mergedPrompt}`,
       visualStyle: "modern, minimal, professional",
       tone: "direct, confident, useful",
-      layoutStrategy: {
-        hookPlacement: "center",
-        contentPlacement: "center",
-      },
+      layoutStrategy: { hookPlacement: "center", contentPlacement: "center" },
     },
+    visualSystem: "Prompt-driven social slideshow with app-rendered overlay text.",
     title: topic,
     caption: "Save this for later.",
     aspectRatio: "9:16",
@@ -273,58 +299,105 @@ function fallbackPlannerOutput(prompt: string, targetSlideCount: number, revisio
   };
 }
 
-export function normalizePlan(
-  value: unknown,
-  prompt: string,
-  revisionPrompt?: string,
-  targetSlideCount = inferSlideCount(prompt).targetSlideCount
-): SlideshowPlan {
-  const source = !value || typeof value !== "object" || (value as Record<string, unknown>).dryRun
-    ? fallbackPlannerOutput(prompt, targetSlideCount, revisionPrompt)
-    : value as Record<string, unknown>;
+function fallbackFullGraphicOutput(prompt: string, targetSlideCount: number, revisionPrompt?: string): FullGraphicSlideshowPlannerOutput {
+  const mergedPrompt = revisionPrompt ? `${prompt}. Revision: ${revisionPrompt}` : prompt;
+  const topic = clampText(mergedPrompt, 84);
+  const contentCount = Math.max(3, targetSlideCount - 1);
+  const slides: FullGraphicPlannerSlide[] = [
+    {
+      slideId: `slide-1-${slug(topic, "title")}`,
+      purpose: "Hook/title slide",
+      visibleText: topic,
+      finalImagePrompt: `Create a finished 9:16 social slideshow graphic for this title: "${topic}". Use a cohesive visual design based on the user's prompt.`,
+    },
+  ];
 
-  const rawSlides = Array.isArray(source.slides) ? source.slides : [];
-  const targetCountFromModel =
-    source.creativeBrief &&
-    typeof source.creativeBrief === "object" &&
-    typeof (source.creativeBrief as Record<string, unknown>).targetSlideCount === "number"
-      ? (source.creativeBrief as Record<string, unknown>).targetSlideCount as number
-      : targetSlideCount;
-  const targetCount = Math.max(4, Math.min(Math.round(targetCountFromModel), 9));
-  const plannerSlides = rawSlides
-    .slice(0, targetCount)
-    .map((slide, index) => normalizePlannerSlide(slide, index));
-
-  const slides = (plannerSlides.length >= 4
-    ? plannerSlides
-    : fallbackPlannerOutput(prompt, targetCount, revisionPrompt).slides
-  ).slice(0, 9);
-  const sourceBrief = source.creativeBrief && typeof source.creativeBrief === "object"
-    ? source.creativeBrief as Record<string, unknown>
-    : {};
-  const layoutStrategy = normalizeLayoutStrategy(sourceBrief.layoutStrategy, slides);
-  const strategy = normalizeBrief(source.creativeBrief, prompt, slides.length, layoutStrategy);
-  const aspectRatio = compactText(source.aspectRatio, "9:16") as SlideshowPlan["aspectRatio"];
-  const normalizedAspectRatio = ["9:16", "4:5", "1:1"].includes(aspectRatio) ? aspectRatio : "9:16";
+  for (let index = 1; index <= contentCount; index += 1) {
+    const visibleText = `Point ${index}`;
+    slides.push({
+      slideId: `slide-${index + 1}-point-${index}`,
+      purpose: `Point ${index}`,
+      visibleText,
+      finalImagePrompt: `Create a finished 9:16 social slideshow graphic for visible text: "${visibleText}". Make it specific to ${topic}.`,
+    });
+  }
 
   return {
     format: "slideshow",
-    aspectRatio: normalizedAspectRatio,
-    title: clampText(compactText(source.title, slides[0]?.primaryText || prompt), 90),
-    hook: clampText(slides[0]?.primaryText || prompt, 120),
-    caption: clampText(compactText(source.caption, "Save this for later."), 280),
-    creativeBrief: `${strategy.narrativePattern} ${strategy.reasoning}`.trim(),
+    renderingMode: "full_graphic_generation",
+    creativeBrief: {
+      narrativePattern: "Title slide followed by concise graphic content slides.",
+      targetSlideCount: slides.length,
+      reasoning: `Fallback plan generated from the prompt: ${mergedPrompt}`,
+      visualStyle: "cohesive finished social graphics",
+      tone: "direct, confident, useful",
+      layoutStrategy: { hookPlacement: "center", contentPlacement: "center" },
+    },
+    visualSystem: "Prompt-driven finished social graphics.",
+    title: topic,
+    caption: "Save this for later.",
+    aspectRatio: "9:16",
+    slides,
+  };
+}
+
+function normalizeSharedPlan(
+  source: Record<string, unknown>,
+  prompt: string,
+  slideCount: number
+) {
+  const sourceBrief = source.creativeBrief && typeof source.creativeBrief === "object"
+    ? source.creativeBrief as Record<string, unknown>
+    : {};
+  const layoutStrategy = normalizeLayoutStrategy(sourceBrief.layoutStrategy);
+  const strategy = normalizeBrief(source.creativeBrief, prompt, slideCount, layoutStrategy);
+  const aspectRatio = normalizeAspectRatio(source.aspectRatio);
+  return {
+    aspectRatio,
     strategy,
-    slides: slides.map((slide, index) => {
-      const role = roleForSlide(slide, index, slides.length);
-      const textPlacement = index === 0 ? layoutStrategy.hookPlacement : layoutStrategy.contentPlacement;
+    title: clampText(compactText(source.title, prompt), 90),
+    caption: clampText(compactText(source.caption, "Save this for later."), 280),
+    visualSystem: clampText(compactText(source.visualSystem, "Prompt-driven social slideshow with a cohesive visual system."), 360),
+  };
+}
+
+function normalizeOverlayPlan(
+  value: unknown,
+  prompt: string,
+  revisionPrompt: string | undefined,
+  targetSlideCount: number
+): SlideshowPlan {
+  const source = !value || typeof value !== "object" || (value as Record<string, unknown>).dryRun
+    ? fallbackOverlayOutput(prompt, targetSlideCount, revisionPrompt)
+    : value as Record<string, unknown>;
+  const rawSlides = Array.isArray(source.slides) ? source.slides : [];
+  const targetCount = Math.max(4, Math.min(Math.round(targetSlideCount), 9));
+  const plannerSlides = rawSlides.slice(0, targetCount).map((slide, index) => normalizeOverlayPlannerSlide(slide, index));
+  const fallback = fallbackOverlayOutput(prompt, targetCount, revisionPrompt);
+  const slides = (plannerSlides.length >= 4 ? plannerSlides : fallback.slides).slice(0, 9);
+  const shared = normalizeSharedPlan(source, prompt, slides.length);
+
+  return {
+    format: "slideshow",
+    renderingMode: "background_plus_overlay",
+    aspectRatio: shared.aspectRatio,
+    title: shared.title,
+    hook: clampText(slides[0]?.primaryText || prompt, 120),
+    caption: shared.caption,
+    visualSystem: shared.visualSystem,
+    creativeBrief: `${shared.strategy.narrativePattern} ${shared.strategy.reasoning}`.trim(),
+    strategy: shared.strategy,
+    slides: slides.map((slide, index): SlideshowSlide => {
+      const role = roleForPurpose(slide.purpose, index, slides.length);
+      const textPlacement = index === 0 ? shared.strategy.layoutStrategy.hookPlacement : shared.strategy.layoutStrategy.contentPlacement;
       const layout = { ...slide.layout, textPlacement };
       return {
+        renderingMode: "background_plus_overlay",
         slideId: slide.slideId || `slide-${index + 1}-${slug(slide.primaryText, "generated")}`,
         index: index + 1,
         role,
         purpose: slide.purpose,
-        visualPrompt: clampText(slide.imagePrompt, 420),
+        backgroundPrompt: clampText(slide.backgroundPrompt, 700),
         textBlocks: textBlocksForSlide(slide, role),
         layout: {
           intent: layout.intent,
@@ -339,14 +412,67 @@ export function normalizePlan(
   };
 }
 
-export function buildPlannerPrompt(args: {
-  prompt: string;
-  revisionPrompt?: string;
-  brand: Doc<"brands">;
-  socialAccount?: Doc<"socialAccounts"> | null;
-  targetSlideCount: number;
-  slideCountReasoning: string;
-}): string {
+function normalizeFullGraphicPlan(
+  value: unknown,
+  prompt: string,
+  revisionPrompt: string | undefined,
+  targetSlideCount: number
+): SlideshowPlan {
+  const source = !value || typeof value !== "object" || (value as Record<string, unknown>).dryRun
+    ? fallbackFullGraphicOutput(prompt, targetSlideCount, revisionPrompt)
+    : value as Record<string, unknown>;
+  const rawSlides = Array.isArray(source.slides) ? source.slides : [];
+  const targetCount = Math.max(4, Math.min(Math.round(targetSlideCount), 9));
+  const plannerSlides = rawSlides.slice(0, targetCount).map((slide, index) => normalizeFullGraphicPlannerSlide(slide, index));
+  const fallback = fallbackFullGraphicOutput(prompt, targetCount, revisionPrompt);
+  const slides = (plannerSlides.length >= 4 ? plannerSlides : fallback.slides).slice(0, 9);
+  const shared = normalizeSharedPlan(source, prompt, slides.length);
+
+  return {
+    format: "slideshow",
+    renderingMode: "full_graphic_generation",
+    aspectRatio: shared.aspectRatio,
+    title: shared.title,
+    hook: clampText(slides[0]?.visibleText || prompt, 120),
+    caption: shared.caption,
+    visualSystem: shared.visualSystem,
+    creativeBrief: `${shared.strategy.narrativePattern} ${shared.strategy.reasoning}`.trim(),
+    strategy: shared.strategy,
+    slides: slides.map((slide, index): SlideshowSlide => ({
+      renderingMode: "full_graphic_generation",
+      slideId: slide.slideId || `slide-${index + 1}-${slug(slide.visibleText, "generated")}`,
+      index: index + 1,
+      role: roleForPurpose(slide.purpose, index, slides.length),
+      purpose: slide.purpose,
+      visibleText: clampText(slide.visibleText, 140),
+      finalImagePrompt: clampText(slide.finalImagePrompt, 1200),
+    })),
+  };
+}
+
+export function normalizePlan(
+  value: unknown,
+  prompt: string,
+  revisionPrompt?: string,
+  targetSlideCount = inferSlideCount(prompt).targetSlideCount,
+  requestedRenderingMode: RequestedRenderingMode = "background_plus_overlay"
+): SlideshowPlan {
+  return requestedRenderingMode === "full_graphic_generation"
+    ? normalizeFullGraphicPlan(value, prompt, revisionPrompt, targetSlideCount)
+    : normalizeOverlayPlan(value, prompt, revisionPrompt, targetSlideCount);
+}
+
+function sharedPromptLines(args: PromptArgs): Array<string | undefined> {
+  const referenceLines = args.references.length
+    ? args.references.flatMap((reference, index) => [
+        `Reference ${index + 1}: ${reference.name}`,
+        `- Asset id: ${reference.assetId}`,
+        `- Type: ${reference.type}`,
+        reference.description ? `- Description: ${reference.description}` : undefined,
+        reference.instruction ? `- User instruction: ${reference.instruction}` : undefined,
+      ])
+    : ["No reference assets were selected."];
+
   return [
     `Generate a production-ready ${args.targetSlideCount}-slide social slideshow from the user's rough idea.`,
     "",
@@ -357,36 +483,11 @@ export function buildPlannerPrompt(args: {
     `- Slide count hint: ${args.targetSlideCount}. ${args.slideCountReasoning}`,
     "- Do not ask clarifying questions unless the prompt is impossible to execute; make reasonable creative-director decisions.",
     "",
-    "TEXT RULES:",
-    "- Write in a direct, confident, action-oriented tone unless the brand says otherwise.",
-    "- Be specific and actionable, not vague motivation.",
-    "- Keep text concise enough to fit on a mobile image.",
-    "- Primary text should usually be 3-10 words.",
-    "- Secondary text should be 0-2 short sentences.",
-    "- Avoid all-caps words except acronyms.",
-    "- Avoid exclamation points unless one is clearly justified.",
-    "- Use bullets only when the slide truly benefits from a checklist.",
+    "REFERENCES:",
+    ...referenceLines,
+    "- Use selected references according to the user's prompt.",
     "",
-    "IMAGE PROMPT RULES:",
-    "- Write each imagePrompt as one polished natural-language prompt string.",
-    "- Describe the subject/action, setting, composition, lighting, style, camera feel, and an uncluttered area for app-rendered overlay copy.",
-    "- Prefer phrases like full-bleed vertical photograph, lifestyle photo, cinematic phone-camera realism, natural light, uncluttered composition.",
-    "- Create visual cohesion across slides with a consistent style, mood, lighting, and palette.",
-    "- The title slide should use a thematic hero image, not a literal diagram.",
-    "- Content slides should visualize the specific concept of the slide.",
-    "- Do not describe a poster, slide, carousel, social graphic, typography layout, UI, caption, or text overlay.",
-    "- End each imagePrompt with this exact sentence: Background image only, without embedded writing or graphic design elements.",
-    "",
-    "LAYOUT RULES:",
-    "- Choose creativeBrief.layoutStrategy once for the whole slideshow.",
-    "- Set creativeBrief.layoutStrategy.hookPlacement to center unless the user explicitly asks for another title treatment.",
-    "- Set creativeBrief.layoutStrategy.contentPlacement to one shared placement for all non-title slides. Default to center unless the visual style clearly needs top or bottom.",
-    "- Let the slideshow-level layout strategy control placement for every slide; use each slide's layout.intent to describe readability and composition needs.",
-    "- For each slide, describe layout.intent in natural language. This is internal metadata, not display copy.",
-    "- Choose density and contrastStrategy per slide as semantic layout hints, not exact pixel values.",
-    "- Use shadow or gradient_scrim by default. Use solid_scrim only if the slide has unusually dense text.",
-    "- The backend renderer will decide exact font sizes and positions.",
-    "",
+    "BRAND CONTEXT:",
     `Brand: ${args.brand.name}`,
     args.brand.audience ? `Audience: ${args.brand.audience}` : undefined,
     args.brand.voice ? `Voice: ${args.brand.voice}` : undefined,
@@ -395,7 +496,46 @@ export function buildPlannerPrompt(args: {
     args.socialAccount ? `Account/platform: ${args.socialAccount.username} on ${args.socialAccount.platform}` : undefined,
     `User prompt: ${args.prompt}`,
     args.revisionPrompt ? `Revision request: ${args.revisionPrompt}` : undefined,
+  ];
+}
+
+export function buildOverlayPlannerPrompt(args: PromptArgs): string {
+  return [
+    ...sharedPromptLines(args),
     "",
-    "Return exactly the requested JSON schema. Use exactly the target slide count unless there is a strong creative reason to use fewer or more within the schema limits.",
+    "PRODUCTION MODE:",
+    "- Use renderingMode exactly: background_plus_overlay.",
+    "- Each slide needs app-rendered overlay copy and a backgroundPrompt for the image model.",
+    "- backgroundPrompt should create an image that works behind overlay text.",
+    "- The app renders slide copy separately, so backgroundPrompt should focus on subject, environment, composition, and open areas for legibility.",
+    "",
+    "SLIDE COPY:",
+    "- primaryText should usually be 3-10 words.",
+    "- secondaryText should be 0-2 short sentences.",
+    "- Use bullets only when the slide truly benefits from a checklist.",
+    "- Keep all copy concise enough to fit on a mobile image.",
+    "",
+    "Return exactly the requested JSON schema.",
+  ].filter((line) => line !== undefined).join("\n");
+}
+
+export function buildFullGraphicPlannerPrompt(args: PromptArgs): string {
+  return [
+    ...sharedPromptLines(args),
+    "",
+    "PRODUCTION MODE:",
+    "- Use renderingMode exactly: full_graphic_generation.",
+    "- Each slide needs visibleText and finalImagePrompt.",
+    "- finalImagePrompt should describe the complete finished slide image, including its visual design, composition, subject placement, and visible text.",
+    "- visibleText is the intended text that should appear in the generated image.",
+    "- Only include text that belongs in the final slide.",
+    "",
+    "FULL GRAPHIC SLIDES:",
+    "- The slide schema for this mode uses visibleText and finalImagePrompt for copy and design.",
+    "- Make each finalImagePrompt specific to that slide.",
+    "- Preserve the slideshow-level visualSystem across all slides.",
+    "- Keep visibleText concise enough for an image model to render legibly.",
+    "",
+    "Return exactly the requested JSON schema.",
   ].filter((line) => line !== undefined).join("\n");
 }

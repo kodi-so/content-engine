@@ -351,7 +351,7 @@ export function LibraryPage() {
             intermediate artifacts.
           </div>
         )}
-        <div className="slideshow-stack">
+        <div className="grid gap-[var(--space-4)]">
           {savedSlideshows.map((slideshow) => (
             <SavedSlideshowCard
               key={slideshow._id}

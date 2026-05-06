@@ -48,7 +48,7 @@
   }
 
   .prompt-field {
-    grid-column: span 1;
+    grid-column: 1 / -1;
   }
 
   .workspace {
@@ -63,27 +63,9 @@
     font-size: 2rem;
   }
 
-  .slideshow-bundle-header,
   .section-toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .slideshow-bundle-actions {
-    align-items: flex-start;
-  }
-
-  .slideshow-editor,
-  .create-slide-canvas {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .slideshow-nav-button {
-    display: none;
-  }
-
-  .slideshow-phone-frame {
-    min-height: 22rem;
   }
 }
 
@@ -107,15 +89,13 @@
     grid-template-columns: 1fr;
   }
 
-  .button-row,
-  .create-slide-actions {
+  .button-row {
     display: grid;
   }
 
   .primary-button,
   .secondary-button,
-  .danger-button,
-  .icon-action-button {
+  .danger-button {
     width: 100%;
   }
 }
@@ -125,10 +105,7 @@
   .quiet-button,
   .primary-button,
   .secondary-button,
-  .danger-button,
-  .icon-action-button,
-  .slideshow-nav-button,
-  .slideshow-thumb {
+  .danger-button {
     min-height: 2.75rem;
   }
 }

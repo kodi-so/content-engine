@@ -151,6 +151,20 @@ export default defineSchema({
     contentFormat: contentFormatValidator,
     prompt: v.string(),
     revisionPrompt: v.optional(v.string()),
+    requestedRenderingMode: v.optional(
+      v.union(
+        v.literal("background_plus_overlay"),
+        v.literal("full_graphic_generation")
+      )
+    ),
+    referenceAssets: v.optional(
+      v.array(
+        v.object({
+          assetId: v.id("brandAssets"),
+          instruction: v.optional(v.string()),
+        })
+      )
+    ),
     status: contentRequestStatusValidator,
     plan: v.optional(v.any()),
     summary: v.optional(v.string()),

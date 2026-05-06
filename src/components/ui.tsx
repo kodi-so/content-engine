@@ -76,18 +76,23 @@ export function TextArea({
   value,
   onChange,
   placeholder,
+  className,
+  textareaClassName,
   rows = 3,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  className?: string;
+  textareaClassName?: string;
   rows?: number;
 }) {
   return (
-    <label className="field prompt-field">
+    <label className={["field prompt-field", className].filter(Boolean).join(" ")}>
       <span>{label}</span>
       <textarea
+        className={textareaClassName}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

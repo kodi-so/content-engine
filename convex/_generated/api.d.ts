@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as accounts_brandAssets from "../accounts/brandAssets.js";
 import type * as accounts_brands from "../accounts/brands.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as artifacts_records from "../artifacts/records.js";
@@ -52,6 +53,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "accounts/brandAssets": typeof accounts_brandAssets;
   "accounts/brands": typeof accounts_brands;
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "artifacts/records": typeof artifacts_records;

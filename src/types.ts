@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../convex/_generated/dataModel";
 
 export type BrandId = Id<"brands">;
+export type BrandAssetId = Id<"brandAssets">;
 export type SocialAccountId = Id<"socialAccounts">;
 export type WorkflowId = Id<"workflows">;
 export type WorkflowRunId = Id<"workflowRuns">;
@@ -17,6 +18,9 @@ export type WorkflowDoc = Doc<"workflows">;
 export type WorkflowRunDoc = Doc<"workflowRuns">;
 export type ContentRequestDoc = Doc<"contentRequests">;
 export type SlideshowDoc = Doc<"slideshows">;
+export type BrandAssetDoc = Doc<"brandAssets">;
+
+export type SlideshowRenderingMode = "background_plus_overlay" | "full_graphic_generation";
 
 export type SlideshowTextBlock = {
   role?: "eyebrow" | "headline" | "body" | "bullet_list" | "cta";
@@ -28,9 +32,12 @@ export type SlideshowTextBlock = {
 export type CanonicalSlideshowSlide = {
   slideId: string;
   index: number;
+  renderingMode?: SlideshowRenderingMode;
   role?: string;
   purpose?: string;
-  visualPrompt?: string;
+  backgroundPrompt?: string;
+  finalImagePrompt?: string;
+  visibleText?: string;
   textBlocks?: SlideshowTextBlock[];
   layout?: {
     intent?: string;
@@ -48,6 +55,7 @@ export type CanonicalSlideshowSlide = {
 
 export type CanonicalSlideshowSpec = {
   format?: "slideshow";
+  renderingMode?: SlideshowRenderingMode;
   title?: string;
   caption?: string;
   aspectRatio?: "9:16" | "4:5" | "1:1";
@@ -58,6 +66,7 @@ export type CanonicalSlideshowSpec = {
     width?: number;
     height?: number;
   };
+  visualSystem?: string;
   creativeBrief?: string;
   strategy?: Record<string, unknown>;
   slides?: CanonicalSlideshowSlide[];

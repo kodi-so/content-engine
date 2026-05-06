@@ -1,8 +1,8 @@
 import { getSlideDimensions } from "./slideshowDimensions";
-import type { SlideshowSlide, SlideshowTextBlock } from "./types";
+import type { OverlaySlideshowSlide, SlideshowSlide, SlideshowTextBlock } from "./types";
 
 type SlideRole = SlideshowSlide["role"];
-type SlideLayout = SlideshowSlide["layout"];
+type SlideLayout = OverlaySlideshowSlide["layout"];
 
 const slideRoles: SlideRole[] = ["hook", "setup", "insight", "proof", "payoff", "cta"];
 const textZones: SlideLayout["textZone"][] = ["top", "center", "bottom", "split"];
@@ -97,11 +97,12 @@ export function slideFromCopy(args: {
     : [];
 
   return {
+    renderingMode: "background_plus_overlay",
     slideId: `slide-${args.index}`,
     index: args.index,
     role,
     purpose: typeof args.role === "string" ? args.role : "Slide",
-    visualPrompt: args.visualPrompt ?? "",
+    backgroundPrompt: args.visualPrompt ?? "",
     textBlocks: existingBlocks.length
       ? existingBlocks
       : textBlocksFromCopy({

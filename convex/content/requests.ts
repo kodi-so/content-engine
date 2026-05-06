@@ -11,11 +11,19 @@ import {
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { storeGeneratedAsset } from "./assetStorage";
-import { buildPlannerPrompt, inferSlideCount, normalizePlan } from "./planning";
+import {
+  buildFullGraphicPlannerPrompt,
+  buildOverlayPlannerPrompt,
+  inferSlideCount,
+  normalizePlan,
+  type PlannerReference,
+  type RequestedRenderingMode,
+} from "./planning";
 import {
   type CanonicalSlideshowSlide,
   type CanonicalSlideshowSpec,
-  slideshowPlanSchema,
+  fullGraphicSlideshowPlanSchema,
+  overlaySlideshowPlanSchema,
   type SlideshowPlannerOutput,
   type SlideshowPlan,
   type SlideshowTextBlock,
@@ -26,6 +34,7 @@ import type {
   GeneratedAsset,
   ModelInvocationMetadata,
   ModelProvider,
+  ReferenceAsset,
 } from "../providers/model";
 import { contentRequestStatusValidator } from "../validators";
 
@@ -38,16 +47,105 @@ function sumCost(current: number, metadata?: ModelInvocationMetadata) {
   return current + (metadata?.costUsd ?? 0);
 }
 
-function providerImagePrompt(slidePrompt: string, aspectRatio: SlideshowPlan["aspectRatio"]) {
+function providerImagePrompt(
+  slidePrompt: string,
+  aspectRatio: SlideshowPlan["aspectRatio"],
+  renderingMode: SlideshowPlan["renderingMode"]
+) {
   const trimmed = slidePrompt.trim().replace(/\s+/g, " ");
-  const hasBackgroundConstraint = /background image only/i.test(trimmed);
+  if (renderingMode === "full_graphic_generation") {
+    return [
+      trimmed,
+      `Vertical ${aspectRatio} finished social slideshow graphic.`,
+    ].join(" ");
+  }
   return [
     trimmed,
     `Vertical ${aspectRatio} full-bleed image.`,
-    hasBackgroundConstraint
-      ? undefined
-      : "Background image only, without embedded writing or graphic design elements.",
   ].filter(Boolean).join(" ");
+}
+
+function promptForSlide(slide: SlideshowPlan["slides"][number]) {
+  return slide.renderingMode === "full_graphic_generation"
+    ? slide.finalImagePrompt
+    : slide.backgroundPrompt;
+}
+
+function planPromptForMode(args: {
+  prompt: string;
+  revisionPrompt?: string;
+  brand: Doc<"brands">;
+  socialAccount?: Doc<"socialAccounts"> | null;
+  targetSlideCount: number;
+  slideCountReasoning: string;
+  requestedRenderingMode: RequestedRenderingMode;
+  references: PlannerReference[];
+}) {
+  return args.requestedRenderingMode === "full_graphic_generation"
+    ? buildFullGraphicPlannerPrompt(args)
+    : buildOverlayPlannerPrompt(args);
+}
+
+function planSchemaForMode(renderingMode: RequestedRenderingMode) {
+  return renderingMode === "full_graphic_generation"
+    ? fullGraphicSlideshowPlanSchema
+    : overlaySlideshowPlanSchema;
+}
+
+function requestedRenderingModeValidator() {
+  return v.optional(
+    v.union(
+      v.literal("background_plus_overlay"),
+      v.literal("full_graphic_generation")
+    )
+  );
+}
+
+function referenceInstructionFromMetadata(asset: Doc<"brandAssets">): string | undefined {
+  if (!asset.metadata || typeof asset.metadata !== "object") return undefined;
+  const instruction = (asset.metadata as Record<string, unknown>).instruction;
+  return typeof instruction === "string" && instruction.trim() ? instruction.trim() : undefined;
+}
+
+function plannerReferenceFromAsset(
+  asset: Doc<"brandAssets">,
+  instruction?: string
+): PlannerReference {
+  return {
+    assetId: String(asset._id),
+    name: asset.name,
+    type: asset.type,
+    description: asset.description,
+    instruction: instruction?.trim() || referenceInstructionFromMetadata(asset),
+  };
+}
+
+async function referenceImagesFromAssets(
+  assets: Doc<"brandAssets">[]
+): Promise<ReferenceAsset[]> {
+  const references: ReferenceAsset[] = [];
+
+  for (const asset of assets) {
+    try {
+      const response = await fetch(asset.storageUrl);
+      if (!response.ok) continue;
+      const arrayBuffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let index = 0; index < bytes.length; index += 1) {
+        binary += String.fromCharCode(bytes[index]);
+      }
+      references.push({
+        base64Data: btoa(binary),
+        mimeType: response.headers.get("content-type") || "image/png",
+        description: asset.description || asset.name,
+      });
+    } catch {
+      // A missing reference should not fail the whole generation request.
+    }
+  }
+
+  return references;
 }
 
 async function createRequestArtifact(
@@ -111,6 +209,7 @@ function buildCanonicalSlideshowSpec(args: {
   const now = Date.now();
   return {
     format: "slideshow",
+    renderingMode: args.plan.renderingMode,
     title: args.plan.title,
     caption: args.plan.caption,
     aspectRatio: args.plan.aspectRatio,
@@ -121,6 +220,7 @@ function buildCanonicalSlideshowSpec(args: {
       width: args.dimensions.width,
       height: args.dimensions.height,
     },
+    visualSystem: args.plan.visualSystem,
     creativeBrief: args.plan.creativeBrief,
     strategy: args.plan.strategy,
     slides: args.plan.slides.map((slide): CanonicalSlideshowSlide => {
@@ -279,6 +379,15 @@ export const createSlideshow = mutation({
     brandId: v.id("brands"),
     socialAccountId: v.optional(v.id("socialAccounts")),
     prompt: v.string(),
+    requestedRenderingMode: requestedRenderingModeValidator(),
+    referenceAssets: v.optional(
+      v.array(
+        v.object({
+          assetId: v.id("brandAssets"),
+          instruction: v.optional(v.string()),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
@@ -293,6 +402,19 @@ export const createSlideshow = mutation({
       if (!account || account.userId !== userId) throw new Error("Social account not found");
     }
 
+    const referenceAssets = [];
+    for (const reference of args.referenceAssets ?? []) {
+      const asset = await ctx.db.get(reference.assetId);
+      if (!asset || asset.userId !== userId || asset.brandId !== args.brandId) {
+        throw new Error("Reference asset not found");
+      }
+      const instruction = reference.instruction?.trim() || referenceInstructionFromMetadata(asset) || asset.description || "";
+      referenceAssets.push({
+        assetId: reference.assetId,
+        instruction,
+      });
+    }
+
     const now = Date.now();
     const requestId = await ctx.db.insert("contentRequests", {
       userId,
@@ -300,6 +422,8 @@ export const createSlideshow = mutation({
       socialAccountId: args.socialAccountId,
       contentFormat: "slideshow",
       prompt,
+      requestedRenderingMode: args.requestedRenderingMode ?? "background_plus_overlay",
+      referenceAssets,
       status: "queued",
       createdAt: now,
       updatedAt: now,
@@ -406,7 +530,17 @@ export const getExecutionContext = internalQuery({
       : null;
 
     if (!brand) return null;
-    return { request, brand, socialAccount };
+    const referenceAssets = [];
+    for (const reference of request.referenceAssets ?? []) {
+      const asset = await ctx.db.get(reference.assetId);
+      if (!asset || asset.userId !== request.userId || asset.brandId !== request.brandId) continue;
+      referenceAssets.push({
+        asset,
+        instruction: reference.instruction,
+      });
+    }
+
+    return { request, brand, socialAccount, referenceAssets };
   },
 });
 
@@ -556,7 +690,9 @@ export const updateSlideText = mutation({
     const nextSpec = {
       ...spec,
       slides: spec.slides.map((slide) =>
-        slide.slideId === args.slideId && slide.status !== "deleted"
+        slide.slideId === args.slideId &&
+        slide.status !== "deleted" &&
+        slide.renderingMode === "background_plus_overlay"
           ? { ...slide, textBlocks, updatedAt: Date.now() }
           : slide
       ),
@@ -584,19 +720,25 @@ export const execute = internalAction({
         status: "planning",
       });
 
+      const requestedRenderingMode = (context.request.requestedRenderingMode ?? "background_plus_overlay") as RequestedRenderingMode;
+      const plannerReferences = context.referenceAssets.map(({ asset, instruction }) =>
+        plannerReferenceFromAsset(asset, instruction)
+      );
       const slideCountHint = inferSlideCount(context.request.prompt);
       const textProvider = getModelProvider("openrouter");
       const structured = await textProvider.generateStructured<SlideshowPlannerOutput>({
         systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
-        prompt: buildPlannerPrompt({
+        prompt: planPromptForMode({
           prompt: context.request.prompt,
           revisionPrompt: context.request.revisionPrompt,
           brand: context.brand,
           socialAccount: context.socialAccount,
           targetSlideCount: slideCountHint.targetSlideCount,
           slideCountReasoning: slideCountHint.reasoning,
+          requestedRenderingMode,
+          references: plannerReferences,
         }),
-        schema: slideshowPlanSchema,
+        schema: planSchemaForMode(requestedRenderingMode),
         schemaName: "slideshow_create_plan",
         model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || undefined,
         temperature: 0.7,
@@ -607,7 +749,8 @@ export const execute = internalAction({
         structured.object,
         context.request.prompt,
         context.request.revisionPrompt,
-        slideCountHint.targetSlideCount
+        slideCountHint.targetSlideCount,
+        requestedRenderingMode
       );
 
       await ctx.runMutation(internal.content.requests.transition, {
@@ -628,24 +771,35 @@ export const execute = internalAction({
         prompt: context.request.prompt,
       });
 
-      const imageProvider = getModelProvider("fal");
-      const imageModel = process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || "fal-ai/nano-banana";
+      const referenceImages = await referenceImagesFromAssets(
+        context.referenceAssets.map(({ asset }) => asset)
+      );
+      const imageProviderName = referenceImages.length > 0
+        ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "gemini"
+        : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
+      const imageProvider = getModelProvider(imageProviderName as "gemini" | "fal");
+      const imageModel = plan.renderingMode === "full_graphic_generation"
+        ? process.env.CONTENT_ENGINE_FULL_GRAPHIC_IMAGE_MODEL?.trim() || process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined
+        : process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined;
       const dimensions = getSlideDimensions(plan.aspectRatio);
       const imageBySlideIndex = new Map<number, { artifactId: Id<"artifacts">; url?: string }>();
 
       for (const slide of plan.slides) {
-        const prompt = providerImagePrompt(slide.visualPrompt, plan.aspectRatio);
+        const prompt = providerImagePrompt(promptForSlide(slide), plan.aspectRatio, plan.renderingMode);
         try {
           const image = await imageProvider.generateImage({
             prompt,
             model: imageModel,
             aspectRatio: plan.aspectRatio,
             count: 1,
+            referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
             metadata: {
               arguments: {
                 aspect_ratio: plan.aspectRatio,
                 output_format: "png",
               },
+              renderingMode: plan.renderingMode,
+              referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
             },
           });
           costUsd = sumCost(costUsd, image.metadata);
@@ -661,7 +815,9 @@ export const execute = internalAction({
             title: `Slide ${slide.index} image`,
             storageUrl: stored.storageUrl,
             data: {
-              format: "slideshow_background",
+              format: plan.renderingMode === "full_graphic_generation"
+                ? "slideshow_full_graphic"
+                : "slideshow_background",
               slideIndex: slide.index,
               storageId: stored.storageId,
               mimeType: stored.mimeType,
@@ -671,6 +827,8 @@ export const execute = internalAction({
               jobId: image.jobId,
               status: "succeeded",
               prompt,
+              renderingMode: plan.renderingMode,
+              referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
             },
             provider: image.metadata.provider,
             model: image.metadata.model,

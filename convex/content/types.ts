@@ -4,6 +4,7 @@ export type SlideTemplate = "center_punch" | "bottom_stack" | "top_hook_bottom_b
 export type TextPlacement = "top" | "center" | "bottom" | "split";
 export type TextDensity = "sparse" | "medium" | "dense";
 export type ContrastStrategy = "none" | "shadow" | "gradient_scrim" | "solid_scrim";
+export type SlideshowRenderingMode = "background_plus_overlay" | "full_graphic_generation";
 
 export type LayoutStrategy = {
   hookPlacement: Exclude<TextPlacement, "split">;
@@ -17,22 +18,39 @@ export type SlideshowTextBlock = {
   emphasis: TextBlockEmphasis;
 };
 
-export type SlideshowSlide = {
+export type SlideshowSlideRole = "hook" | "setup" | "insight" | "proof" | "payoff" | "cta";
+
+export type SlideshowSlideLayout = {
+  intent: string;
+  template: SlideTemplate;
+  textZone: TextPlacement;
+  density: TextDensity;
+  contrast: ContrastStrategy;
+  stylePreset: "dark_minimal_tiktok";
+};
+
+export type OverlaySlideshowSlide = {
+  renderingMode: "background_plus_overlay";
   slideId: string;
   index: number;
-  role: "hook" | "setup" | "insight" | "proof" | "payoff" | "cta";
+  role: SlideshowSlideRole;
   purpose: string;
-  visualPrompt: string;
+  backgroundPrompt: string;
   textBlocks: SlideshowTextBlock[];
-  layout: {
-    intent: string;
-    template: SlideTemplate;
-    textZone: TextPlacement;
-    density: TextDensity;
-    contrast: ContrastStrategy;
-    stylePreset: "dark_minimal_tiktok";
-  };
+  layout: SlideshowSlideLayout;
 };
+
+export type FullGraphicSlideshowSlide = {
+  renderingMode: "full_graphic_generation";
+  slideId: string;
+  index: number;
+  role: SlideshowSlideRole;
+  purpose: string;
+  visibleText: string;
+  finalImagePrompt: string;
+};
+
+export type SlideshowSlide = OverlaySlideshowSlide | FullGraphicSlideshowSlide;
 
 export type CreativeBrief = {
   narrativePattern: string;
@@ -45,10 +63,12 @@ export type CreativeBrief = {
 
 export type SlideshowPlan = {
   format: "slideshow";
+  renderingMode: SlideshowRenderingMode;
   aspectRatio: "9:16" | "4:5" | "1:1";
   title: string;
   hook: string;
   caption: string;
+  visualSystem: string;
   creativeBrief: string;
   strategy: CreativeBrief;
   slides: SlideshowSlide[];
@@ -71,23 +91,25 @@ export type CanonicalSlideshowSlide = SlideshowSlide & {
 
 export type CanonicalSlideshowSpec = {
   format: "slideshow";
+  renderingMode: SlideshowRenderingMode;
   title: string;
   caption: string;
   aspectRatio: SlideshowPlan["aspectRatio"];
   dimensions: { width: number; height: number };
   exportSettings: SlideshowExportSettings;
+  visualSystem: string;
   creativeBrief: string;
   strategy: CreativeBrief;
   slides: CanonicalSlideshowSlide[];
 };
 
-export type PlannerSlide = {
+export type OverlayPlannerSlide = {
   slideId?: string;
   purpose: string;
   primaryText: string;
   secondaryText?: string;
   bullets: string[];
-  imagePrompt: string;
+  backgroundPrompt: string;
   layout: {
     intent: string;
     density: TextDensity;
@@ -95,48 +117,79 @@ export type PlannerSlide = {
   };
 };
 
-export type SlideshowPlannerOutput = {
+export type FullGraphicPlannerSlide = {
+  slideId?: string;
+  purpose: string;
+  visibleText: string;
+  finalImagePrompt: string;
+};
+
+export type OverlaySlideshowPlannerOutput = {
   format: "slideshow";
+  renderingMode: "background_plus_overlay";
   creativeBrief: CreativeBrief;
+  visualSystem: string;
   title: string;
   caption: string;
   aspectRatio: "9:16" | "4:5" | "1:1";
-  slides: PlannerSlide[];
+  slides: OverlayPlannerSlide[];
 };
 
-export const slideshowPlanSchema = {
+export type FullGraphicSlideshowPlannerOutput = {
+  format: "slideshow";
+  renderingMode: "full_graphic_generation";
+  creativeBrief: CreativeBrief;
+  visualSystem: string;
+  title: string;
+  caption: string;
+  aspectRatio: "9:16" | "4:5" | "1:1";
+  slides: FullGraphicPlannerSlide[];
+};
+
+export type SlideshowPlannerOutput = OverlaySlideshowPlannerOutput | FullGraphicSlideshowPlannerOutput;
+
+const creativeBriefSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["format", "creativeBrief", "title", "caption", "aspectRatio", "slides"],
+  required: ["narrativePattern", "targetSlideCount", "reasoning", "visualStyle", "tone", "layoutStrategy"],
   properties: {
-    format: { type: "string", enum: ["slideshow"] },
-    creativeBrief: {
+    narrativePattern: { type: "string" },
+    targetSlideCount: { type: "number" },
+    reasoning: { type: "string" },
+    visualStyle: { type: "string" },
+    tone: { type: "string" },
+    layoutStrategy: {
       type: "object",
       additionalProperties: false,
-      required: ["narrativePattern", "targetSlideCount", "reasoning", "visualStyle", "tone", "layoutStrategy"],
+      required: ["hookPlacement", "contentPlacement"],
       properties: {
-        narrativePattern: { type: "string" },
-        targetSlideCount: { type: "number" },
-        reasoning: { type: "string" },
-        visualStyle: { type: "string" },
-        tone: { type: "string" },
-        layoutStrategy: {
-          type: "object",
-          additionalProperties: false,
-          required: ["hookPlacement", "contentPlacement"],
-          properties: {
-            hookPlacement: {
-              type: "string",
-              enum: ["top", "center", "bottom"],
-            },
-            contentPlacement: {
-              type: "string",
-              enum: ["top", "center", "bottom"],
-            },
-          },
-        },
+        hookPlacement: { type: "string", enum: ["top", "center", "bottom"] },
+        contentPlacement: { type: "string", enum: ["top", "center", "bottom"] },
       },
     },
+  },
+};
+
+const overlayLayoutSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["intent", "density", "contrastStrategy"],
+  properties: {
+    intent: { type: "string" },
+    density: { type: "string", enum: ["sparse", "medium", "dense"] },
+    contrastStrategy: { type: "string", enum: ["none", "shadow", "gradient_scrim", "solid_scrim"] },
+  },
+};
+
+export const overlaySlideshowPlanSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["format", "renderingMode", "creativeBrief", "visualSystem", "title", "caption", "aspectRatio", "slides"],
+  properties: {
+    format: { type: "string", enum: ["slideshow"] },
+    renderingMode: { type: "string", enum: ["background_plus_overlay"] },
+    creativeBrief: creativeBriefSchema,
+    visualSystem: { type: "string" },
     title: { type: "string" },
     caption: { type: "string" },
     aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
@@ -147,7 +200,7 @@ export const slideshowPlanSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["slideId", "purpose", "primaryText", "secondaryText", "bullets", "imagePrompt", "layout"],
+        required: ["slideId", "purpose", "primaryText", "secondaryText", "bullets", "backgroundPrompt", "layout"],
         properties: {
           slideId: { type: "string" },
           purpose: { type: "string" },
@@ -158,23 +211,39 @@ export const slideshowPlanSchema = {
             maxItems: 4,
             items: { type: "string" },
           },
-          imagePrompt: { type: "string" },
-          layout: {
-            type: "object",
-            additionalProperties: false,
-            required: ["intent", "density", "contrastStrategy"],
-            properties: {
-              intent: { type: "string" },
-              density: {
-                type: "string",
-                enum: ["sparse", "medium", "dense"],
-              },
-              contrastStrategy: {
-                type: "string",
-                enum: ["none", "shadow", "gradient_scrim", "solid_scrim"],
-              },
-            },
-          },
+          backgroundPrompt: { type: "string" },
+          layout: overlayLayoutSchema,
+        },
+      },
+    },
+  },
+};
+
+export const fullGraphicSlideshowPlanSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["format", "renderingMode", "creativeBrief", "visualSystem", "title", "caption", "aspectRatio", "slides"],
+  properties: {
+    format: { type: "string", enum: ["slideshow"] },
+    renderingMode: { type: "string", enum: ["full_graphic_generation"] },
+    creativeBrief: creativeBriefSchema,
+    visualSystem: { type: "string" },
+    title: { type: "string" },
+    caption: { type: "string" },
+    aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
+    slides: {
+      type: "array",
+      minItems: 4,
+      maxItems: 9,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["slideId", "purpose", "visibleText", "finalImagePrompt"],
+        properties: {
+          slideId: { type: "string" },
+          purpose: { type: "string" },
+          visibleText: { type: "string" },
+          finalImagePrompt: { type: "string" },
         },
       },
     },
