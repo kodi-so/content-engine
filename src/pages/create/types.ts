@@ -25,7 +25,6 @@ export type CreativePlan = {
   visualSystem?: string;
   creativeBrief?: string;
   hook?: string;
-  caption?: string;
   strategy?: {
     narrativePattern?: string;
     targetSlideCount?: number;

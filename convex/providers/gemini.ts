@@ -36,7 +36,8 @@ const TEXT_PRICING: Record<GeminiTextModel, { input: number; output: number }> =
 
 const GEMINI_PROVIDER: ModelProviderName = "gemini";
 const DEFAULT_TEXT_MODEL: GeminiTextModel = "gemini-2.5-flash";
-const DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image";
+const DEFAULT_IMAGE_MODEL = "gemini-3-pro-image-preview";
+const DEFAULT_PRO_IMAGE_SIZE = "2K";
 const COST_PER_IMAGE_USD = 0.02;
 
 function getGeminiApiKey(): string {
@@ -179,6 +180,12 @@ async function generateGeminiImage(
   const model = input.model ?? DEFAULT_IMAGE_MODEL;
   const count = input.count ?? 1;
   const aspectRatio = input.aspectRatio ?? "4:5";
+  const imageConfig: Record<string, string> = { aspectRatio };
+  const configuredImageSize = typeof input.metadata?.imageSize === "string"
+    ? input.metadata.imageSize
+    : process.env.CONTENT_ENGINE_IMAGE_SIZE?.trim();
+  const imageSize = configuredImageSize || (model === DEFAULT_IMAGE_MODEL ? DEFAULT_PRO_IMAGE_SIZE : undefined);
+  if (imageSize) imageConfig.imageSize = imageSize;
 
   try {
     const images = await Promise.all(
@@ -210,7 +217,7 @@ async function generateGeminiImage(
               contents: [{ parts }],
               generationConfig: {
                 responseModalities: ["IMAGE"],
-                imageConfig: { aspectRatio },
+                imageConfig,
               },
             }),
           }

@@ -6,12 +6,11 @@ export type ContentFormat = Doc<"workflows">["contentFormat"];
 export const slideshowSpecSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["format", "aspectRatio", "hook", "caption", "slides"],
+  required: ["format", "aspectRatio", "hook", "slides"],
   properties: {
     format: { type: "string", enum: ["slideshow"] },
     aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
     hook: { type: "string" },
-    caption: { type: "string" },
     slides: {
       type: "array",
       minItems: 4,
@@ -104,7 +103,7 @@ export function buildStructuredGenerationPrompt(args: {
       args.constraints?.length ? `Constraints: ${args.constraints.join("; ")}` : undefined,
       "Return one cohesive slideshow with 4-8 slides.",
       "Each slide needs concise overlay text and a detailed visual prompt suitable for image generation.",
-      "Avoid generic advice; make the sequence feel specific, useful, and scroll-stopping.",
+      "Make the sequence feel specific, useful, and scroll-stopping.",
     ]
       .filter(Boolean)
       .join("\n");

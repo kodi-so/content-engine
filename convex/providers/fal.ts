@@ -44,7 +44,8 @@ type FalQueueStatusResponse = {
 
 const FAL_PROVIDER: ModelProviderName = "fal";
 const DEFAULT_FAL_QUEUE_BASE_URL = "https://queue.fal.run";
-const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/flux-1/schnell";
+const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/gemini-3-pro-image-preview";
+const DEFAULT_FAL_IMAGE_RESOLUTION = "2K";
 const DEFAULT_FAL_VIDEO_MODEL = "fal-ai/ltx-video";
 
 function isFalDryRunEnabled(): boolean {
@@ -136,6 +137,26 @@ function aspectRatioToFalImageSize(aspectRatio?: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+function isFalGeminiProImageModel(model: string): boolean {
+  return model === "fal-ai/gemini-3-pro-image-preview" ||
+    model === "fal-ai/gemini-3-pro-image-preview/edit" ||
+    model === "fal-ai/nano-banana-pro" ||
+    model === "fal-ai/nano-banana-pro/edit";
+}
+
+function falImageModelForInput(model: string, input: GenerateImageInput): string {
+  if (!input.referenceImages?.length) return model;
+  if (!isFalGeminiProImageModel(model) || model.endsWith("/edit")) return model;
+  return `${model}/edit`;
+}
+
+function falReferenceImageUrls(input: GenerateImageInput): string[] | undefined {
+  if (!input.referenceImages?.length) return undefined;
+  return input.referenceImages.map((image) =>
+    `data:${image.mimeType};base64,${image.base64Data}`
+  );
 }
 
 function mapFalQueueStatus(status: string, hasError: boolean): AsyncJobStatus {
@@ -253,7 +274,8 @@ async function submitFalJob(
 async function generateFalImage(
   input: GenerateImageInput
 ): Promise<GenerateImageResult> {
-  const model = input.model ?? DEFAULT_FAL_IMAGE_MODEL;
+  const requestedModel = input.model ?? DEFAULT_FAL_IMAGE_MODEL;
+  const model = falImageModelForInput(requestedModel, input);
 
   if (isFalDryRunEnabled()) {
     return {
@@ -271,15 +293,29 @@ async function generateFalImage(
   }
 
   try {
-    const payload = {
-      prompt: input.prompt,
-      num_images: input.count ?? 1,
-      image_size: aspectRatioToFalImageSize(input.aspectRatio),
-      ...(input.metadata?.arguments &&
+    const argumentOverrides = input.metadata?.arguments &&
       typeof input.metadata.arguments === "object"
-        ? (input.metadata.arguments as Record<string, unknown>)
-        : {}),
-    };
+      ? (input.metadata.arguments as Record<string, unknown>)
+      : {};
+    const referenceImageUrls = falReferenceImageUrls(input);
+    const payload = isFalGeminiProImageModel(model)
+      ? {
+          prompt: input.prompt,
+          num_images: input.count ?? 1,
+          aspect_ratio: input.aspectRatio ?? "1:1",
+          output_format: "png",
+          resolution: process.env.CONTENT_ENGINE_IMAGE_RESOLUTION?.trim() || DEFAULT_FAL_IMAGE_RESOLUTION,
+          safety_tolerance: "4",
+          limit_generations: true,
+          ...(referenceImageUrls ? { image_urls: referenceImageUrls } : {}),
+          ...argumentOverrides,
+        }
+      : {
+          prompt: input.prompt,
+          num_images: input.count ?? 1,
+          image_size: aspectRatioToFalImageSize(input.aspectRatio),
+          ...argumentOverrides,
+        };
 
     const submitted = await submitFalJob("generate_image", model, payload);
 
@@ -290,6 +326,10 @@ async function generateFalImage(
       metadata: {
         provider: FAL_PROVIDER,
         model,
+        statusUrl: submitted.status_url,
+        responseUrl: submitted.response_url,
+        cancelUrl: submitted.cancel_url,
+        queuePosition: submitted.queue_position,
       },
       raw: submitted,
     };
@@ -340,6 +380,10 @@ async function generateFalVideo(
       metadata: {
         provider: FAL_PROVIDER,
         model,
+        statusUrl: submitted.status_url,
+        responseUrl: submitted.response_url,
+        cancelUrl: submitted.cancel_url,
+        queuePosition: submitted.queue_position,
       },
       raw: submitted,
     };

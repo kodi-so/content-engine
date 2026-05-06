@@ -14,6 +14,7 @@ import { storeGeneratedAsset } from "./assetStorage";
 import {
   buildFullGraphicPlannerPrompt,
   buildOverlayPlannerPrompt,
+  buildSingleImagePromptWriterPrompt,
   inferSlideCount,
   normalizePlan,
   type PlannerReference,
@@ -23,7 +24,11 @@ import {
   type CanonicalSlideshowSlide,
   type CanonicalSlideshowSpec,
   fullGraphicSlideshowPlanSchema,
+  type ImagePromptWriterOutput,
   overlaySlideshowPlanSchema,
+  singleFullGraphicImagePromptWriterSchema,
+  type SingleImagePromptWriterOutput,
+  singleOverlayImagePromptWriterSchema,
   type SlideshowPlannerOutput,
   type SlideshowPlan,
   type SlideshowTextBlock,
@@ -31,6 +36,7 @@ import {
 import { getSlideDimensions } from "./slideshowDimensions";
 import { getModelProvider } from "../providers/index";
 import type {
+  GenerateImageResult,
   GeneratedAsset,
   ModelInvocationMetadata,
   ModelProvider,
@@ -52,17 +58,26 @@ function providerImagePrompt(
   aspectRatio: SlideshowPlan["aspectRatio"],
   renderingMode: SlideshowPlan["renderingMode"]
 ) {
-  const trimmed = slidePrompt.trim().replace(/\s+/g, " ");
+  const trimmed = normalizeImagePromptFormatting(slidePrompt);
   if (renderingMode === "full_graphic_generation") {
     return [
       trimmed,
       `Vertical ${aspectRatio} finished social slideshow graphic.`,
-    ].join(" ");
+    ].join("\n\n");
   }
   return [
     trimmed,
     `Vertical ${aspectRatio} full-bleed image.`,
-  ].filter(Boolean).join(" ");
+  ].filter(Boolean).join("\n\n");
+}
+
+function normalizeImagePromptFormatting(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function promptForSlide(slide: SlideshowPlan["slides"][number]) {
@@ -90,6 +105,12 @@ function planSchemaForMode(renderingMode: RequestedRenderingMode) {
   return renderingMode === "full_graphic_generation"
     ? fullGraphicSlideshowPlanSchema
     : overlaySlideshowPlanSchema;
+}
+
+function singleImagePromptSchemaForMode(renderingMode: RequestedRenderingMode) {
+  return renderingMode === "full_graphic_generation"
+    ? singleFullGraphicImagePromptWriterSchema
+    : singleOverlayImagePromptWriterSchema;
 }
 
 function requestedRenderingModeValidator() {
@@ -184,21 +205,33 @@ async function waitForImageResult(
   args: {
     jobId?: string;
     model: string;
+    metadata?: Record<string, unknown>;
   }
-): Promise<GeneratedAsset | undefined> {
-  if (!args.jobId) return undefined;
+): Promise<GeneratedAsset> {
+  if (!args.jobId) throw new Error("Image generation did not return a job id");
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  let lastStatus = "unknown";
+  let lastError = "";
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     const result = await provider.getJobStatus({
       jobId: args.jobId,
       model: args.model,
+      metadata: args.metadata,
     });
-    if (result.status === "succeeded") return result.assets?.[0];
-    if (result.status === "failed" || result.status === "canceled") return undefined;
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    lastStatus = result.status;
+    lastError = result.errorMessage ?? "";
+    if (result.status === "succeeded") {
+      const asset = result.assets?.[0];
+      if (asset) return asset;
+      throw new Error(`Image job ${args.jobId} succeeded but returned no assets`);
+    }
+    if (result.status === "failed" || result.status === "canceled") {
+      throw new Error(`Image job ${args.jobId} ${result.status}${result.errorMessage ? `: ${result.errorMessage}` : ""}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
-  return undefined;
+  throw new Error(`Image job ${args.jobId} timed out after 5 minutes with status ${lastStatus}${lastError ? `: ${lastError}` : ""}`);
 }
 
 function buildCanonicalSlideshowSpec(args: {
@@ -211,7 +244,6 @@ function buildCanonicalSlideshowSpec(args: {
     format: "slideshow",
     renderingMode: args.plan.renderingMode,
     title: args.plan.title,
-    caption: args.plan.caption,
     aspectRatio: args.plan.aspectRatio,
     dimensions: args.dimensions,
     exportSettings: {
@@ -745,8 +777,42 @@ export const execute = internalAction({
         parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
       });
       costUsd = sumCost(costUsd, structured.metadata);
+      const rawSlides = Array.isArray((structured.object as { slides?: unknown }).slides)
+        ? (structured.object as { slides: unknown[] }).slides
+        : [];
+      const imagePromptSlides = await Promise.all(rawSlides.map(async (slide) => {
+        const imagePrompt = await textProvider.generateStructured<SingleImagePromptWriterOutput>({
+          systemPrompt: "You are a specialist image prompt writer for short-form social visuals. You write plain-text image generation prompts with markdown section headings inside JSON string fields.",
+          prompt: buildSingleImagePromptWriterPrompt({
+            prompt: context.request.prompt,
+            revisionPrompt: context.request.revisionPrompt,
+            brand: context.brand,
+            socialAccount: context.socialAccount,
+            targetSlideCount: slideCountHint.targetSlideCount,
+            slideCountReasoning: slideCountHint.reasoning,
+            requestedRenderingMode,
+            references: plannerReferences,
+            plan: structured.object,
+            slide,
+          }),
+          schema: singleImagePromptSchemaForMode(requestedRenderingMode),
+          schemaName: "slideshow_single_image_prompt",
+          model: process.env.CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL?.trim() ||
+            process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
+            "openai/gpt-4.1",
+          temperature: 0.2,
+          parser: (text) => JSON.parse(text) as SingleImagePromptWriterOutput,
+        });
+        costUsd = sumCost(costUsd, imagePrompt.metadata);
+        return imagePrompt.object;
+      }));
+      const imagePrompts = {
+        renderingMode: requestedRenderingMode,
+        slides: imagePromptSlides,
+      } as ImagePromptWriterOutput;
       const plan = normalizePlan(
         structured.object,
+        imagePrompts,
         context.request.prompt,
         context.request.revisionPrompt,
         slideCountHint.targetSlideCount,
@@ -775,7 +841,7 @@ export const execute = internalAction({
         context.referenceAssets.map(({ asset }) => asset)
       );
       const imageProviderName = referenceImages.length > 0
-        ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "gemini"
+        ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "fal"
         : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
       const imageProvider = getModelProvider(imageProviderName as "gemini" | "fal");
       const imageModel = plan.renderingMode === "full_graphic_generation"
@@ -783,6 +849,12 @@ export const execute = internalAction({
         : process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined;
       const dimensions = getSlideDimensions(plan.aspectRatio);
       const imageBySlideIndex = new Map<number, { artifactId: Id<"artifacts">; url?: string }>();
+      const imageErrors: string[] = [];
+      const pendingImages: Array<{
+        slide: SlideshowPlan["slides"][number];
+        prompt: string;
+        image: GenerateImageResult;
+      }> = [];
 
       for (const slide of plan.slides) {
         const prompt = providerImagePrompt(promptForSlide(slide), plan.aspectRatio, plan.renderingMode);
@@ -797,46 +869,16 @@ export const execute = internalAction({
               arguments: {
                 aspect_ratio: plan.aspectRatio,
                 output_format: "png",
+                resolution: "2K",
               },
               renderingMode: plan.renderingMode,
               referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
             },
           });
           costUsd = sumCost(costUsd, image.metadata);
-          const asset = image.images[0] ?? await waitForImageResult(imageProvider, {
-            jobId: image.jobId,
-            model: image.metadata.model,
-          });
-          if (!asset) throw new Error("Image generation did not return an asset");
-          const stored = await storeGeneratedAsset(ctx, asset);
-          const artifactId = await createRequestArtifact(ctx, {
-            request: context.request,
-            type: "image",
-            title: `Slide ${slide.index} image`,
-            storageUrl: stored.storageUrl,
-            data: {
-              format: plan.renderingMode === "full_graphic_generation"
-                ? "slideshow_full_graphic"
-                : "slideshow_background",
-              slideIndex: slide.index,
-              storageId: stored.storageId,
-              mimeType: stored.mimeType,
-              fileSize: stored.byteLength,
-              width: dimensions.width,
-              height: dimensions.height,
-              jobId: image.jobId,
-              status: "succeeded",
-              prompt,
-              renderingMode: plan.renderingMode,
-              referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
-            },
-            provider: image.metadata.provider,
-            model: image.metadata.model,
-            prompt,
-            parentArtifactIds: [specArtifactId],
-          });
-          imageBySlideIndex.set(slide.index, { artifactId, url: stored.storageUrl });
+          pendingImages.push({ slide, prompt, image });
         } catch (error) {
+          imageErrors.push(`Slide ${slide.index}: ${error instanceof Error ? error.message : "Image generation failed"}`);
           await createRequestArtifact(ctx, {
             request: context.request,
             type: "image_prompt",
@@ -853,6 +895,80 @@ export const execute = internalAction({
         }
       }
 
+      const resolvedImages = await Promise.all(pendingImages.map(async (pending) => {
+        try {
+          const asset = pending.image.images[0] ?? await waitForImageResult(imageProvider, {
+            jobId: pending.image.jobId,
+            model: pending.image.metadata.model,
+            metadata: pending.image.metadata,
+          });
+          return { ...pending, asset };
+        } catch (error) {
+          return {
+            ...pending,
+            errorMessage: error instanceof Error ? error.message : "Image generation failed",
+          };
+        }
+      }));
+
+      for (const result of resolvedImages) {
+        if ("errorMessage" in result) {
+          imageErrors.push(`Slide ${result.slide.index}: ${result.errorMessage}`);
+          await createRequestArtifact(ctx, {
+            request: context.request,
+            type: "image_prompt",
+            title: `Slide ${result.slide.index} image prompt`,
+            data: {
+              slideIndex: result.slide.index,
+              prompt: result.prompt,
+              errorMessage: result.errorMessage,
+              jobId: result.image.jobId,
+              provider: result.image.metadata.provider,
+              model: result.image.metadata.model,
+              statusUrl: typeof result.image.metadata.statusUrl === "string" ? result.image.metadata.statusUrl : undefined,
+              responseUrl: typeof result.image.metadata.responseUrl === "string" ? result.image.metadata.responseUrl : undefined,
+            },
+            provider: "manual",
+            prompt: result.prompt,
+            parentArtifactIds: [specArtifactId],
+          });
+          continue;
+        }
+
+        const stored = await storeGeneratedAsset(ctx, result.asset);
+        const artifactId = await createRequestArtifact(ctx, {
+          request: context.request,
+          type: "image",
+          title: `Slide ${result.slide.index} image`,
+          storageUrl: stored.storageUrl,
+          data: {
+            format: plan.renderingMode === "full_graphic_generation"
+              ? "slideshow_full_graphic"
+              : "slideshow_background",
+            slideIndex: result.slide.index,
+            storageId: stored.storageId,
+            mimeType: stored.mimeType,
+            fileSize: stored.byteLength,
+            width: dimensions.width,
+            height: dimensions.height,
+            jobId: result.image.jobId,
+            status: "succeeded",
+            prompt: result.prompt,
+            renderingMode: plan.renderingMode,
+            referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
+          },
+          provider: result.image.metadata.provider,
+          model: result.image.metadata.model,
+          prompt: result.prompt,
+          parentArtifactIds: [specArtifactId],
+        });
+        imageBySlideIndex.set(result.slide.index, { artifactId, url: stored.storageUrl });
+      }
+
+      if (imageErrors.length) {
+        throw new Error(`Image generation failed for ${imageErrors.length} slide${imageErrors.length === 1 ? "" : "s"}: ${imageErrors.join("; ")}`);
+      }
+
       const canonicalSpec = buildCanonicalSlideshowSpec({
         plan,
         dimensions,
@@ -864,7 +980,6 @@ export const execute = internalAction({
         socialAccountId: context.request.socialAccountId,
         contentRequestId: context.request._id,
         title: canonicalSpec.title,
-        caption: canonicalSpec.caption,
         status: "preview",
         spec: canonicalSpec,
       });

@@ -67,7 +67,6 @@ export type SlideshowPlan = {
   aspectRatio: "9:16" | "4:5" | "1:1";
   title: string;
   hook: string;
-  caption: string;
   visualSystem: string;
   creativeBrief: string;
   strategy: CreativeBrief;
@@ -93,7 +92,6 @@ export type CanonicalSlideshowSpec = {
   format: "slideshow";
   renderingMode: SlideshowRenderingMode;
   title: string;
-  caption: string;
   aspectRatio: SlideshowPlan["aspectRatio"];
   dimensions: { width: number; height: number };
   exportSettings: SlideshowExportSettings;
@@ -109,7 +107,6 @@ export type OverlayPlannerSlide = {
   primaryText: string;
   secondaryText?: string;
   bullets: string[];
-  backgroundPrompt: string;
   layout: {
     intent: string;
     density: TextDensity;
@@ -121,7 +118,6 @@ export type FullGraphicPlannerSlide = {
   slideId?: string;
   purpose: string;
   visibleText: string;
-  finalImagePrompt: string;
 };
 
 export type OverlaySlideshowPlannerOutput = {
@@ -130,7 +126,6 @@ export type OverlaySlideshowPlannerOutput = {
   creativeBrief: CreativeBrief;
   visualSystem: string;
   title: string;
-  caption: string;
   aspectRatio: "9:16" | "4:5" | "1:1";
   slides: OverlayPlannerSlide[];
 };
@@ -141,12 +136,36 @@ export type FullGraphicSlideshowPlannerOutput = {
   creativeBrief: CreativeBrief;
   visualSystem: string;
   title: string;
-  caption: string;
   aspectRatio: "9:16" | "4:5" | "1:1";
   slides: FullGraphicPlannerSlide[];
 };
 
 export type SlideshowPlannerOutput = OverlaySlideshowPlannerOutput | FullGraphicSlideshowPlannerOutput;
+
+export type OverlayImagePromptWriterOutput = {
+  renderingMode: "background_plus_overlay";
+    slides: Array<{
+    slideId: string;
+    visualBrief: string;
+    backgroundPrompt: string;
+  }>;
+};
+
+export type FullGraphicImagePromptWriterOutput = {
+  renderingMode: "full_graphic_generation";
+  slides: Array<{
+    slideId: string;
+    visualBrief: string;
+    finalImagePrompt: string;
+  }>;
+};
+
+export type ImagePromptWriterOutput = OverlayImagePromptWriterOutput | FullGraphicImagePromptWriterOutput;
+export type SingleOverlayImagePromptWriterOutput = OverlayImagePromptWriterOutput["slides"][number];
+export type SingleFullGraphicImagePromptWriterOutput = FullGraphicImagePromptWriterOutput["slides"][number];
+export type SingleImagePromptWriterOutput =
+  | SingleOverlayImagePromptWriterOutput
+  | SingleFullGraphicImagePromptWriterOutput;
 
 const creativeBriefSchema = {
   type: "object",
@@ -184,14 +203,13 @@ const overlayLayoutSchema = {
 export const overlaySlideshowPlanSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["format", "renderingMode", "creativeBrief", "visualSystem", "title", "caption", "aspectRatio", "slides"],
+  required: ["format", "renderingMode", "creativeBrief", "visualSystem", "title", "aspectRatio", "slides"],
   properties: {
     format: { type: "string", enum: ["slideshow"] },
     renderingMode: { type: "string", enum: ["background_plus_overlay"] },
     creativeBrief: creativeBriefSchema,
     visualSystem: { type: "string" },
     title: { type: "string" },
-    caption: { type: "string" },
     aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
     slides: {
       type: "array",
@@ -200,7 +218,7 @@ export const overlaySlideshowPlanSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["slideId", "purpose", "primaryText", "secondaryText", "bullets", "backgroundPrompt", "layout"],
+        required: ["slideId", "purpose", "primaryText", "secondaryText", "bullets", "layout"],
         properties: {
           slideId: { type: "string" },
           purpose: { type: "string" },
@@ -211,7 +229,6 @@ export const overlaySlideshowPlanSchema = {
             maxItems: 4,
             items: { type: "string" },
           },
-          backgroundPrompt: { type: "string" },
           layout: overlayLayoutSchema,
         },
       },
@@ -222,14 +239,13 @@ export const overlaySlideshowPlanSchema = {
 export const fullGraphicSlideshowPlanSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["format", "renderingMode", "creativeBrief", "visualSystem", "title", "caption", "aspectRatio", "slides"],
+  required: ["format", "renderingMode", "creativeBrief", "visualSystem", "title", "aspectRatio", "slides"],
   properties: {
     format: { type: "string", enum: ["slideshow"] },
     renderingMode: { type: "string", enum: ["full_graphic_generation"] },
     creativeBrief: creativeBriefSchema,
     visualSystem: { type: "string" },
     title: { type: "string" },
-    caption: { type: "string" },
     aspectRatio: { type: "string", enum: ["9:16", "4:5", "1:1"] },
     slides: {
       type: "array",
@@ -238,14 +254,115 @@ export const fullGraphicSlideshowPlanSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["slideId", "purpose", "visibleText", "finalImagePrompt"],
+        required: ["slideId", "purpose", "visibleText"],
         properties: {
           slideId: { type: "string" },
           purpose: { type: "string" },
           visibleText: { type: "string" },
-          finalImagePrompt: { type: "string" },
         },
       },
+    },
+  },
+};
+
+export const overlayImagePromptWriterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["renderingMode", "slides"],
+  properties: {
+    renderingMode: { type: "string", enum: ["background_plus_overlay"] },
+    slides: {
+      type: "array",
+      minItems: 4,
+      maxItems: 9,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["slideId", "visualBrief", "backgroundPrompt"],
+        properties: {
+          slideId: { type: "string" },
+          visualBrief: {
+            type: "string",
+            minLength: 500,
+            description: "A concrete visual grounding brief for this slide. Use most of the brief for unique slide-specific scene/action facts: subject mechanics, object or equipment components, spatial relationships, subject orientation, interaction points, object positions, direction of motion, and action moment. When a named concept has multiple visual variants, identify the specific variant that fits the user prompt. Also include composition, camera/framing, style, and reference usage.",
+          },
+          backgroundPrompt: {
+            type: "string",
+            minLength: 700,
+            description: "A detailed production image generation prompt describing the slide image scene with concrete visible details: subject, placement, pose/action/state, environment, important objects, spatial relationships, camera angle, framing, lighting, color palette, texture, mood, visual style, and reference usage. For demonstrations, include setup, object geometry, subject-object interaction, direction of motion, and action moment.",
+          },
+        },
+      },
+    },
+  },
+};
+
+export const fullGraphicImagePromptWriterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["renderingMode", "slides"],
+  properties: {
+    renderingMode: { type: "string", enum: ["full_graphic_generation"] },
+    slides: {
+      type: "array",
+      minItems: 4,
+      maxItems: 9,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["slideId", "visualBrief", "finalImagePrompt"],
+        properties: {
+          slideId: { type: "string" },
+          visualBrief: {
+            type: "string",
+            minLength: 600,
+            description: "A concrete visual grounding brief for this slide. Use most of the brief for unique slide-specific scene/action facts: subject mechanics, object or equipment components, spatial relationships, subject orientation, interaction points, object positions, direction of motion, and action moment. When a named concept has multiple visual variants, identify the specific variant that fits the user prompt. Also include exact text, typography, composition, camera/framing, style, and reference usage.",
+          },
+          finalImagePrompt: {
+            type: "string",
+            minLength: 900,
+            description: "A detailed production image generation prompt for a complete finished graphic. Write as one concise plain text prompt using markdown-style section headings: ### Create, ### Shared style, ### Visible text exact line breaks, ### Typography, ### Scene, ### Camera and framing, ### Style consistency. Use affirmative visual descriptions of included subjects, objects, spaces, styling, and composition. Include exact visible text, line breaks, typography placement and treatment for complete named phrases, font style, text color/treatment, relationship between text and imagery, requested graphic elements, subject placement, pose/action/state, environment, important objects, spatial relationships, camera angle, framing, lighting, color palette, texture, visual style, and reference usage. For demonstrations, choose the clearest view for the action and include setup, object geometry, subject-object interaction, direction of motion, and action moment.",
+          },
+        },
+      },
+    },
+  },
+};
+
+export const singleOverlayImagePromptWriterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["slideId", "visualBrief", "backgroundPrompt"],
+  properties: {
+    slideId: { type: "string" },
+    visualBrief: {
+      type: "string",
+      minLength: 500,
+      description: "A concrete visual grounding brief for this slide. Use most of the brief for unique slide-specific scene/action facts: subject mechanics, object or equipment components, spatial relationships, subject orientation, interaction points, object positions, direction of motion, and action moment. Also include composition, camera/framing, style, and reference usage.",
+    },
+    backgroundPrompt: {
+      type: "string",
+      minLength: 700,
+      description: "A detailed production image generation prompt describing the slide image scene with concrete visible details. Write as one plain text prompt using markdown-style section headings: ### Create, ### Scene, ### Camera and framing, ### Visual style, ### Reference usage. Use affirmative visual descriptions of included subjects, objects, spaces, styling, and composition. Include subject, placement, pose/action/state, environment, important objects, spatial relationships, camera angle, framing, lighting, color palette, texture, mood, visual style, and reference usage. For demonstrations, include exact setup, object geometry, subject-object interaction, direction of motion, and action moment.",
+    },
+  },
+};
+
+export const singleFullGraphicImagePromptWriterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["slideId", "visualBrief", "finalImagePrompt"],
+  properties: {
+    slideId: { type: "string" },
+    visualBrief: {
+      type: "string",
+      minLength: 600,
+      description: "A concrete visual grounding brief for this slide. Use most of the brief for unique slide-specific scene/action facts: subject mechanics, object or equipment components, spatial relationships, subject orientation, interaction points, object positions, direction of motion, and action moment. Also include exact text, typography, composition, camera/framing, style, and reference usage.",
+    },
+    finalImagePrompt: {
+      type: "string",
+      minLength: 900,
+      description: "A detailed production image generation prompt for a complete finished graphic. Write as one concise plain text prompt using markdown-style section headings: ### Create, ### Shared style, ### Visible text exact line breaks, ### Typography, ### Scene, ### Camera and framing, ### Style consistency. Use affirmative visual descriptions of included subjects, objects, spaces, styling, and composition. Include exact visible text, line breaks, typography placement and treatment for complete named phrases, font style, text color/treatment, relationship between text and imagery, requested graphic elements, subject placement, pose/action/state, environment, important objects, spatial relationships, camera angle, framing, lighting, color palette, texture, visual style, and reference usage. For demonstrations, choose the clearest view for the action and include setup, object geometry, subject-object interaction, direction of motion, and action moment.",
     },
   },
 };

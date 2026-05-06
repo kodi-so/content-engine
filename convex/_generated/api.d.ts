@@ -14,6 +14,7 @@ import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as artifacts_records from "../artifacts/records.js";
 import type * as artifacts_regeneration from "../artifacts/regeneration.js";
 import type * as content_assetStorage from "../content/assetStorage.js";
+import type * as content_dryRun from "../content/dryRun.js";
 import type * as content_formatContracts from "../content/formatContracts.js";
 import type * as content_planning from "../content/planning.js";
 import type * as content_requests from "../content/requests.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   "artifacts/records": typeof artifacts_records;
   "artifacts/regeneration": typeof artifacts_regeneration;
   "content/assetStorage": typeof content_assetStorage;
+  "content/dryRun": typeof content_dryRun;
   "content/formatContracts": typeof content_formatContracts;
   "content/planning": typeof content_planning;
   "content/requests": typeof content_requests;

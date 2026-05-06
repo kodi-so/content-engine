@@ -29,6 +29,7 @@ async function waitForImageResult(
   args: {
     jobId?: string;
     model: string;
+    metadata?: Record<string, unknown>;
   }
 ): Promise<GeneratedAsset | undefined> {
   if (!args.jobId) return undefined;
@@ -37,6 +38,7 @@ async function waitForImageResult(
     const result = await provider.getJobStatus({
       jobId: args.jobId,
       model: args.model,
+      metadata: args.metadata,
     });
     if (result.status === "succeeded") return result.assets?.[0];
     if (result.status === "failed" || result.status === "canceled") return undefined;
@@ -80,6 +82,7 @@ export const generatePreview = action({
     const asset = result.images[0] ?? await waitForImageResult(provider, {
       jobId: result.jobId,
       model: result.metadata.model,
+      metadata: result.metadata,
     });
     if (!asset) throw new Error("Image generation did not return an asset");
 

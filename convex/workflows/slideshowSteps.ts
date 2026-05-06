@@ -16,7 +16,6 @@ type SlideshowSpec = {
   format?: string;
   aspectRatio?: string;
   hook?: string;
-  caption?: string;
   slides?: Array<{
     index?: number;
     role?: string;
@@ -100,7 +99,6 @@ export async function executeCreateSlideshowStep(
     const slideshowSpec = {
       format: "slideshow",
       title: slideSpecArtifact.title || slideSpecArtifact.data.hook || "Generated slideshow",
-      caption: slideSpecArtifact.data.caption ?? "",
       aspectRatio,
       dimensions,
       exportSettings: {
@@ -137,7 +135,6 @@ export async function executeCreateSlideshowStep(
       workflowId: context.workflow._id,
       workflowRunId: context.run._id,
       title: slideshowSpec.title,
-      caption: slideshowSpec.caption,
       status: "saved",
       spec: slideshowSpec,
     });

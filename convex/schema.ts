@@ -252,7 +252,6 @@ export default defineSchema({
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     title: v.string(),
-    caption: v.optional(v.string()),
     status: slideshowStatusValidator,
     spec: v.any(),
     savedAt: v.optional(v.number()),

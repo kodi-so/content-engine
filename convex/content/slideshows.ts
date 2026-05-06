@@ -79,7 +79,6 @@ export const createFromRunner = internalMutation({
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     title: v.string(),
-    caption: v.optional(v.string()),
     status: v.optional(slideshowStatusValidator),
     spec: v.any(),
   },
@@ -99,7 +98,6 @@ export const updateFromRunner = internalMutation({
     slideshowId: v.id("slideshows"),
     userId: v.string(),
     title: v.optional(v.string()),
-    caption: v.optional(v.string()),
     status: v.optional(slideshowStatusValidator),
     spec: v.optional(v.any()),
     savedAt: v.optional(v.number()),
@@ -114,7 +112,6 @@ export const updateFromRunner = internalMutation({
       updatedAt: Date.now(),
     };
     if (args.title !== undefined) patch.title = args.title;
-    if (args.caption !== undefined) patch.caption = args.caption;
     if (args.status !== undefined) patch.status = args.status;
     if (args.spec !== undefined) patch.spec = args.spec;
     if (args.savedAt !== undefined) patch.savedAt = args.savedAt;

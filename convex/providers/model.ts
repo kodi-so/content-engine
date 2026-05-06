@@ -28,6 +28,7 @@ export interface ModelInvocationMetadata {
   model: string;
   usage?: ModelTokenUsage;
   costUsd?: number;
+  [key: string]: unknown;
 }
 
 export interface ModelMessage {

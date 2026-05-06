@@ -57,7 +57,6 @@ export type CanonicalSlideshowSpec = {
   format?: "slideshow";
   renderingMode?: SlideshowRenderingMode;
   title?: string;
-  caption?: string;
   aspectRatio?: "9:16" | "4:5" | "1:1";
   dimensions?: { width: number; height: number };
   exportSettings?: {
