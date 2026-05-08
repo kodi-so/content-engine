@@ -13,8 +13,8 @@ export const slideshowSpecSchema = {
     hook: { type: "string" },
     slides: {
       type: "array",
-      minItems: 4,
-      maxItems: 8,
+      minItems: 2,
+      maxItems: 9,
       items: {
         type: "object",
         additionalProperties: false,

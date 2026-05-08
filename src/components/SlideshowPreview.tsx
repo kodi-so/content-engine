@@ -510,7 +510,8 @@ export function CreateSlideshowPreview({
   ) => Promise<void>;
   onRegenerateSlideImage?: (
     slide: CanonicalSlideshowSlide,
-    prompt: string
+    prompt: string,
+    useReferenceImage: boolean
   ) => Promise<void>;
   onUpdateSlideImagePrompt?: (
     slide: CanonicalSlideshowSlide,
@@ -529,6 +530,7 @@ export function CreateSlideshowPreview({
   const hasCenteredThumbnailOnce = useRef(false);
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [imagePromptText, setImagePromptText] = useState("");
+  const [useReferenceImage, setUseReferenceImage] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [isEditingText, setIsEditingText] = useState(false);
   const [primaryText, setPrimaryText] = useState("");
@@ -555,7 +557,8 @@ export function CreateSlideshowPreview({
   useEffect(() => {
     if (!showImagePrompt) return;
     setImagePromptText(formatPromptForEditing(imagePrompt));
-  }, [activeSlide?.slideId, imagePrompt, showImagePrompt]);
+    setUseReferenceImage(activeSlide?.useReferenceImage === true);
+  }, [activeSlide?.slideId, activeSlide?.useReferenceImage, imagePrompt, showImagePrompt]);
 
   useEffect(() => {
     if (activeIndex > slides.length - 1) {
@@ -632,7 +635,7 @@ export function CreateSlideshowPreview({
 
     setIsRegeneratingImage(true);
     try {
-      await onRegenerateSlideImage(activeSlide, prompt);
+      await onRegenerateSlideImage(activeSlide, prompt, useReferenceImage);
     } finally {
       setIsRegeneratingImage(false);
     }
@@ -771,6 +774,15 @@ export function CreateSlideshowPreview({
             onChange={setImagePromptText}
             onBlur={() => void saveImagePromptEdit()}
           />
+          <label className="flex items-center gap-[var(--space-2)] text-[0.86rem] font-[650] text-[var(--color-ink)]">
+            <input
+              checked={useReferenceImage}
+              className="size-4 accent-[var(--color-primary)]"
+              type="checkbox"
+              onChange={(event) => setUseReferenceImage(event.target.checked)}
+            />
+            <span>Use selected reference image</span>
+          </label>
           {activeSlide.layout?.intent && (
             <small className={cx(inspectorTextClass, "text-[var(--color-ink-muted)]")}>
               Layout intent: {activeSlide.layout.intent}

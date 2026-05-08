@@ -33,8 +33,6 @@ type PromptArgs = {
   revisionPrompt?: string;
   brand: Doc<"brands">;
   socialAccount?: Doc<"socialAccounts"> | null;
-  targetSlideCount: number;
-  slideCountReasoning: string;
   references: PlannerReference[];
 };
 
@@ -46,63 +44,6 @@ type ImagePromptWriterArgs = PromptArgs & {
 type SingleImagePromptWriterArgs = ImagePromptWriterArgs & {
   slide: unknown;
 };
-
-const NUMBER_WORDS: Record<string, number> = {
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-  ten: 10,
-};
-
-const countablePattern =
-  /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(habits?|tips?|mistakes?|ways?|steps?|rules?|ideas?|lessons?|reasons?|tools?|exercises?|things?)\b/i;
-
-function numberFromToken(value: string): number | undefined {
-  const parsed = Number(value);
-  if (Number.isFinite(parsed)) return parsed;
-  return NUMBER_WORDS[value.toLowerCase()];
-}
-
-export function inferSlideCount(prompt: string, explicitSlideCount?: number): {
-  targetSlideCount: number;
-  reasoning: string;
-} {
-  if (explicitSlideCount && explicitSlideCount >= 4 && explicitSlideCount <= 9) {
-    return {
-      targetSlideCount: explicitSlideCount,
-      reasoning: `The user explicitly requested ${explicitSlideCount} slides.`,
-    };
-  }
-
-  const explicit = prompt.match(/\b(?:make|create|generate|use|with)\s+(\d+)\s+slides?\b/i);
-  const explicitCount = explicit?.[1] ? Number(explicit[1]) : undefined;
-  if (explicitCount && explicitCount >= 4 && explicitCount <= 9) {
-    return {
-      targetSlideCount: explicitCount,
-      reasoning: `The prompt explicitly asks for ${explicitCount} slides.`,
-    };
-  }
-
-  const countable = prompt.match(countablePattern);
-  const itemCount = countable?.[1] ? numberFromToken(countable[1]) : undefined;
-  if (itemCount && itemCount >= 2 && itemCount <= 8) {
-    return {
-      targetSlideCount: Math.min(itemCount + 1, 9),
-      reasoning: `The prompt appears to describe ${itemCount} list items, so use a title/hook slide plus one slide per item.`,
-    };
-  }
-
-  return {
-    targetSlideCount: 6,
-    reasoning: "No explicit slide count was found, so use a concise 6-slide structure.",
-  };
-}
 
 function failPlanning(message: string): never {
   throw new Error(`Planner output is invalid: ${message}`);
@@ -120,6 +61,13 @@ function requiredString(value: unknown, label: string): string {
     failPlanning(`${label} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function requiredBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== "boolean") {
+    failPlanning(`${label} must be a boolean`);
+  }
+  return value;
 }
 
 function optionalString(value: unknown, label: string): string {
@@ -256,6 +204,7 @@ function normalizeOverlayPlannerSlide(value: unknown, index: number): OverlayPla
   return {
     slideId: requiredString(data.slideId, `slides[${index}].slideId`),
     purpose: clampText(requiredString(data.purpose, `slides[${index}].purpose`), 90),
+    useReferenceImage: requiredBoolean(data.useReferenceImage, `slides[${index}].useReferenceImage`),
     primaryText: clampText(primaryText, 90),
     secondaryText: clampText(optionalString(data.secondaryText, `slides[${index}].secondaryText`), 160),
     bullets: bullets.map((item) => clampText(item, 58)),
@@ -273,6 +222,7 @@ function normalizeFullGraphicPlannerSlide(value: unknown, index: number): FullGr
   return {
     slideId: requiredString(data.slideId, `slides[${index}].slideId`),
     purpose: clampText(requiredString(data.purpose, `slides[${index}].purpose`), 90),
+    useReferenceImage: requiredBoolean(data.useReferenceImage, `slides[${index}].useReferenceImage`),
     visibleText,
   };
 }
@@ -290,7 +240,7 @@ function normalizeSharedPlan(
     aspectRatio,
     strategy,
     title: clampText(requiredString(source.title, "title"), 90),
-    visualSystem: clampText(requiredString(source.visualSystem, "visualSystem"), 1200),
+    visualSystem: requiredString(source.visualSystem, "visualSystem"),
   };
 }
 
@@ -343,11 +293,71 @@ function validateImagePromptSections(
   }
 }
 
+function overlayPromptPlannerSlide(slide: OverlayPlannerSlide) {
+  return {
+    slideId: slide.slideId,
+    purpose: slide.purpose,
+    useReferenceImage: slide.useReferenceImage,
+    sceneCues: [
+      slide.primaryText,
+      slide.secondaryText,
+      ...slide.bullets,
+    ].filter((cue): cue is string => Boolean(cue?.trim())),
+  };
+}
+
+function promptCreativeBriefForImageWriter(plan: SlideshowPlannerOutput) {
+  return {
+    narrativePattern: plan.creativeBrief.narrativePattern,
+    reasoning: plan.creativeBrief.reasoning,
+    visualStyle: plan.creativeBrief.visualStyle,
+    tone: plan.creativeBrief.tone,
+  };
+}
+
+function promptPlanForImageWriter(
+  plan: SlideshowPlannerOutput,
+  renderingMode: RequestedRenderingMode
+) {
+  if (renderingMode === "full_graphic_generation") return plan;
+  if (plan.renderingMode !== "background_plus_overlay") return plan;
+
+  return {
+    format: plan.format,
+    creativeBrief: promptCreativeBriefForImageWriter(plan),
+    visualSystem: plan.visualSystem,
+    title: plan.title,
+    aspectRatio: plan.aspectRatio,
+    slides: plan.slides.map(overlayPromptPlannerSlide),
+  };
+}
+
+function promptSlideForImageWriter(
+  slide: unknown,
+  renderingMode: RequestedRenderingMode
+) {
+  if (renderingMode === "full_graphic_generation") return slide;
+  const data = slide as Partial<OverlayPlannerSlide>;
+  if (!data || typeof data !== "object") return slide;
+  return overlayPromptPlannerSlide({
+    slideId: data.slideId,
+    purpose: data.purpose ?? "",
+    useReferenceImage: data.useReferenceImage === true,
+    primaryText: data.primaryText ?? "",
+    secondaryText: data.secondaryText,
+    bullets: Array.isArray(data.bullets) ? data.bullets : [],
+    layout: {
+      intent: data.layout?.intent ?? "",
+      density: data.layout?.density ?? "sparse",
+      contrastStrategy: data.layout?.contrastStrategy ?? "none",
+    },
+  });
+}
+
 function normalizeOverlayPlan(
   value: unknown,
   imagePromptValue: unknown,
-  prompt: string,
-  targetSlideCount: number
+  prompt: string
 ): SlideshowPlan {
   const source = requiredObject(value, "planner output");
   if (source.dryRun) failPlanning("dryRun planner output cannot be normalized into production content");
@@ -355,11 +365,10 @@ function normalizeOverlayPlan(
     failPlanning("renderingMode must be background_plus_overlay");
   }
   const rawSlides = requiredArray(source.slides, "slides");
-  const targetCount = Math.max(4, Math.min(Math.round(targetSlideCount), 9));
-  if (rawSlides.length < targetCount) {
-    failPlanning(`expected at least ${targetCount} slides, received ${rawSlides.length}`);
+  if (rawSlides.length < 2 || rawSlides.length > 9) {
+    failPlanning(`slides must contain between 2 and 9 items, received ${rawSlides.length}`);
   }
-  const plannerSlides = rawSlides.slice(0, targetCount).map((slide, index) => normalizeOverlayPlannerSlide(slide, index));
+  const plannerSlides = rawSlides.map((slide, index) => normalizeOverlayPlannerSlide(slide, index));
   const imagePromptMap = normalizeImagePromptMap(imagePromptValue, "background_plus_overlay", "backgroundPrompt");
   const shared = normalizeSharedPlan(source, prompt, plannerSlides.length);
 
@@ -383,10 +392,8 @@ function normalizeOverlayPlan(
         index: index + 1,
         role,
         purpose: slide.purpose,
-        backgroundPrompt: clampText(
-          requiredString(imagePromptMap.get(slideId), `image prompt for ${slideId}`),
-          4000
-        ),
+        useReferenceImage: slide.useReferenceImage ? true : undefined,
+        backgroundPrompt: requiredString(imagePromptMap.get(slideId), `image prompt for ${slideId}`),
         textBlocks: textBlocksForSlide(slide, role),
         layout: {
           intent: layout.intent,
@@ -404,8 +411,7 @@ function normalizeOverlayPlan(
 function normalizeFullGraphicPlan(
   value: unknown,
   imagePromptValue: unknown,
-  prompt: string,
-  targetSlideCount: number
+  prompt: string
 ): SlideshowPlan {
   const source = requiredObject(value, "planner output");
   if (source.dryRun) failPlanning("dryRun planner output cannot be normalized into production content");
@@ -413,11 +419,10 @@ function normalizeFullGraphicPlan(
     failPlanning("renderingMode must be full_graphic_generation");
   }
   const rawSlides = requiredArray(source.slides, "slides");
-  const targetCount = Math.max(4, Math.min(Math.round(targetSlideCount), 9));
-  if (rawSlides.length < targetCount) {
-    failPlanning(`expected at least ${targetCount} slides, received ${rawSlides.length}`);
+  if (rawSlides.length < 2 || rawSlides.length > 9) {
+    failPlanning(`slides must contain between 2 and 9 items, received ${rawSlides.length}`);
   }
-  const plannerSlides = rawSlides.slice(0, targetCount).map((slide, index) => normalizeFullGraphicPlannerSlide(slide, index));
+  const plannerSlides = rawSlides.map((slide, index) => normalizeFullGraphicPlannerSlide(slide, index));
   const imagePromptMap = normalizeImagePromptMap(imagePromptValue, "full_graphic_generation", "finalImagePrompt");
   const shared = normalizeSharedPlan(source, prompt, plannerSlides.length);
 
@@ -438,11 +443,9 @@ function normalizeFullGraphicPlan(
         index: index + 1,
         role: roleForPurpose(slide.purpose, index, plannerSlides.length),
         purpose: slide.purpose,
+        useReferenceImage: slide.useReferenceImage ? true : undefined,
         visibleText: clampText(slide.visibleText, 200),
-        finalImagePrompt: clampText(
-          requiredString(imagePromptMap.get(slideId), `image prompt for ${slideId}`),
-          6000
-        ),
+        finalImagePrompt: requiredString(imagePromptMap.get(slideId), `image prompt for ${slideId}`),
       };
     }),
   };
@@ -452,13 +455,12 @@ export function normalizePlan(
   value: unknown,
   imagePromptValue: unknown,
   prompt: string,
-  revisionPrompt?: string,
-  targetSlideCount = inferSlideCount(prompt).targetSlideCount,
+  _revisionPrompt?: string,
   requestedRenderingMode: RequestedRenderingMode = "background_plus_overlay"
 ): SlideshowPlan {
   return requestedRenderingMode === "full_graphic_generation"
-    ? normalizeFullGraphicPlan(value, imagePromptValue, prompt, targetSlideCount)
-    : normalizeOverlayPlan(value, imagePromptValue, prompt, targetSlideCount);
+    ? normalizeFullGraphicPlan(value, imagePromptValue, prompt)
+    : normalizeOverlayPlan(value, imagePromptValue, prompt);
 }
 
 function sharedPromptLines(args: PromptArgs): Array<string | undefined> {
@@ -470,23 +472,25 @@ function sharedPromptLines(args: PromptArgs): Array<string | undefined> {
         reference.description ? `- Description: ${reference.description}` : undefined,
         reference.instruction ? `- User instruction: ${reference.instruction}` : undefined,
       ])
-    : ["Reference assets: none selected."];
+    : ["Reference assets: []"];
 
   return [
-    `Generate a production-ready ${args.targetSlideCount}-slide social slideshow from the user's rough idea.`,
+    "Create a production slideshow plan from the user's prompt.",
     "",
-    "CREATIVE STRATEGY:",
-    "- Infer the best narrative pattern for the user's specific idea.",
-    "- When the prompt describes a numbered list, use a title/hook slide plus one slide per item.",
-    "- When the user provides an explicit slide list, use those slide lines as the complete slide copy for the matching slides.",
-    "- When the prompt is a how-to, story, comparison, myth-busting, or explainer, choose a slide sequence that fits that idea.",
-    "- When the user mentions TikTok, Reels, Shorts, vertical, or mobile content, use aspectRatio exactly: 9:16.",
-    `- Slide count hint: ${args.targetSlideCount}. ${args.slideCountReasoning}`,
-    "- Make reasonable creative-director decisions from the available context.",
-    "- Preserve the user's explicit visual instructions in visualSystem, including colors, typography, recurring graphic elements, reference usage, composition, platform style, and finish level.",
+    "SOURCE OF TRUTH:",
+    "- Treat the user prompt as the creative source of truth.",
+    "- Preserve a named slideshow title as title and hook.",
+    "- Preserve explicit slide count, slide order, slide text, visual style, subjects, camera direction, references, and examples from the user prompt.",
+    "- When the user provides a sequence of scenes and a sequence of slides, pair them by order.",
+    "- Fill unspecified choices with simple, coherent defaults that match the prompt.",
+    "- Use aspectRatio 9:16 for TikTok, Reels, Shorts, vertical, or mobile slideshow requests.",
+    "- Choose the slide count semantically from the requested format, explicit slide list, numbered list, and narrative needs.",
     "REFERENCES:",
     ...referenceLines,
-    "- Use selected references according to the user's prompt.",
+    "- Set useReferenceImage true for a slide when selected reference assets are part of that slide image.",
+    "- For a selected person or character reference, useReferenceImage true applies when that person or character appears as the subject, reflection, visible face, visible body, or visible body part.",
+    "- Selfie, mirror selfie, portrait, and creator-in-frame scenes are person-visible scenes for selected person references.",
+    "- Set useReferenceImage false for a slide when selected reference assets are background context for the slideshow.",
     "",
     "BRAND CONTEXT:",
     `Brand: ${args.brand.name}`,
@@ -506,14 +510,14 @@ export function buildOverlayPlannerPrompt(args: PromptArgs): string {
     "",
     "PRODUCTION MODE:",
     "- Use renderingMode exactly: background_plus_overlay.",
-    "- Each slide needs app-rendered overlay copy and a clear visual purpose.",
-    "- Image prompts are written in a separate pass.",
+    "- Plan on-screen copy and one visual purpose per slide.",
+    "- visualSystem summarizes the image style requested by the user.",
     "",
     "SLIDE COPY:",
-    "- primaryText should usually be 3-10 words.",
-    "- secondaryText should be 0-2 short sentences.",
-    "- Use bullets only when the slide truly benefits from a checklist.",
-    "- Keep all copy concise enough to fit on a mobile image.",
+    "- primaryText preserves user-provided slide text when the prompt gives explicit slides.",
+    "- secondaryText represents supporting copy requested or clearly described by the user prompt.",
+    "- bullets represent checklist items requested or clearly described by the user prompt.",
+    "- For an explicit slide list with titles only, set secondaryText to an empty string and bullets to an empty array.",
     "",
     "Return exactly the requested JSON schema.",
   ].filter((line) => line !== undefined).join("\n");
@@ -525,13 +529,11 @@ export function buildFullGraphicPlannerPrompt(args: PromptArgs): string {
     "",
     "PRODUCTION MODE:",
     "- Use renderingMode exactly: full_graphic_generation.",
-    "- Each slide needs concise visibleText for the finished graphic.",
-    "- visibleText is the intended text that should appear in the generated image.",
+    "- visibleText is the text intended inside the generated image.",
+    "- visualSystem summarizes the finished graphic style requested by the user.",
     "",
     "FULL GRAPHIC SLIDES:",
-    "- The slide schema for this mode uses visibleText for the copy that belongs inside the generated image.",
-    "- When the user provides exact slide text, visibleText should match that text exactly for each slide.",
-    "- Keep visibleText concise enough for an image model to render legibly.",
+    "- Match explicit user-provided slide text in visibleText.",
     "",
     "Return exactly the requested JSON schema.",
   ].filter((line) => line !== undefined).join("\n");
@@ -546,19 +548,37 @@ export function buildImagePromptWriterPrompt(args: ImagePromptWriterArgs): strin
         reference.description ? `- Description: ${reference.description}` : undefined,
         reference.instruction ? `- User instruction: ${reference.instruction}` : undefined,
       ])
-    : ["Reference assets: none selected."];
-  const planJson = JSON.stringify(args.plan, null, 2);
+    : ["Reference assets: []"];
+  const planJson = JSON.stringify(
+    promptPlanForImageWriter(args.plan, args.requestedRenderingMode),
+    null,
+    2
+  );
+  const sourceRequestLines = args.requestedRenderingMode === "full_graphic_generation"
+    ? [
+        "SOURCE REQUEST:",
+        `User prompt: ${args.prompt}`,
+        args.revisionPrompt ? `Revision request: ${args.revisionPrompt}` : undefined,
+      ]
+    : [
+        "SOURCE REQUEST:",
+        `User prompt: ${args.prompt}`,
+        args.revisionPrompt ? `Revision context: ${args.revisionPrompt}` : undefined,
+      ];
 
   const sharedLines = [
-    "Write production image prompts for the already-planned slideshow.",
+    "Write image prompts for the planned slideshow.",
     "",
-    "SOURCE REQUEST:",
-    `User prompt: ${args.prompt}`,
-    args.revisionPrompt ? `Revision request: ${args.revisionPrompt}` : undefined,
+    ...sourceRequestLines,
     "",
     "REFERENCES:",
     ...referenceLines,
-    "- Use selected references according to the user's prompt.",
+    "- useReferenceImage true means selected reference assets are attached to that slide generation.",
+    "- useReferenceImage false means visual continuity comes from the written prompt, visualSystem, scene, objects, and style.",
+    "- The Reference usage section contains exactly one sentence.",
+    "- For useReferenceImage true, use this sentence pattern: Use selected reference assets for [subject, character, identity, or style].",
+    "- For useReferenceImage false, use this sentence pattern: Visual continuity comes from [style, scene, object, or camera sources].",
+    "- For useReferenceImage false, that sentence names the style, scene, object, or camera sources guiding the slide.",
     "",
     "BRAND CONTEXT:",
     `Brand: ${args.brand.name}`,
@@ -571,31 +591,11 @@ export function buildImagePromptWriterPrompt(args: ImagePromptWriterArgs): strin
     "SLIDESHOW PLAN:",
     planJson,
     "",
-    "IMAGE PROMPT QUALITY:",
-    "- Write each image prompt with the specificity of a professional visual director.",
-    "- First produce a visualBrief for each slide: a concrete grounding brief that the final prompt will include.",
-    "- Use most of each visualBrief for the unique slide-specific scene or action: subject mechanics, object or equipment components, spatial relationships, subject orientation, interaction points, object positions, direction of motion, and action moment.",
-    "- Use the remaining visualBrief space for exact text, typography, composition, camera/framing, style, and reference usage.",
-    "- Build each image prompt as compact labeled sections so the image model receives clear separated instructions.",
-    "- Use affirmative visual descriptions: describe the subjects, objects, spaces, styling, and composition that should appear in the image.",
-    "- Describe simple scenes with positive visual terms such as clean, minimal, uncluttered, sparse, centered, isolated, or focused.",
-    "- Express spacing and separation with concrete placement language, such as text above the subject, subject centered below the headline, or badge anchored in a corner.",
-    "- Describe the generated image accurately enough that an illustrator or image model can render the intended result from the prompt alone.",
-    "- Convert abstract ideas, named actions, objects, scenes, products, styles, and techniques into concrete visible details.",
-    "- For every named action, technique, product, object, place, tool, outfit, or visual style, spell out the visible parts that make it recognizable and accurate.",
-    "- Include the main subject, placement in the frame, pose or state, object orientation, surrounding environment, important objects, spatial relationships, camera angle, distance, framing, perspective, lighting, color palette, texture, mood, polish level, visual style, and reference usage when references are selected.",
-    "- For demonstrations, choose the camera angle that reveals the clearest silhouette and object geometry, then describe the setup, subject-object interaction, direction of motion, action moment, and camera angle.",
-    "- For demonstrations, the Scene section should begin by naming the chosen view and the named action or technique.",
-    "- When a subject interacts with a surface, tool, machine, product, or prop, state how the object sits in the frame and how the subject interacts with it.",
-    "- For asymmetric demonstrations, distinguish each side or role of the subject and describe one clear action moment with consistent subject and object positions.",
-    "- Treat named items, product names, exercise names, step names, places, and titles as complete typography units when assigning color, outline, size, or highlight treatment.",
-    "- For machinery, tools, furniture, products, vehicles, appliances, instruments, or specialized objects, name the visible parts, their placement, and how the subject interacts with them.",
-    "- A production prompt should unpack named concepts into observable mechanics inside the prompt text itself.",
-    "- Use the original user prompt as the strongest source for visual-system details, recurring graphic elements, typography, color, references, and layout requests.",
-    "- When the user requests a recurring visual element, carry its placement and styling consistently across the prompt set.",
-    "- Use the slideshow plan for slide order and slide text.",
-    "- Keep the final image prompt concise and direct, usually 120-190 words per slide.",
-    "- Maintain the slideshow visualSystem across every slide prompt.",
+    "PROMPT WRITING:",
+    "- Treat the user prompt and slideshow plan as the source material.",
+    "- Preserve concrete user-specified style, subjects, camera angles, text, colors, references, and examples.",
+    "- Add only the visual details needed to make the slide render clearly.",
+    "- Write direct prompts with concrete subjects, setting, objects, composition, lighting, camera/framing, style, and reference usage.",
   ];
 
   const modeLines = args.requestedRenderingMode === "full_graphic_generation"
@@ -604,24 +604,20 @@ export function buildImagePromptWriterPrompt(args: ImagePromptWriterArgs): strin
         "FULL GRAPHIC PROMPTS:",
         "- Use renderingMode exactly: full_graphic_generation.",
         "- Return visualBrief and one finalImagePrompt for each slideId in the slideshow plan.",
-        "- Each finalImagePrompt describes a complete finished graphic, including the image scene and the designed text system.",
-        "- Use the slide's visibleText as the exact text that appears in the graphic.",
+        "- finalImagePrompt describes a complete finished graphic with the image scene and designed text.",
+        "- Use visibleText as the text inside the graphic.",
         "- Write finalImagePrompt as one plain text prompt using markdown-style section headings in this exact order: ### Create, ### Shared style, ### Visible text exact line breaks, ### Typography, ### Scene, ### Camera and framing, ### Style consistency.",
-        "- In Create, write one sentence naming the finished asset type, aspect ratio, visual genre, main subject, and main action or state.",
-        "- In Shared style, write a compact style guide from the user prompt and plan: background, character or reference usage, typography family/style, colors, recurring graphic elements, and overall composition.",
-        "- In Visible text exact line breaks, write the intended text with line breaks that support legibility on a vertical mobile graphic; break title/subtitle structures across lines when it improves readability.",
-        "- In Typography, specify placement and treatment for each line of visible text, including complete named phrases that receive color, outline, shadow, size, or weight treatment.",
-        "- In Scene, write 3-5 direct sentences describing the subject, action, objects, environment, spatial relationships, and visible mechanics with enough detail for accurate rendering.",
-        "- In Scene for demonstration slides, start with the chosen view and named action, then include the exact object or environment type, subject-object interaction, object direction, and action moment.",
-        "- In Camera and framing, specify angle, distance, crop, orientation, subject scale, and the key body parts or object components that are visible; for demonstrations, frame the full subject and the relevant equipment or prop.",
-        "- In Style consistency, use one concise sentence connecting this slide back to the selected reference assets and cohesive slideshow look.",
+        "- Typography section states placement, style, color, and treatment for the visible text.",
+        "- Scene section states the subject, action, objects, environment, and spatial relationships.",
+        "- Camera and framing section states angle, crop, distance, subject scale, and visible frame geometry.",
       ]
     : [
         "",
         "BACKGROUND PROMPTS:",
         "- Use renderingMode exactly: background_plus_overlay.",
         "- Return visualBrief and one backgroundPrompt for each slideId in the slideshow plan.",
-        "- Each backgroundPrompt describes the generated image scene itself with strong visual specificity.",
+        "- backgroundPrompt describes the generated picture: scene, subject, setting, action, objects, lighting, palette, mood, camera/framing, style, and reference usage.",
+        "- On-screen copy belongs to textBlocks; backgroundPrompt focuses on the photo or illustration content.",
         "- Write backgroundPrompt as one plain text prompt using markdown-style section headings in this exact order: ### Create, ### Scene, ### Camera and framing, ### Visual style, ### Reference usage.",
       ];
 
@@ -642,20 +638,42 @@ export function buildSingleImagePromptWriterPrompt(args: SingleImagePromptWriter
         reference.description ? `- Description: ${reference.description}` : undefined,
         reference.instruction ? `- User instruction: ${reference.instruction}` : undefined,
       ])
-    : ["Reference assets: none selected."];
-  const planJson = JSON.stringify(args.plan, null, 2);
-  const slideJson = JSON.stringify(args.slide, null, 2);
+    : ["Reference assets: []"];
+  const planJson = JSON.stringify(
+    promptPlanForImageWriter(args.plan, args.requestedRenderingMode),
+    null,
+    2
+  );
+  const slideJson = JSON.stringify(
+    promptSlideForImageWriter(args.slide, args.requestedRenderingMode),
+    null,
+    2
+  );
+  const sourceRequestLines = args.requestedRenderingMode === "full_graphic_generation"
+    ? [
+        "SOURCE REQUEST:",
+        `User prompt: ${args.prompt}`,
+        args.revisionPrompt ? `Revision request: ${args.revisionPrompt}` : undefined,
+      ]
+    : [
+        "SOURCE REQUEST:",
+        `User prompt: ${args.prompt}`,
+        args.revisionPrompt ? `Revision context: ${args.revisionPrompt}` : undefined,
+      ];
 
   const sharedLines = [
-    "Write one production image prompt for the current slideshow slide.",
+    "Write one image prompt for the current slideshow slide.",
     "",
-    "SOURCE REQUEST:",
-    `User prompt: ${args.prompt}`,
-    args.revisionPrompt ? `Revision request: ${args.revisionPrompt}` : undefined,
+    ...sourceRequestLines,
     "",
     "REFERENCES:",
     ...referenceLines,
-    "- Use selected references according to the user's prompt.",
+    "- useReferenceImage true means selected reference assets are attached to this slide generation.",
+    "- useReferenceImage false means visual continuity comes from the written prompt, visualSystem, scene, objects, and style.",
+    "- The Reference usage section contains exactly one sentence.",
+    "- For useReferenceImage true, use this sentence pattern: Use selected reference assets for [subject, character, identity, or style].",
+    "- For useReferenceImage false, use this sentence pattern: Visual continuity comes from [style, scene, object, or camera sources].",
+    "- For useReferenceImage false, that sentence names the style, scene, object, or camera sources guiding the slide.",
     "",
     "BRAND CONTEXT:",
     `Brand: ${args.brand.name}`,
@@ -671,30 +689,11 @@ export function buildSingleImagePromptWriterPrompt(args: SingleImagePromptWriter
     "CURRENT SLIDE:",
     slideJson,
     "",
-    "IMAGE PROMPT QUALITY:",
-    "- Focus all detail on the current slide.",
-    "- First produce a visualBrief: a concrete grounding brief that the final prompt will include.",
-    "- Use most of the visualBrief for the current slide's unique scene or action: subject mechanics, object or equipment components, spatial relationships, subject orientation, interaction points, object positions, direction of motion, and action moment.",
-    "- Use the remaining visualBrief space for exact text, typography, composition, camera/framing, style, and reference usage.",
-    "- Build the image prompt as compact labeled sections so the image model receives clear separated instructions.",
-    "- Use affirmative visual descriptions: describe the subjects, objects, spaces, styling, and composition that should appear in the image.",
-    "- Describe simple scenes with positive visual terms such as clean, minimal, uncluttered, sparse, centered, isolated, or focused.",
-    "- Express spacing and separation with concrete placement language, such as text above the subject, subject centered below the headline, or badge anchored in a corner.",
-    "- Describe the generated image accurately enough that an illustrator or image model can render the intended result from the prompt alone.",
-    "- Convert abstract ideas, named actions, objects, scenes, products, styles, and techniques into concrete visible details.",
-    "- For every named action, technique, product, object, place, tool, outfit, or visual style, spell out the visible parts that make it recognizable and accurate.",
-    "- When a named concept can refer to multiple visual variants, choose the variant that best fits the user prompt and describe that specific visible setup, object type, orientation, interaction points, and action moment.",
-    "- For demonstrations, choose the camera angle that reveals the clearest silhouette and object geometry, then describe the setup, subject-object interaction, direction of motion, action moment, and camera angle.",
-    "- For demonstrations, the Scene section should begin by naming the chosen view and the named action or technique.",
-    "- When a subject interacts with a surface, tool, machine, product, or prop, state how the object sits in the frame and how the subject interacts with it.",
-    "- For asymmetric demonstrations, distinguish each side or role of the subject and describe one clear action moment with consistent subject and object positions.",
-    "- Treat named items, product names, exercise names, step names, places, and titles as complete typography units when assigning color, outline, size, or highlight treatment.",
-    "- For machinery, tools, furniture, products, vehicles, appliances, instruments, or specialized objects, name the visible parts, their placement, and how the subject interacts with them.",
-    "- Use the original user prompt as the strongest source for visual-system details, recurring graphic elements, typography, color, references, and layout requests.",
-    "- When the user requests a recurring visual element, carry its placement and styling consistently across the prompt set.",
-    "- Use the slideshow plan for slide order and slide text.",
-    "- Maintain the slideshow visualSystem in this slide prompt.",
-    "- When the user requests a cohesive visual system, repeat the same typography, placement, color treatment, recurring graphic elements, background, subject styling, and composition rules in every prompt.",
+    "PROMPT WRITING:",
+    "- Treat the user prompt, slideshow plan, and current slide as the source material.",
+    "- Preserve concrete user-specified style, subjects, camera angles, text, colors, references, and examples.",
+    "- Add only the visual details needed to make the slide render clearly.",
+    "- Write a direct prompt with concrete subjects, setting, objects, composition, lighting, camera/framing, style, and reference usage.",
   ];
 
   const modeLines = args.requestedRenderingMode === "full_graphic_generation"
@@ -702,23 +701,19 @@ export function buildSingleImagePromptWriterPrompt(args: SingleImagePromptWriter
         "",
         "FULL GRAPHIC PROMPT:",
         "- Return visualBrief and one finalImagePrompt for the current slideId.",
-        "- The finalImagePrompt describes a complete finished graphic, including the image scene and the designed text system.",
-        "- Use the slide's visibleText as the exact text that appears in the graphic.",
+        "- finalImagePrompt describes a complete finished graphic with the image scene and designed text.",
+        "- Use visibleText as the text inside the graphic.",
         "- Write finalImagePrompt as one plain text prompt using markdown-style section headings in this exact order: ### Create, ### Shared style, ### Visible text exact line breaks, ### Typography, ### Scene, ### Camera and framing, ### Style consistency.",
-        "- In Create, write one sentence naming the finished asset type, aspect ratio, visual genre, main subject, and main action or state.",
-        "- In Shared style, write a compact style guide from the user prompt and plan: background, character or reference usage, typography family/style, colors, recurring graphic elements, and overall composition.",
-        "- In Visible text exact line breaks, write the intended text with line breaks that support legibility on a vertical mobile graphic; break title/subtitle structures across lines when it improves readability.",
-        "- In Typography, specify placement and treatment for each line of visible text, including complete named phrases that receive color, outline, shadow, size, or weight treatment.",
-        "- In Scene, write 3-5 direct sentences describing the subject, action, objects, environment, spatial relationships, and visible mechanics with enough detail for accurate rendering.",
-        "- In Scene for demonstration slides, start with the chosen view and named action, then include the exact object or environment type, subject-object interaction, object direction, and action moment.",
-        "- In Camera and framing, specify angle, distance, crop, orientation, subject scale, and the key body parts or object components that are visible; for demonstrations, frame the full subject and the relevant equipment or prop.",
-        "- In Style consistency, use one concise sentence connecting this slide back to the selected reference assets and cohesive slideshow look.",
+        "- Typography section states placement, style, color, and treatment for the visible text.",
+        "- Scene section states the subject, action, objects, environment, and spatial relationships.",
+        "- Camera and framing section states angle, crop, distance, subject scale, and visible frame geometry.",
       ]
     : [
         "",
         "BACKGROUND PROMPT:",
         "- Return visualBrief and one backgroundPrompt for the current slideId.",
-        "- The backgroundPrompt describes the generated image scene itself with strong visual specificity.",
+        "- backgroundPrompt describes the generated picture: scene, subject, setting, action, objects, lighting, palette, mood, camera/framing, style, and reference usage.",
+        "- On-screen copy belongs to textBlocks; backgroundPrompt focuses on the photo or illustration content.",
         "- Write backgroundPrompt as one plain text prompt using markdown-style section headings in this exact order: ### Create, ### Scene, ### Camera and framing, ### Visual style, ### Reference usage.",
       ];
 

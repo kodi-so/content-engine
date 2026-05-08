@@ -300,7 +300,8 @@ export function useCreateSlideshow() {
 
   const handleRegenerateSlideImage = async (
     slide: CanonicalSlideshowSlide,
-    imagePrompt: string
+    imagePrompt: string,
+    useReferenceImage: boolean
   ) => {
     if (!activeSlideshow) return;
     const prompt = imagePrompt.trim();
@@ -312,6 +313,7 @@ export function useCreateSlideshow() {
         slideshowId: activeSlideshow._id,
         slideId: slide.slideId,
         prompt,
+        useReferenceImage,
       });
       setStatusMessage(`Slide ${slide.index} image regenerated`);
     } catch (error) {

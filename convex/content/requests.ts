@@ -16,7 +16,6 @@ import {
   buildFullGraphicPlannerPrompt,
   buildOverlayPlannerPrompt,
   buildSingleImagePromptWriterPrompt,
-  inferSlideCount,
   normalizePlan,
   type PlannerReference,
   type RequestedRenderingMode,
@@ -87,13 +86,18 @@ function promptForSlide(slide: SlideshowPlan["slides"][number]) {
     : slide.backgroundPrompt;
 }
 
+function referenceAssetIdsForSlide(
+  slide: Pick<SlideshowPlan["slides"][number], "useReferenceImage">,
+  assets: Array<{ _id: Id<"brandAssets"> }>
+) {
+  return slide.useReferenceImage ? assets.map((asset) => String(asset._id)) : [];
+}
+
 function planPromptForMode(args: {
   prompt: string;
   revisionPrompt?: string;
   brand: Doc<"brands">;
   socialAccount?: Doc<"socialAccounts"> | null;
-  targetSlideCount: number;
-  slideCountReasoning: string;
   requestedRenderingMode: RequestedRenderingMode;
   references: PlannerReference[];
 }) {
@@ -797,6 +801,7 @@ export const applyRegeneratedSlideImage = internalMutation({
     userId: v.string(),
     slideId: v.string(),
     prompt: v.string(),
+    useReferenceImage: v.optional(v.boolean()),
     storageUrl: v.string(),
     sourceImageArtifactId: v.string(),
   },
@@ -818,6 +823,7 @@ export const applyRegeneratedSlideImage = internalMutation({
           ...(renderingMode === "full_graphic_generation"
             ? { finalImagePrompt: args.prompt }
             : { backgroundPrompt: args.prompt }),
+          useReferenceImage: args.useReferenceImage === true ? true : undefined,
           backgroundImageUrl: args.storageUrl,
           sourceImageArtifactId: args.sourceImageArtifactId,
           updatedAt: now,
@@ -848,6 +854,7 @@ export const regenerateSlideImage = action({
     slideshowId: v.id("slideshows"),
     slideId: v.string(),
     prompt: v.string(),
+    useReferenceImage: v.optional(v.boolean()),
   },
   handler: async (
     ctx,
@@ -866,7 +873,12 @@ export const regenerateSlideImage = action({
 
     const renderingMode = renderingModeForSlide(context.spec, context.slide);
     const aspectRatio = context.spec.aspectRatio ?? "9:16";
-    const referenceImages = await referenceImagesFromAssets(context.referenceAssets);
+    const useReferenceImage = args.useReferenceImage ?? (context.slide.useReferenceImage === true);
+    const referenceAssetsForSlide = useReferenceImage ? context.referenceAssets : [];
+    const referenceImages = await referenceImagesFromAssets(referenceAssetsForSlide);
+    const referenceAssetIds = referenceImages.length > 0
+      ? referenceAssetIdsForSlide({ useReferenceImage }, referenceAssetsForSlide)
+      : [];
     const imageProviderName = referenceImages.length > 0
       ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "fal"
       : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
@@ -891,7 +903,7 @@ export const regenerateSlideImage = action({
         },
         renderingMode,
         slideId: args.slideId,
-        referenceAssetIds: context.referenceAssets.map((asset) => String(asset._id)),
+        referenceAssetIds,
       },
     });
     const asset = image.images[0] ?? await waitForImageResult(imageProvider, {
@@ -919,9 +931,10 @@ export const regenerateSlideImage = action({
         status: "succeeded",
         prompt: providerPrompt,
         renderingMode,
+        useReferenceImage,
         sourceSlideshowId: args.slideshowId,
         sourceSlideId: args.slideId,
-        referenceAssetIds: context.referenceAssets.map((asset) => String(asset._id)),
+        referenceAssetIds,
       },
       provider: image.metadata.provider,
       model: image.metadata.model,
@@ -933,6 +946,7 @@ export const regenerateSlideImage = action({
       userId,
       slideId: args.slideId,
       prompt,
+      useReferenceImage,
       storageUrl: stored.storageUrl,
       sourceImageArtifactId: String(artifactId),
     });
@@ -960,7 +974,6 @@ export const execute = internalAction({
       const plannerReferences = context.referenceAssets.map(({ asset, instruction }) =>
         plannerReferenceFromAsset(asset, instruction)
       );
-      const slideCountHint = inferSlideCount(context.request.prompt);
       const textProvider = getModelProvider("openrouter");
       const structured = await textProvider.generateStructured<SlideshowPlannerOutput>({
         systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
@@ -969,14 +982,12 @@ export const execute = internalAction({
           revisionPrompt: context.request.revisionPrompt,
           brand: context.brand,
           socialAccount: context.socialAccount,
-          targetSlideCount: slideCountHint.targetSlideCount,
-          slideCountReasoning: slideCountHint.reasoning,
           requestedRenderingMode,
           references: plannerReferences,
         }),
         schema: planSchemaForMode(requestedRenderingMode),
         schemaName: "slideshow_create_plan",
-        model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || undefined,
+        model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || "openai/gpt-4.1",
         temperature: 0.7,
         parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
       });
@@ -992,8 +1003,6 @@ export const execute = internalAction({
             revisionPrompt: context.request.revisionPrompt,
             brand: context.brand,
             socialAccount: context.socialAccount,
-            targetSlideCount: slideCountHint.targetSlideCount,
-            slideCountReasoning: slideCountHint.reasoning,
             requestedRenderingMode,
             references: plannerReferences,
             plan: structured.object,
@@ -1019,7 +1028,6 @@ export const execute = internalAction({
         imagePrompts,
         context.request.prompt,
         context.request.revisionPrompt,
-        slideCountHint.targetSlideCount,
         requestedRenderingMode
       );
 
@@ -1041,13 +1049,11 @@ export const execute = internalAction({
         prompt: context.request.prompt,
       });
 
-      const referenceImages = await referenceImagesFromAssets(
-        context.referenceAssets.map(({ asset }) => asset)
-      );
-      const imageProviderName = referenceImages.length > 0
-        ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "fal"
-        : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
-      const imageProvider = getModelProvider(imageProviderName as "gemini" | "fal");
+      const referenceAssets = context.referenceAssets.map(({ asset }) => asset);
+      const anySlideUsesReferences = plan.slides.some((slide) => slide.useReferenceImage === true);
+      const referenceImages = anySlideUsesReferences
+        ? await referenceImagesFromAssets(referenceAssets)
+        : [];
       const imageModel = plan.renderingMode === "full_graphic_generation"
         ? process.env.CONTENT_ENGINE_FULL_GRAPHIC_IMAGE_MODEL?.trim() || process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined
         : process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined;
@@ -1057,18 +1063,28 @@ export const execute = internalAction({
       const pendingImages: Array<{
         slide: SlideshowPlan["slides"][number];
         prompt: string;
+        imageProvider: ModelProvider;
+        referenceAssetIds: string[];
         image: GenerateImageResult;
       }> = [];
 
       for (const slide of plan.slides) {
         const prompt = providerImagePrompt(promptForSlide(slide), plan.aspectRatio, plan.renderingMode);
+        const referenceImagesForSlide = slide.useReferenceImage === true ? referenceImages : [];
+        const referenceAssetIds = referenceImagesForSlide.length > 0
+          ? referenceAssetIdsForSlide(slide, referenceAssets)
+          : [];
+        const imageProviderName = referenceImagesForSlide.length > 0
+          ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "fal"
+          : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
+        const imageProvider = getModelProvider(imageProviderName as "gemini" | "fal");
         try {
           const image = await imageProvider.generateImage({
             prompt,
             model: imageModel,
             aspectRatio: plan.aspectRatio,
             count: 1,
-            referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
+            referenceImages: referenceImagesForSlide.length > 0 ? referenceImagesForSlide : undefined,
             metadata: {
               arguments: {
                 aspect_ratio: plan.aspectRatio,
@@ -1076,11 +1092,12 @@ export const execute = internalAction({
                 resolution: "2K",
               },
               renderingMode: plan.renderingMode,
-              referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
+              useReferenceImage: slide.useReferenceImage === true,
+              referenceAssetIds,
             },
           });
           costUsd = sumCost(costUsd, image.metadata);
-          pendingImages.push({ slide, prompt, image });
+          pendingImages.push({ slide, prompt, imageProvider, referenceAssetIds, image });
         } catch (error) {
           imageErrors.push(`Slide ${slide.index}: ${error instanceof Error ? error.message : "Image generation failed"}`);
           await createRequestArtifact(ctx, {
@@ -1090,6 +1107,7 @@ export const execute = internalAction({
             data: {
               slideIndex: slide.index,
               prompt,
+              referenceAssetIds,
               errorMessage: error instanceof Error ? error.message : "Image generation failed",
             },
             provider: "manual",
@@ -1101,7 +1119,7 @@ export const execute = internalAction({
 
       const resolvedImages = await Promise.all(pendingImages.map(async (pending) => {
         try {
-          const asset = pending.image.images[0] ?? await waitForImageResult(imageProvider, {
+          const asset = pending.image.images[0] ?? await waitForImageResult(pending.imageProvider, {
             jobId: pending.image.jobId,
             model: pending.image.metadata.model,
             metadata: pending.image.metadata,
@@ -1131,6 +1149,8 @@ export const execute = internalAction({
               model: result.image.metadata.model,
               statusUrl: typeof result.image.metadata.statusUrl === "string" ? result.image.metadata.statusUrl : undefined,
               responseUrl: typeof result.image.metadata.responseUrl === "string" ? result.image.metadata.responseUrl : undefined,
+              useReferenceImage: result.slide.useReferenceImage === true,
+              referenceAssetIds: result.referenceAssetIds,
             },
             provider: "manual",
             prompt: result.prompt,
@@ -1159,7 +1179,8 @@ export const execute = internalAction({
             status: "succeeded",
             prompt: result.prompt,
             renderingMode: plan.renderingMode,
-            referenceAssetIds: context.referenceAssets.map(({ asset }) => String(asset._id)),
+            useReferenceImage: result.slide.useReferenceImage === true,
+            referenceAssetIds: result.referenceAssetIds,
           },
           provider: result.image.metadata.provider,
           model: result.image.metadata.model,

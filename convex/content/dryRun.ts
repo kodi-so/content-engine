@@ -6,7 +6,6 @@ import {
   buildFullGraphicPlannerPrompt,
   buildOverlayPlannerPrompt,
   buildSingleImagePromptWriterPrompt,
-  inferSlideCount,
   normalizePlan,
   type PlannerReference,
   type RequestedRenderingMode,
@@ -26,8 +25,6 @@ function planPromptForMode(args: {
   revisionPrompt?: string;
   brand: Doc<"brands">;
   socialAccount?: Doc<"socialAccounts"> | null;
-  targetSlideCount: number;
-  slideCountReasoning: string;
   requestedRenderingMode: RequestedRenderingMode;
   references: PlannerReference[];
 }) {
@@ -73,7 +70,6 @@ export const slideshowPromptPlan = action({
   },
   handler: async (_ctx, args) => {
     const requestedRenderingMode = args.requestedRenderingMode;
-    const slideCountHint = inferSlideCount(args.prompt);
     const brand = {
       name: args.brand?.name ?? "Contour",
       audience: args.brand?.audience,
@@ -95,8 +91,6 @@ export const slideshowPromptPlan = action({
       revisionPrompt: args.revisionPrompt,
       brand,
       socialAccount: null,
-      targetSlideCount: slideCountHint.targetSlideCount,
-      slideCountReasoning: slideCountHint.reasoning,
       requestedRenderingMode,
       references,
     });
@@ -105,7 +99,7 @@ export const slideshowPromptPlan = action({
       prompt: plannerPrompt,
       schema: planSchemaForMode(requestedRenderingMode),
       schemaName: "slideshow_create_plan",
-      model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || undefined,
+      model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || "openai/gpt-4.1",
       temperature: 0.7,
       parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
     });
@@ -121,8 +115,6 @@ export const slideshowPromptPlan = action({
           revisionPrompt: args.revisionPrompt,
           brand,
           socialAccount: null,
-          targetSlideCount: slideCountHint.targetSlideCount,
-          slideCountReasoning: slideCountHint.reasoning,
           requestedRenderingMode,
           references,
           plan: structured.object,
@@ -147,12 +139,10 @@ export const slideshowPromptPlan = action({
       imagePrompts,
       args.prompt,
       args.revisionPrompt,
-      slideCountHint.targetSlideCount,
       requestedRenderingMode
     );
 
     return {
-      slideCountHint,
       plannerMetadata: structured.metadata,
       imagePromptMetadata: imagePromptResults.map((result) => result.metadata),
       plannerOutput: structured.object,

@@ -35,6 +35,7 @@ export type CanonicalSlideshowSlide = {
   renderingMode?: SlideshowRenderingMode;
   role?: string;
   purpose?: string;
+  useReferenceImage?: boolean;
   backgroundPrompt?: string;
   finalImagePrompt?: string;
   visibleText?: string;

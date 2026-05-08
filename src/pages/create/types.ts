@@ -36,6 +36,7 @@ export type CreativePlan = {
     slideId?: string;
     purpose?: string;
     role?: string;
+    useReferenceImage?: boolean;
     backgroundPrompt?: string;
     finalImagePrompt?: string;
     visibleText?: string;
@@ -112,7 +113,8 @@ export type PreviewActions = {
   ) => Promise<void>;
   handleRegenerateSlideImage: (
     slide: CanonicalSlideshowSlide,
-    prompt: string
+    prompt: string,
+    useReferenceImage: boolean
   ) => Promise<void>;
   handleUpdateSlideImagePrompt: (
     slide: CanonicalSlideshowSlide,
