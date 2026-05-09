@@ -92,6 +92,45 @@ export const uploadBase64Image = action({
   },
 });
 
+export const uploadBase64ImageWithMetadata = action({
+  args: {
+    base64Data: v.string(),
+    filename: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{
+    storageId: Id<"_storage">;
+    storageUrl: string;
+    mimeType: string;
+    byteLength: number;
+  }> => {
+    const matches = args.base64Data.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid base64 data URI format");
+    }
+
+    const mimeType = matches[1];
+    const base64String = matches[2];
+    const binaryString = atob(base64String);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let index = 0; index < binaryString.length; index += 1) {
+      bytes[index] = binaryString.charCodeAt(index);
+    }
+
+    const storageId = await ctx.storage.store(new Blob([bytes], { type: mimeType }));
+    const storageUrl = await ctx.storage.getUrl(storageId);
+    if (!storageUrl) {
+      throw new Error("Failed to get storage URL");
+    }
+
+    return {
+      storageId,
+      storageUrl,
+      mimeType,
+      byteLength: bytes.byteLength,
+    };
+  },
+});
+
 /**
  * Upload multiple base64 images to Convex storage
  * Returns an array of permanent storage URLs

@@ -660,3 +660,132 @@ Current intent:
 - Top-level grids use shrink-safe/autofit columns where needed.
 - Reference cards are small fixed-width cards inside an internal horizontal scroll strip, rather than stretching to fill the whole row.
 - The whole page should not rely on hidden horizontal overflow to mask layout bugs.
+
+## Latest Publishing Infrastructure Work
+
+The slideshow editor is considered good enough for now. The active product direction shifted toward building the downstream posting/distribution loop so real TikTok account testing can teach us faster than continued editor polishing.
+
+### Data Ownership Cleanup
+
+We clarified the source-of-truth boundaries and added `docs/data-ownership.md`.
+
+Current intended ownership:
+
+- `contentRequests`: one-off creation job input/status. New rows link to `planArtifactId`; `plan` remains only for older/debug rows.
+- `workflowRuns`: automation execution state and events.
+- `artifacts`: immutable generated outputs and provenance.
+- `slideshows`: mutable slideshow editor state.
+- `distributionPlans`: publishing intent and post queue records.
+- `postMetrics`: analytics snapshots.
+
+The intended pipeline is:
+
+```text
+content request or workflow run
+-> immutable generated artifacts
+-> optional mutable format editor, such as slideshows
+-> immutable publish-ready artifacts
+-> distribution plan
+-> metrics snapshots
+```
+
+### Publish-Ready Slideshow Assets
+
+Saved slideshows can now create a draft post from the Library.
+
+Flow:
+
+1. User clicks `Create draft post` on a saved slideshow.
+2. The browser renders the current slideshow state into final slide images.
+3. The app uploads those images to Convex storage.
+4. Convex creates `rendered_asset` artifacts with `format: "slideshow_rendered_slide"`.
+5. Convex creates a draft `distributionPlan` referencing those rendered artifacts.
+
+Important behavior:
+
+- In `full_graphic_generation`, rendered assets may look identical to the generated image artifacts because the image model already produced the full finished slide.
+- In `background_plus_overlay`, generated `image` artifacts are background images only, while `rendered_asset` artifacts contain the baked-in app-rendered text and are the publish-ready files.
+- `rendered_asset` artifacts should not appear as separate review cards in the normal Review Queue. They are implementation details of the draft post bundle.
+- Distribution Plans now show a compact image bundle preview.
+- Once a slideshow has a distribution plan whose artifacts point back to that slideshow, the slideshow is hidden from the Review Queue.
+
+### Manual Publishing Provider
+
+A minimal `manual` publishing provider was added so the queue can work before Post Bridge/Postiz integration.
+
+Current behavior:
+
+- `Mark published` marks a manual distribution plan as published inside Content Engine.
+- This does not publish anything to an external platform.
+- Manual plans do not show `Status` or `Metrics` buttons because there are no external provider IDs to sync.
+- For real providers later, `Status` should sync provider/platform status, and `Metrics` should sync analytics.
+
+Distribution plan destructive action labels now vary by state:
+
+- `draft` / `failed`: `Delete draft`
+- `published`: `Archive`
+- `scheduled`: `Cancel`
+
+The published-state confirmation warns that archiving only removes the Content Engine record and does not delete anything from a social platform.
+
+### Posting Provider Strategy
+
+The current strategy is:
+
+1. Build provider-agnostic post queue infrastructure first.
+2. Use Post Bridge or Postiz later as the first live hosted provider adapter.
+3. Keep direct TikTok API/audit work as a later strategic path if the platform gets traction.
+
+Post Bridge research indicated it likely gives the fastest path to public posting and basic analytics without doing our own TikTok audit immediately, but we should still confirm TikTok photo carousel support and analytics behavior before committing.
+
+TikTok direct-post research confirmed that unaudited TikTok API clients are too restricted for the immediate learning loop. The user's TikTok developer account is approved, but the client is unaudited; audit-readiness is a product readiness project, not just an API task.
+
+## Latest Image Model Routing
+
+We researched `gemini-3.1-flash-image-preview` and decided it is a better default for high-volume overlay/background image generation, while keeping Pro for full graphic slides.
+
+Current defaults:
+
+- Slideshow planner: OpenRouter, `CONTENT_ENGINE_TEXT_MODEL || "openai/gpt-4.1"`.
+- Image prompt writer: OpenRouter, `CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL || CONTENT_ENGINE_TEXT_MODEL || "openai/gpt-4.1"`.
+- `background_plus_overlay` slideshow images: `fal-ai/gemini-3.1-flash-image-preview`.
+- `background_plus_overlay` reference-image slides: `fal-ai/gemini-3.1-flash-image-preview/edit`.
+- `full_graphic_generation` slideshow images: `fal-ai/gemini-3-pro-image-preview`.
+- `full_graphic_generation` reference-image slides: `fal-ai/gemini-3-pro-image-preview/edit`.
+- Generic fal default image model: `fal-ai/gemini-3.1-flash-image-preview`.
+
+The fal adapter now recognizes these Gemini image families and sends them through the newer payload schema:
+
+- `fal-ai/gemini-3-pro-image-preview`
+- `fal-ai/gemini-3-pro-image-preview/edit`
+- `fal-ai/gemini-3.1-flash-image-preview`
+- `fal-ai/gemini-3.1-flash-image-preview/edit`
+- `fal-ai/nano-banana-pro`
+- `fal-ai/nano-banana-pro/edit`
+- `fal-ai/nano-banana-2`
+- `fal-ai/nano-banana-2/edit`
+
+When reference images are present, the fal adapter auto-switches supported non-edit model IDs to `/edit`.
+
+Rationale:
+
+- Overlay mode does not need model-rendered text, so Flash is likely a better speed/cost default.
+- Full graphic mode depends more on typography, layout, and finished graphic design, so Pro remains the safer default.
+
+## Latest Verification
+
+After the data ownership, publishing queue, manual provider, distribution plan UI, and image model routing changes, the following passed:
+
+```text
+npx convex codegen
+npm run build
+npx convex dev --once
+```
+
+The Convex warning remains non-blocking:
+
+```text
+Warning: Unknown property in `node`: `version`
+```
+
+Convex also still shows a minor update notice. Both are unrelated to the current work.

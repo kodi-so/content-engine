@@ -11,7 +11,12 @@ export function ArtifactPreview({ artifact }: { artifact: ArtifactDoc }) {
         ? data.url
         : undefined;
 
-  if (artifact.type === "image" && imageUrl) {
+  if (
+    (artifact.type === "image" ||
+      artifact.type === "rendered_asset" ||
+      artifact.type === "thumbnail") &&
+    imageUrl
+  ) {
     return (
       <div className="artifact-preview image-preview">
         <img src={imageUrl} alt={artifact.title || "Generated image"} />

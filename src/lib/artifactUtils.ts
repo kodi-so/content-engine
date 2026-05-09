@@ -47,7 +47,6 @@ export function isPrimaryReviewArtifact(artifact: ArtifactDoc): boolean {
   return (
     artifact.type === "caption" ||
     artifact.type === "script" ||
-    artifact.type === "rendered_asset" ||
     artifact.type === "thumbnail" ||
     artifact.type === "video"
   );
@@ -68,6 +67,22 @@ export function artifactSummary(artifact: ArtifactDoc): string {
     const data = artifact.data as { status?: string; jobId?: string; url?: string };
     if (data.status || data.jobId) return `${data.status ?? "job"} · ${data.jobId ?? ""}`.trim();
     if (data.url) return data.url;
+  }
+
+  if (artifact.type === "rendered_asset" && artifact.data && typeof artifact.data === "object") {
+    const data = artifact.data as {
+      slideIndex?: number;
+      width?: number;
+      height?: number;
+      mimeType?: string;
+    };
+    return [
+      typeof data.slideIndex === "number" ? `Publish-ready slide ${data.slideIndex}` : "Publish-ready asset",
+      data.width && data.height ? `${data.width}x${data.height}` : undefined,
+      data.mimeType,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   if (artifact.data && typeof artifact.data === "object") {

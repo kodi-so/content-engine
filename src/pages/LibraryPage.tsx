@@ -1,7 +1,7 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 import { api } from "../../convex/_generated/api";
-import { SavedSlideshowCard } from "../components/SlideshowPreview";
+import { getActiveSlides, getSlideshowSpec, SavedSlideshowCard } from "../components/SlideshowPreview";
 import { ArtifactCard } from "../components/library/ArtifactCard";
 import { DistributionPlansPanel } from "../components/library/DistributionPlansPanel";
 import { Page, Panel, Select } from "../components/ui";
@@ -9,7 +9,21 @@ import {
   findPromotablePlanTarget,
   isPrimaryReviewArtifact,
 } from "../lib/artifactUtils";
+import { renderSlideshowToBlobs } from "../lib/slideshowCanvas";
 import type { ArtifactDoc, DistributionPlanDoc, DistributionPlanId, SlideshowDoc } from "../types";
+import type { Id } from "../../convex/_generated/dataModel";
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Could not read rendered slide"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read rendered slide"));
+    reader.readAsDataURL(blob);
+  });
+}
 
 export function LibraryPage() {
   const artifacts = useQuery(api.artifacts.records.list, {});
@@ -22,9 +36,11 @@ export function LibraryPage() {
   const requestArtifactRevision = useMutation(api.artifacts.records.requestRevision);
   const deleteArtifact = useMutation(api.artifacts.records.remove);
   const deleteSlideshow = useMutation(api.content.slideshows.remove);
+  const createDraftPostFromSlideshow = useMutation(api.content.slideshows.createDraftDistributionPlanFromRenderedSlides);
   const replacePlanArtifact = useMutation(api.publishing.distributionPlans.replaceArtifact);
   const deletePlan = useMutation(api.publishing.distributionPlans.remove);
   const regenerateArtifact = useAction(api.artifacts.regeneration.regenerate);
+  const uploadRenderedSlide = useAction(api.storage.files.uploadBase64ImageWithMetadata);
   const publishPlan = useAction(api.publishing.distributionPlans.publish);
   const syncPlanStatus = useAction(api.publishing.distributionPlans.syncStatus);
   const syncPlanMetrics = useAction(api.publishing.distributionPlans.syncMetrics);
@@ -78,15 +94,32 @@ export function LibraryPage() {
     [filteredArtifacts]
   );
   const savedSlideshows = useMemo(
-    () =>
-      (slideshows ?? []).filter((slideshow) => {
+    () => {
+      const artifactsById = new Map((artifacts ?? []).map((artifact) => [String(artifact._id), artifact]));
+      const slideshowIdsWithDistributionPlans = new Set<string>();
+
+      for (const plan of plans ?? []) {
+        for (const artifactId of plan.artifactIds) {
+          const artifact = artifactsById.get(String(artifactId));
+          const data = artifact?.data;
+          if (!data || typeof data !== "object") continue;
+          const slideshowId = (data as Record<string, unknown>).slideshowId;
+          if (typeof slideshowId === "string") {
+            slideshowIdsWithDistributionPlans.add(slideshowId);
+          }
+        }
+      }
+
+      return (slideshows ?? []).filter((slideshow) => {
         if (slideshow.status !== "saved") return false;
+        if (slideshowIdsWithDistributionPlans.has(String(slideshow._id))) return false;
         if (brandFilter && slideshow.brandId !== brandFilter) return false;
         if (accountFilter && slideshow.socialAccountId !== accountFilter) return false;
         if (formatFilter && formatFilter !== "slideshow") return false;
         return true;
-      }),
-    [accountFilter, brandFilter, formatFilter, slideshows]
+      });
+    },
+    [accountFilter, artifacts, brandFilter, formatFilter, plans, slideshows]
   );
   const standaloneReviewArtifacts = useMemo(
     () => reviewArtifacts,
@@ -182,6 +215,57 @@ export function LibraryPage() {
     }
   };
 
+  const createDraftPost = async (slideshow: SlideshowDoc) => {
+    setReviewStatusMessage("Rendering publish assets");
+    try {
+      const spec = getSlideshowSpec(slideshow);
+      const slides = getActiveSlides(slideshow);
+      const blobs = await renderSlideshowToBlobs(spec, {
+        mimeType: spec.exportSettings?.publishMimeType === "image/jpeg"
+          ? "image/jpeg"
+          : spec.exportSettings?.publishMimeType === "image/webp"
+            ? "image/webp"
+            : "image/png",
+      });
+      const uploadedSlides = await Promise.all(
+        blobs.map(async (blob, index) => {
+          const slide = slides[index];
+          if (!slide) throw new Error("Rendered slide did not match slideshow state");
+          const uploaded = await uploadRenderedSlide({
+            base64Data: await blobToDataUrl(blob),
+            filename: `${slideshow._id}-slide-${slide.index}.png`,
+          });
+          return {
+            slideId: slide.slideId,
+            index: slide.index,
+            storageId: uploaded.storageId,
+            storageUrl: uploaded.storageUrl,
+            mimeType: uploaded.mimeType,
+            fileSize: uploaded.byteLength,
+            width: spec.dimensions?.width ?? slide.dimensions?.width ?? 1080,
+            height: spec.dimensions?.height ?? slide.dimensions?.height ?? 1920,
+            sourceImageArtifactId: slide.sourceImageArtifactId
+              ? (slide.sourceImageArtifactId as Id<"artifacts">)
+              : undefined,
+          };
+        })
+      );
+      const account = slideshow.socialAccountId
+        ? accounts?.find((item) => item._id === slideshow.socialAccountId)
+        : undefined;
+      await createDraftPostFromSlideshow({
+        slideshowId: slideshow._id,
+        slides: uploadedSlides,
+        socialAccountIds: slideshow.socialAccountId ? [slideshow.socialAccountId] : undefined,
+        provider: account?.provider ?? "manual",
+        caption: slideshow.title,
+      });
+      setReviewStatusMessage("Draft post created in Distribution Plans");
+    } catch (error) {
+      setReviewStatusMessage(error instanceof Error ? error.message : "Draft post creation failed");
+    }
+  };
+
   const runPlanAction = async (
     action: () => Promise<unknown>,
     successMessage: string
@@ -196,16 +280,24 @@ export function LibraryPage() {
   };
 
   const removePlan = async (plan: DistributionPlanDoc) => {
-    if (!window.confirm("Delete this distribution plan and any synced metrics?")) {
+    const isPublished = plan.status === "published";
+    const isScheduled = plan.status === "scheduled";
+    const label = isPublished
+      ? "Archive this published record? This only removes it from Content Engine history; it does not delete anything from a social platform."
+      : isScheduled
+        ? "Cancel this scheduled distribution plan? Provider-side cancellation is not implemented yet, so this only removes the local plan."
+        : "Delete this draft distribution plan and its synced metrics?";
+
+    if (!window.confirm(label)) {
       return;
     }
 
-    setPlanStatus("Deleting distribution plan");
+    setPlanStatus(isPublished ? "Archiving published record" : isScheduled ? "Canceling plan" : "Deleting draft");
     try {
       await deletePlan({ id: plan._id });
-      setPlanStatus("Distribution plan deleted");
+      setPlanStatus(isPublished ? "Published record archived" : isScheduled ? "Plan canceled" : "Draft deleted");
     } catch (error) {
-      setPlanStatus(error instanceof Error ? error.message : "Delete failed");
+      setPlanStatus(error instanceof Error ? error.message : "Action failed");
     }
   };
 
@@ -292,6 +384,7 @@ export function LibraryPage() {
 
       <DistributionPlansPanel
         plans={plans}
+        artifacts={artifacts}
         planStatus={planStatus}
         publishPlan={(plan) =>
           runPlanAction(
@@ -356,6 +449,7 @@ export function LibraryPage() {
             <SavedSlideshowCard
               key={slideshow._id}
               slideshow={slideshow}
+              createDraftPost={createDraftPost}
               removeSlideshow={removeSlideshow}
             />
           ))}

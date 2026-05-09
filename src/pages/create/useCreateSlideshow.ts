@@ -72,11 +72,30 @@ export function useCreateSlideshow() {
     api.content.slideshows.list,
     activeRequest ? { contentRequestId: activeRequest._id } : "skip"
   );
+  const requestArtifacts = useQuery(
+    api.artifacts.records.list,
+    activeRequest ? { contentRequestId: activeRequest._id } : "skip"
+  );
   const activeSlideshow = slideshows?.[0];
-  const plan =
-    activeRequest?.plan && typeof activeRequest.plan === "object"
-      ? (activeRequest.plan as CreativePlan)
-      : undefined;
+  const slideSpecArtifact = requestArtifacts?.find((artifact) => {
+    if (artifact.type !== "slide_spec") return false;
+    if (activeRequest?.planArtifactId) {
+      return String(artifact._id) === String(activeRequest.planArtifactId);
+    }
+    return true;
+  });
+  const plan = useMemo(() => {
+    if (activeRequest?.plan && typeof activeRequest.plan === "object") {
+      return activeRequest.plan as CreativePlan;
+    }
+    if (slideSpecArtifact?.data && typeof slideSpecArtifact.data === "object") {
+      return slideSpecArtifact.data as CreativePlan;
+    }
+    if (activeSlideshow?.spec && typeof activeSlideshow.spec === "object") {
+      return activeSlideshow.spec as CreativePlan;
+    }
+    return undefined;
+  }, [activeRequest?.plan, activeSlideshow?.spec, slideSpecArtifact?.data]);
   const isWorking = activeRequest
     ? ["queued", "planning", "generating"].includes(activeRequest.status)
     : false;

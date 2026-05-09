@@ -237,7 +237,7 @@ export const publish = action({
     if (context.plan.status !== "draft" && context.plan.status !== "failed") {
       throw new Error(`Distribution plan cannot be published from ${context.plan.status}`);
     }
-    if (context.socialAccounts.length === 0) {
+    if (context.socialAccounts.length === 0 && context.plan.provider !== "manual") {
       throw new Error("Distribution plan has no target accounts");
     }
 

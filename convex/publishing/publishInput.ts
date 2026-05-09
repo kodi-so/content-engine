@@ -189,6 +189,11 @@ export async function loadPublishInput(
     publishAt: context.plan.scheduledFor,
     timezone: context.plan.timezone,
     metadata: {
+      ...(context.plan.providerPayload &&
+      typeof context.plan.providerPayload === "object" &&
+      !Array.isArray(context.plan.providerPayload)
+        ? context.plan.providerPayload as Record<string, unknown>
+        : {}),
       distributionPlanId: context.plan._id,
     },
   };

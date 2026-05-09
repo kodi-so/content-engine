@@ -54,6 +54,18 @@ function sumCost(current: number, metadata?: ModelInvocationMetadata) {
   return current + (metadata?.costUsd ?? 0);
 }
 
+const DEFAULT_OVERLAY_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
+const DEFAULT_FULL_GRAPHIC_IMAGE_MODEL = "fal-ai/gemini-3-pro-image-preview";
+
+function imageModelForRenderingMode(renderingMode: SlideshowPlan["renderingMode"]): string {
+  if (renderingMode === "full_graphic_generation") {
+    return process.env.CONTENT_ENGINE_FULL_GRAPHIC_IMAGE_MODEL?.trim() ||
+      DEFAULT_FULL_GRAPHIC_IMAGE_MODEL;
+  }
+
+  return process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || DEFAULT_OVERLAY_IMAGE_MODEL;
+}
+
 function providerImagePrompt(
   slidePrompt: string,
   aspectRatio: SlideshowPlan["aspectRatio"],
@@ -480,6 +492,8 @@ export const reviseSlideshow = mutation({
     await ctx.db.patch(args.id, {
       revisionPrompt,
       status: "queued",
+      plan: undefined,
+      planArtifactId: undefined,
       errorMessage: undefined,
       completedAt: undefined,
       updatedAt: Date.now(),
@@ -609,6 +623,7 @@ export const transition = internalMutation({
     requestId: v.id("contentRequests"),
     status: contentRequestStatusValidator,
     plan: v.optional(v.any()),
+    planArtifactId: v.optional(v.id("artifacts")),
     summary: v.optional(v.string()),
     costUsd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
@@ -621,6 +636,7 @@ export const transition = internalMutation({
     };
     if (args.status === "planning") patch.startedAt = Date.now();
     if (args.plan !== undefined) patch.plan = args.plan;
+    if (args.planArtifactId !== undefined) patch.planArtifactId = args.planArtifactId;
     if (args.summary !== undefined) patch.summary = args.summary;
     if (args.costUsd !== undefined) patch.costUsd = args.costUsd;
     if (args.errorMessage !== undefined) patch.errorMessage = args.errorMessage;
@@ -868,9 +884,7 @@ export const regenerateSlideImage = action({
       ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "fal"
       : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
     const imageProvider = getModelProvider(imageProviderName as "gemini" | "fal");
-    const imageModel = renderingMode === "full_graphic_generation"
-      ? process.env.CONTENT_ENGINE_FULL_GRAPHIC_IMAGE_MODEL?.trim() || process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined
-      : process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined;
+    const imageModel = imageModelForRenderingMode(renderingMode);
     const dimensions = context.spec.dimensions ?? getSlideDimensions(aspectRatio);
     const providerPrompt = providerImagePrompt(prompt, aspectRatio, renderingMode);
 
@@ -914,7 +928,6 @@ export const regenerateSlideImage = action({
         height: dimensions.height,
         jobId: image.jobId,
         status: "succeeded",
-        prompt: providerPrompt,
         renderingMode,
         useReferenceImage,
         sourceSlideshowId: args.slideshowId,
@@ -1016,14 +1029,6 @@ export const execute = internalAction({
         requestedRenderingMode
       );
 
-      await ctx.runMutation(internal.content.requests.transition, {
-        requestId: args.requestId,
-        status: "generating",
-        plan,
-        summary: plan.creativeBrief,
-        costUsd,
-      });
-
       const specArtifactId = await createRequestArtifact(ctx, {
         request: context.request,
         type: "slide_spec",
@@ -1034,14 +1039,20 @@ export const execute = internalAction({
         prompt: context.request.prompt,
       });
 
+      await ctx.runMutation(internal.content.requests.transition, {
+        requestId: args.requestId,
+        status: "generating",
+        planArtifactId: specArtifactId,
+        summary: plan.creativeBrief,
+        costUsd,
+      });
+
       const referenceAssets = context.referenceAssets.map(({ asset }) => asset);
       const anySlideUsesReferences = plan.slides.some((slide) => slide.useReferenceImage === true);
       const referenceImages = anySlideUsesReferences
         ? await referenceImagesFromAssets(referenceAssets)
         : [];
-      const imageModel = plan.renderingMode === "full_graphic_generation"
-        ? process.env.CONTENT_ENGINE_FULL_GRAPHIC_IMAGE_MODEL?.trim() || process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined
-        : process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || undefined;
+      const imageModel = imageModelForRenderingMode(plan.renderingMode);
       const dimensions = getSlideDimensions(plan.aspectRatio);
       const imageBySlideIndex = new Map<number, { artifactId: Id<"artifacts">; url?: string }>();
       const imageErrors: string[] = [];
@@ -1162,7 +1173,6 @@ export const execute = internalAction({
             height: dimensions.height,
             jobId: result.image.jobId,
             status: "succeeded",
-            prompt: result.prompt,
             renderingMode: plan.renderingMode,
             useReferenceImage: result.slide.useReferenceImage === true,
             referenceAssetIds: result.referenceAssetIds,

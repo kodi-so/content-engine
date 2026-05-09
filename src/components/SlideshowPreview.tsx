@@ -6,6 +6,7 @@ import {
   Edit3,
   FileText,
   Image,
+  Send,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -122,7 +123,7 @@ function centerItemInScrollContainer({
   });
 }
 
-function getSlideshowSpec(slideshow: SlideshowDoc): CanonicalSlideshowSpec {
+export function getSlideshowSpec(slideshow: SlideshowDoc): CanonicalSlideshowSpec {
   return slideshow.spec && typeof slideshow.spec === "object"
     ? slideshow.spec as CanonicalSlideshowSpec
     : { renderingMode: "background_plus_overlay", slides: [] };
@@ -366,9 +367,11 @@ function LiveSlideFrame({
 
 export function SavedSlideshowCard({
   slideshow,
+  createDraftPost,
   removeSlideshow,
 }: {
   slideshow: SlideshowDoc;
+  createDraftPost?: (slideshow: SlideshowDoc) => Promise<void>;
   removeSlideshow: (slideshow: SlideshowDoc) => Promise<void>;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -416,6 +419,16 @@ export function SavedSlideshowCard({
         </div>
         <div className={bundleActionsClass}>
           <span className={statusPillClass}>{slideshow.status}</span>
+          {createDraftPost && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void createDraftPost(slideshow)}
+            >
+              <Send size={16} />
+              Create draft post
+            </button>
+          )}
           <button
             className="danger-button"
             type="button"

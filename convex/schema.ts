@@ -167,6 +167,7 @@ export default defineSchema({
     ),
     status: contentRequestStatusValidator,
     plan: v.optional(v.any()),
+    planArtifactId: v.optional(v.id("artifacts")),
     summary: v.optional(v.string()),
     costUsd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),

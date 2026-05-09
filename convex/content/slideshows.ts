@@ -5,8 +5,8 @@ import {
   mutation,
   query,
 } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
-import { slideshowStatusValidator } from "../validators";
+import type { Doc, Id } from "../_generated/dataModel";
+import { publishingProviderValidator, slideshowStatusValidator } from "../validators";
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
@@ -129,5 +129,114 @@ export const remove = mutation({
       throw new Error("Slideshow not found");
     }
     await ctx.db.delete(args.id);
+  },
+});
+
+export const createDraftDistributionPlanFromRenderedSlides = mutation({
+  args: {
+    slideshowId: v.id("slideshows"),
+    slides: v.array(
+      v.object({
+        slideId: v.string(),
+        index: v.number(),
+        storageId: v.id("_storage"),
+        storageUrl: v.string(),
+        mimeType: v.string(),
+        fileSize: v.number(),
+        width: v.number(),
+        height: v.number(),
+        sourceImageArtifactId: v.optional(v.id("artifacts")),
+      })
+    ),
+    socialAccountIds: v.optional(v.array(v.id("socialAccounts"))),
+    provider: v.optional(publishingProviderValidator),
+    caption: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Id<"distributionPlans">> => {
+    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const slideshow = await ctx.db.get(args.slideshowId);
+    if (!slideshow || slideshow.userId !== userId) {
+      throw new Error("Slideshow not found");
+    }
+    if (slideshow.status !== "saved") {
+      throw new Error("Save the slideshow before creating a draft post");
+    }
+    if (args.slides.length === 0) {
+      throw new Error("At least one rendered slide is required");
+    }
+
+    const socialAccountIds = args.socialAccountIds ?? (
+      slideshow.socialAccountId ? [slideshow.socialAccountId] : []
+    );
+    for (const socialAccountId of socialAccountIds) {
+      const account = await ctx.db.get(socialAccountId);
+      if (!account || account.userId !== userId) {
+        throw new Error("Social account not found");
+      }
+    }
+
+    const now = Date.now();
+    const artifactIds: Id<"artifacts">[] = [];
+    for (const slide of [...args.slides].sort((first, second) => first.index - second.index)) {
+      if (slide.sourceImageArtifactId) {
+        const sourceArtifact = await ctx.db.get(slide.sourceImageArtifactId);
+        if (!sourceArtifact || sourceArtifact.userId !== userId) {
+          throw new Error("Source image artifact not found");
+        }
+      }
+      const parentArtifactIds = slide.sourceImageArtifactId
+        ? [slide.sourceImageArtifactId]
+        : undefined;
+      artifactIds.push(
+        await ctx.db.insert("artifacts", {
+          userId,
+          brandId: slideshow.brandId,
+          contentRequestId: slideshow.contentRequestId,
+          workflowId: slideshow.workflowId,
+          workflowRunId: slideshow.workflowRunId,
+          parentArtifactIds,
+          type: "rendered_asset",
+          title: `${slideshow.title} slide ${slide.index}`,
+          storageUrl: slide.storageUrl,
+          data: {
+            format: "slideshow_rendered_slide",
+            slideshowId: slideshow._id,
+            slideId: slide.slideId,
+            slideIndex: slide.index,
+            storageId: slide.storageId,
+            mimeType: slide.mimeType,
+            fileSize: slide.fileSize,
+            width: slide.width,
+            height: slide.height,
+            sourceImageArtifactId: slide.sourceImageArtifactId,
+          },
+          provider: "manual",
+          lifecycle: "saved",
+          reviewStatus: "approved",
+          createdAt: now,
+          updatedAt: now,
+        })
+      );
+    }
+
+    const selectedProvider = args.provider ?? "manual";
+    const caption = args.caption?.trim() || slideshow.title;
+    return await ctx.db.insert("distributionPlans", {
+      userId,
+      brandId: slideshow.brandId,
+      workflowId: slideshow.workflowId,
+      workflowRunId: slideshow.workflowRunId,
+      artifactIds,
+      socialAccountIds,
+      provider: selectedProvider,
+      status: "draft",
+      caption,
+      providerPayload: {
+        source: "slideshow",
+        slideshowId: slideshow._id,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
   },
 });

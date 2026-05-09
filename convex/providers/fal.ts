@@ -44,7 +44,7 @@ type FalQueueStatusResponse = {
 
 const FAL_PROVIDER: ModelProviderName = "fal";
 const DEFAULT_FAL_QUEUE_BASE_URL = "https://queue.fal.run";
-const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/gemini-3-pro-image-preview";
+const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
 const DEFAULT_FAL_IMAGE_RESOLUTION = "2K";
 const DEFAULT_FAL_VIDEO_MODEL = "fal-ai/ltx-video";
 
@@ -139,16 +139,20 @@ function aspectRatioToFalImageSize(aspectRatio?: string): string | undefined {
   }
 }
 
-function isFalGeminiProImageModel(model: string): boolean {
+function isFalGeminiImageModel(model: string): boolean {
   return model === "fal-ai/gemini-3-pro-image-preview" ||
     model === "fal-ai/gemini-3-pro-image-preview/edit" ||
+    model === "fal-ai/gemini-3.1-flash-image-preview" ||
+    model === "fal-ai/gemini-3.1-flash-image-preview/edit" ||
     model === "fal-ai/nano-banana-pro" ||
-    model === "fal-ai/nano-banana-pro/edit";
+    model === "fal-ai/nano-banana-pro/edit" ||
+    model === "fal-ai/nano-banana-2" ||
+    model === "fal-ai/nano-banana-2/edit";
 }
 
 function falImageModelForInput(model: string, input: GenerateImageInput): string {
   if (!input.referenceImages?.length) return model;
-  if (!isFalGeminiProImageModel(model) || model.endsWith("/edit")) return model;
+  if (!isFalGeminiImageModel(model) || model.endsWith("/edit")) return model;
   return `${model}/edit`;
 }
 
@@ -300,7 +304,7 @@ async function generateFalImage(
       ? (input.metadata.arguments as Record<string, unknown>)
       : {};
     const referenceImageUrls = falReferenceImageUrls(input);
-    const payload = isFalGeminiProImageModel(model)
+    const payload = isFalGeminiImageModel(model)
       ? {
           prompt: input.prompt,
           num_images: input.count ?? 1,

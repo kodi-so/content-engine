@@ -1,6 +1,7 @@
 import "./gemini";
 import "./fal";
 import "./openrouter";
+import "./manual";
 import "./postiz";
 
 export {
