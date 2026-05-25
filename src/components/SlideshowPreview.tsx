@@ -1163,7 +1163,7 @@ export function CreateSlideshowPreview({
           <Image size={16} />
           Edit image prompt
         </button>
-        <button className={actionButtonClass} type="button" disabled={isFullGraphic} onClick={beginTextEdit}>
+        <button className={actionButtonClass} type="button" disabled={isFullGraphic} onClick={() => beginTextEdit()}>
           <Edit3 size={16} />
           {isEditingText ? "Editing text" : "Edit text"}
         </button>

@@ -4,7 +4,6 @@ import type {
   ContrastStrategy,
   CreativeBrief,
   FullGraphicPlannerSlide,
-  ImagePromptWriterOutput,
   LayoutStrategy,
   OverlayPlannerSlide,
   SlideTemplate,
