@@ -368,7 +368,7 @@ while preserving existing workflows until the new system is ready.
 
 #### SW-0101: Define workflow graph types
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -394,6 +394,7 @@ Deliverables:
 - Add validation for node IDs, edge references, port references, graph cycles,
   terminal node existence, and one-final-post expectation.
 - Decide whether cycles are rejected for v1.
+- Decision: v1 requires exactly one runner node and rejects cycles.
 
 Acceptance criteria:
 

@@ -1,0 +1,288 @@
+import {
+  WORKFLOW_GRAPH_SCHEMA_VERSION,
+  type WorkflowEdge,
+  type WorkflowGraph,
+  type WorkflowNode,
+  type WorkflowNodeType,
+} from "./workflowGraph";
+
+export type WorkflowGraphValidationErrorCode =
+  | "unsupported_schema_version"
+  | "missing_node_id"
+  | "duplicate_node_id"
+  | "invalid_node_type"
+  | "missing_node_label"
+  | "invalid_node_position"
+  | "missing_edge_id"
+  | "duplicate_edge_id"
+  | "missing_edge_endpoint"
+  | "unknown_edge_node"
+  | "self_edge"
+  | "missing_runner"
+  | "multiple_runners"
+  | "missing_terminal_node"
+  | "cycle_detected";
+
+export type WorkflowGraphValidationError = {
+  code: WorkflowGraphValidationErrorCode;
+  message: string;
+  path: string;
+};
+
+export type WorkflowGraphValidationResult = {
+  valid: boolean;
+  errors: WorkflowGraphValidationError[];
+};
+
+const workflowNodeTypes = new Set<WorkflowNodeType>([
+  "runner",
+  "comment",
+  "media",
+  "llm",
+  "ai_agent",
+  "image_generation",
+  "video_generation",
+  "audio_generation",
+  "lipsync",
+  "native_slideshow_planner",
+  "native_slideshow_renderer",
+  "ai_video_editor",
+  "post_compiler",
+  "export",
+  "auto_post",
+]);
+
+const terminalNodeTypes = new Set<WorkflowNodeType>([
+  "export",
+  "auto_post",
+]);
+
+function validationError(
+  code: WorkflowGraphValidationErrorCode,
+  message: string,
+  path: string
+): WorkflowGraphValidationError {
+  return { code, message, path };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function validateNode(
+  node: WorkflowNode,
+  index: number,
+  seenNodeIds: Set<string>,
+  errors: WorkflowGraphValidationError[]
+) {
+  const nodePath = `nodes[${index}]`;
+
+  if (!node.id.trim()) {
+    errors.push(validationError(
+      "missing_node_id",
+      "Workflow node id is required.",
+      `${nodePath}.id`
+    ));
+  } else if (seenNodeIds.has(node.id)) {
+    errors.push(validationError(
+      "duplicate_node_id",
+      `Workflow node id "${node.id}" is duplicated.`,
+      `${nodePath}.id`
+    ));
+  } else {
+    seenNodeIds.add(node.id);
+  }
+
+  if (!workflowNodeTypes.has(node.type)) {
+    errors.push(validationError(
+      "invalid_node_type",
+      `Workflow node type "${node.type}" is not supported.`,
+      `${nodePath}.type`
+    ));
+  }
+
+  if (!node.label.trim()) {
+    errors.push(validationError(
+      "missing_node_label",
+      "Workflow node label is required.",
+      `${nodePath}.label`
+    ));
+  }
+
+  if (!isFiniteNumber(node.position.x) || !isFiniteNumber(node.position.y)) {
+    errors.push(validationError(
+      "invalid_node_position",
+      "Workflow node position must include finite x and y values.",
+      `${nodePath}.position`
+    ));
+  }
+}
+
+function validateEdge(
+  edge: WorkflowEdge,
+  index: number,
+  nodeIds: Set<string>,
+  seenEdgeIds: Set<string>,
+  errors: WorkflowGraphValidationError[]
+) {
+  const edgePath = `edges[${index}]`;
+
+  if (!edge.id.trim()) {
+    errors.push(validationError(
+      "missing_edge_id",
+      "Workflow edge id is required.",
+      `${edgePath}.id`
+    ));
+  } else if (seenEdgeIds.has(edge.id)) {
+    errors.push(validationError(
+      "duplicate_edge_id",
+      `Workflow edge id "${edge.id}" is duplicated.`,
+      `${edgePath}.id`
+    ));
+  } else {
+    seenEdgeIds.add(edge.id);
+  }
+
+  if (!edge.sourceNodeId.trim() || !edge.targetNodeId.trim()) {
+    errors.push(validationError(
+      "missing_edge_endpoint",
+      "Workflow edge source and target node ids are required.",
+      edgePath
+    ));
+    return;
+  }
+
+  if (edge.sourceNodeId === edge.targetNodeId) {
+    errors.push(validationError(
+      "self_edge",
+      "Workflow edge cannot connect a node to itself.",
+      edgePath
+    ));
+  }
+
+  if (!nodeIds.has(edge.sourceNodeId)) {
+    errors.push(validationError(
+      "unknown_edge_node",
+      `Workflow edge source node "${edge.sourceNodeId}" does not exist.`,
+      `${edgePath}.sourceNodeId`
+    ));
+  }
+
+  if (!nodeIds.has(edge.targetNodeId)) {
+    errors.push(validationError(
+      "unknown_edge_node",
+      `Workflow edge target node "${edge.targetNodeId}" does not exist.`,
+      `${edgePath}.targetNodeId`
+    ));
+  }
+}
+
+function findCycle(graph: WorkflowGraph): string[] | null {
+  const adjacency = new Map<string, string[]>();
+  for (const node of graph.nodes) {
+    adjacency.set(node.id, []);
+  }
+  for (const edge of graph.edges) {
+    adjacency.get(edge.sourceNodeId)?.push(edge.targetNodeId);
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const path: string[] = [];
+
+  const visit = (nodeId: string): string[] | null => {
+    if (visiting.has(nodeId)) {
+      const cycleStart = path.indexOf(nodeId);
+      return [...path.slice(cycleStart), nodeId];
+    }
+    if (visited.has(nodeId)) return null;
+
+    visiting.add(nodeId);
+    path.push(nodeId);
+    for (const nextNodeId of adjacency.get(nodeId) ?? []) {
+      const cycle = visit(nextNodeId);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+    return null;
+  };
+
+  for (const node of graph.nodes) {
+    const cycle = visit(node.id);
+    if (cycle) return cycle;
+  }
+
+  return null;
+}
+
+export function validateWorkflowGraph(
+  graph: WorkflowGraph
+): WorkflowGraphValidationResult {
+  const errors: WorkflowGraphValidationError[] = [];
+
+  if (graph.schemaVersion !== WORKFLOW_GRAPH_SCHEMA_VERSION) {
+    errors.push(validationError(
+      "unsupported_schema_version",
+      `Workflow graph schema version ${graph.schemaVersion} is not supported.`,
+      "schemaVersion"
+    ));
+  }
+
+  const seenNodeIds = new Set<string>();
+  graph.nodes.forEach((node, index) => {
+    validateNode(node, index, seenNodeIds, errors);
+  });
+
+  const nodeIds = new Set(graph.nodes.map((node) => node.id).filter(Boolean));
+  const seenEdgeIds = new Set<string>();
+  graph.edges.forEach((edge, index) => {
+    validateEdge(edge, index, nodeIds, seenEdgeIds, errors);
+  });
+
+  const runnerNodes = graph.nodes.filter((node) => node.type === "runner");
+  if (runnerNodes.length === 0) {
+    errors.push(validationError(
+      "missing_runner",
+      "Workflow graph must include exactly one runner node.",
+      "nodes"
+    ));
+  } else if (runnerNodes.length > 1) {
+    errors.push(validationError(
+      "multiple_runners",
+      "Workflow graph can only include one runner node.",
+      "nodes"
+    ));
+  }
+
+  if (!graph.nodes.some((node) => terminalNodeTypes.has(node.type))) {
+    errors.push(validationError(
+      "missing_terminal_node",
+      "Workflow graph must include an export or auto-post terminal node.",
+      "nodes"
+    ));
+  }
+
+  if (!errors.some((error) =>
+    error.code === "unknown_edge_node" ||
+    error.code === "missing_node_id" ||
+    error.code === "duplicate_node_id" ||
+    error.code === "missing_edge_endpoint" ||
+    error.code === "self_edge"
+  )) {
+    const cycle = findCycle(graph);
+    if (cycle) {
+      errors.push(validationError(
+        "cycle_detected",
+        `Workflow graph cannot contain cycles: ${cycle.join(" -> ")}.`,
+        "edges"
+      ));
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
