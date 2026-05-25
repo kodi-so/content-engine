@@ -25,6 +25,7 @@ import type * as content_types from "../content/types.js";
 import type * as lib_text from "../lib/text.js";
 import type * as providers_bulkapis from "../providers/bulkapis.js";
 import type * as providers_bulkapisConfig from "../providers/bulkapisConfig.js";
+import type * as providers_bulkapisModelCatalog from "../providers/bulkapisModelCatalog.js";
 import type * as providers_errors from "../providers/errors.js";
 import type * as providers_fal from "../providers/fal.js";
 import type * as providers_gemini from "../providers/gemini.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   "lib/text": typeof lib_text;
   "providers/bulkapis": typeof providers_bulkapis;
   "providers/bulkapisConfig": typeof providers_bulkapisConfig;
+  "providers/bulkapisModelCatalog": typeof providers_bulkapisModelCatalog;
   "providers/errors": typeof providers_errors;
   "providers/fal": typeof providers_fal;
   "providers/gemini": typeof providers_gemini;

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "../_generated/server";
+import { internalMutation, query } from "../_generated/server";
 import {
   modelProviderValidator,
   providerModelCapabilitiesValidator,
@@ -54,7 +54,7 @@ export const getByProviderModel = query({
   },
 });
 
-export const upsert = mutation({
+export const upsert = internalMutation({
   args: {
     provider: modelProviderValidator,
     modelId: v.string(),

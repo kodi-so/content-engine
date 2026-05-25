@@ -657,7 +657,7 @@ Implementation notes:
 
 #### SW-0304: Implement BulkAPIs model catalog sync
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -670,6 +670,12 @@ Acceptance criteria:
 
 - Settings or provider admin surface can trigger sync.
 - Node editor can read cached model schemas.
+
+Implementation notes:
+
+- Added authenticated manual sync action for `GET /ai/models`.
+- Normalizes BulkAPIs models into provider catalog category, capabilities, pricing, schema snapshots, raw metadata, and `lastSyncedAt`.
+- Tightened catalog writes behind an internal upsert mutation; clients can trigger sync or read catalog data but cannot directly mutate model metadata.
 
 #### SW-0305: Add dynamic schema-driven settings renderer
 

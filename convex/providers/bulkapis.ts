@@ -148,7 +148,7 @@ function buildBulkApisUrl(path: string): string {
   return `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 }
 
-async function bulkApisRequest<T>(
+export async function bulkApisRequest<T>(
   operation: string,
   path: string,
   init?: RequestInit
