@@ -86,6 +86,67 @@ export const create = mutation({
   },
 });
 
+export const createFromRun = mutation({
+  args: {
+    runId: v.id("workflowRuns"),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.userId !== identity.subject) {
+      throw new Error("Workflow run not found");
+    }
+    if (run.status !== "completed") {
+      throw new Error("Only completed runs can become workflow drafts");
+    }
+
+    const workflow = await ctx.db.get(run.workflowId);
+    if (!workflow || workflow.userId !== identity.subject) {
+      throw new Error("Source workflow not found");
+    }
+
+    const brand = await ctx.db.get(workflow.brandId);
+    if (!brand || brand.userId !== identity.subject) {
+      throw new Error("Brand not found");
+    }
+
+    if (workflow.socialAccountId) {
+      const account = await ctx.db.get(workflow.socialAccountId);
+      if (!account || account.userId !== identity.subject) {
+        throw new Error("Social account not found");
+      }
+    }
+
+    const runLabel = run.generatedTopic || run.generatedHook || workflow.name;
+    const name = args.name?.trim() || `${runLabel} draft`;
+    const now = Date.now();
+
+    return await ctx.db.insert("workflows", {
+      userId: identity.subject,
+      brandId: workflow.brandId,
+      socialAccountId: workflow.socialAccountId,
+      name,
+      description: `Run draft: ${workflow.name}`,
+      contentFormat: workflow.contentFormat,
+      trigger: workflow.trigger,
+      scheduleConfig: workflow.scheduleConfig,
+      approvalPolicy: workflow.approvalPolicy,
+      publishingPolicy: {
+        ...workflow.publishingPolicy,
+        autoPublish: false,
+      },
+      graph: workflow.graph,
+      ...(workflow.modelDefaults ? { modelDefaults: workflow.modelDefaults } : {}),
+      isActive: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 export const updateGraph = mutation({
   args: {
     id: v.id("workflows"),

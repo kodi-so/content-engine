@@ -1496,7 +1496,7 @@ Implementation notes:
 
 #### SW-0704: Add "turn run into workflow" behavior
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1505,6 +1505,16 @@ Deliverables:
 Acceptance criteria:
 
 - User can move from one-off success to reusable automation.
+
+Implementation notes:
+
+- Completed workflow runs can now be saved as new inactive workflow drafts from
+  the Runs page.
+- Run-to-workflow cloning copies the source workflow graph, approval policy,
+  publishing provider/platform settings, schedule shape, and model defaults, but
+  disables auto-publish on the clone so the draft is safe to tune before it is
+  activated.
+- The new draft opens directly in the workflow canvas after creation.
 
 ### Phase 8: MCP Integration Surface
 
