@@ -343,6 +343,14 @@ Initial MCP tools:
 - Approve or mark artifact for revision.
 - Export or publish a post package where allowed.
 
+Workflow tool contract:
+
+- The canonical workflow tool list is documented in
+  [MCP Workflow Tools](./mcp-workflow-tools.md).
+- The backend workflow tool handlers live in `convex/mcp/workflows.ts`.
+- Tool handlers operate on the same workflow graph model as the web app and
+  validate graph changes before saving.
+
 ## Phase Plan And Tickets
 
 ### Phase 0: Stabilize Planning Baseline
@@ -1589,7 +1597,7 @@ Implementation notes:
 
 #### SW-0803: Add workflow MCP tools
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1601,6 +1609,17 @@ Deliverables:
 Acceptance criteria:
 
 - Codex/Claude can create a valid workflow programmatically.
+
+Implementation notes:
+
+- Added `convex/mcp/workflows.ts` with user-scoped workflow list/get,
+  create-blank, create-from-template, metadata update, graph update, node/edge
+  editing, graph validation, and run-start handlers.
+- Added `convex/workflows/runCreation.ts` so the existing manual run mutation and
+  MCP workflow run handler share the same queued-run creation path.
+- Updated `convex/workflows/runs.ts` to use the shared run creation helper.
+- Added `docs/mcp-workflow-tools.md` to document the workflow MCP tool contract,
+  safety rules, validation behavior, and future scope mapping.
 
 #### SW-0804: Add run/artifact MCP tools
 

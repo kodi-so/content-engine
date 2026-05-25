@@ -25,6 +25,7 @@ import type * as content_slideshows from "../content/slideshows.js";
 import type * as content_types from "../content/types.js";
 import type * as lib_text from "../lib/text.js";
 import type * as mcp_resources from "../mcp/resources.js";
+import type * as mcp_workflows from "../mcp/workflows.js";
 import type * as providers_bulkapis from "../providers/bulkapis.js";
 import type * as providers_bulkapisConfig from "../providers/bulkapisConfig.js";
 import type * as providers_bulkapisModelCatalog from "../providers/bulkapisModelCatalog.js";
@@ -49,6 +50,7 @@ import type * as validators from "../validators.js";
 import type * as workflows_agentPresets from "../workflows/agentPresets.js";
 import type * as workflows_definitions from "../workflows/definitions.js";
 import type * as workflows_inputResolver from "../workflows/inputResolver.js";
+import type * as workflows_runCreation from "../workflows/runCreation.js";
 import type * as workflows_runner from "../workflows/runner.js";
 import type * as workflows_runs from "../workflows/runs.js";
 
@@ -76,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   "content/types": typeof content_types;
   "lib/text": typeof lib_text;
   "mcp/resources": typeof mcp_resources;
+  "mcp/workflows": typeof mcp_workflows;
   "providers/bulkapis": typeof providers_bulkapis;
   "providers/bulkapisConfig": typeof providers_bulkapisConfig;
   "providers/bulkapisModelCatalog": typeof providers_bulkapisModelCatalog;
@@ -100,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "workflows/agentPresets": typeof workflows_agentPresets;
   "workflows/definitions": typeof workflows_definitions;
   "workflows/inputResolver": typeof workflows_inputResolver;
+  "workflows/runCreation": typeof workflows_runCreation;
   "workflows/runner": typeof workflows_runner;
   "workflows/runs": typeof workflows_runs;
 }>;

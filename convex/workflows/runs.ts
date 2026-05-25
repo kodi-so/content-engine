@@ -1,36 +1,15 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "../_generated/server";
-import { internal } from "../_generated/api";
 import {
-  workflowGraphValidator,
   workflowRunEventTypeValidator,
   workflowRunNodeStatusValidator,
   workflowRunOutputRefValidator,
   workflowRunProviderJobValidator,
   workflowRunStatusValidator,
 } from "../validators";
-
-type WorkflowGraphForRun = typeof workflowGraphValidator.type;
+import { createWorkflowRun } from "./runCreation";
 
 const terminalNodeStatuses = new Set(["succeeded", "failed", "blocked", "skipped"]);
-
-function dependencyNodeIdsForGraph(graph: WorkflowGraphForRun): Map<string, string[]> {
-  const dependenciesByNodeId = new Map(
-    graph.nodes.map((node) => [node.id, new Set<string>()])
-  );
-
-  for (const edge of graph.edges) {
-    const dependencies = dependenciesByNodeId.get(edge.targetNodeId);
-    if (dependencies) dependencies.add(edge.sourceNodeId);
-  }
-
-  return new Map(
-    [...dependenciesByNodeId.entries()].map(([nodeId, dependencies]) => [
-      nodeId,
-      [...dependencies].sort(),
-    ])
-  );
-}
 
 export const list = query({
   args: { workflowId: v.optional(v.id("workflows")) },
@@ -102,46 +81,10 @@ export const createManualRun = mutation({
       throw new Error("Workflow not found");
     }
 
-    const now = Date.now();
-    const runId = await ctx.db.insert("workflowRuns", {
+    return await createWorkflowRun(ctx, {
       userId: identity.subject,
-      workflowId: workflow._id,
-      brandId: workflow.brandId,
-      socialAccountId: workflow.socialAccountId,
-      trigger: "manual",
-      status: "queued",
-      createdAt: now,
-      updatedAt: now,
+      workflow,
     });
-
-    const dependencyNodeIdsByNode = dependencyNodeIdsForGraph(workflow.graph);
-    for (const node of workflow.graph.nodes) {
-      await ctx.db.insert("workflowRunNodeStates", {
-        userId: identity.subject,
-        workflowRunId: runId,
-        workflowId: workflow._id,
-        nodeId: node.id,
-        nodeType: node.type,
-        label: node.label,
-        status: "idle",
-        dependencyNodeIds: dependencyNodeIdsByNode.get(node.id) ?? [],
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-
-    await ctx.db.insert("workflowRunEvents", {
-      userId: identity.subject,
-      workflowRunId: runId,
-      workflowId: workflow._id,
-      type: "run_created",
-      message: "Manual workflow run queued.",
-      createdAt: now,
-    });
-
-    await ctx.scheduler.runAfter(0, internal.workflows.runner.executeRun, { runId });
-
-    return runId;
   },
 });
 
