@@ -178,8 +178,12 @@ function isPostPackageNode(node: WorkflowGraphNodeForRun): boolean {
   return node.type === "post_compiler";
 }
 
+function isExportNode(node: WorkflowGraphNodeForRun): boolean {
+  return node.type === "export";
+}
+
 function isTerminalPackageConsumer(node: WorkflowGraphNodeForRun): boolean {
-  return node.type === "export" || node.type === "auto_post";
+  return isExportNode(node) || node.type === "auto_post";
 }
 
 function isMediaNode(node: WorkflowGraphNodeForRun): boolean {
@@ -232,7 +236,8 @@ function isImplementedNode(node: WorkflowGraphNodeForRun): boolean {
     isLipsyncNode(node) ||
     isAiVideoEditorNode(node) ||
     isNativeSlideshowPlannerNode(node) ||
-    isNativeSlideshowRendererNode(node);
+    isNativeSlideshowRendererNode(node) ||
+    isExportNode(node);
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -1432,6 +1437,93 @@ function postPackageDataForWorkflowFallback(args: {
       compiledAt: Date.now(),
     },
   };
+}
+
+function exportDestinationForNode(
+  node: WorkflowGraphNodeForRun,
+  resolvedInputs: ResolvedInputsForRun
+): string {
+  const config = objectValue(node.config);
+  const inputs = resolvedInputs.inputs ?? {};
+  return stringFromValue(inputs.destination?.value) ??
+    (typeof config.destination === "string" && config.destination.trim()
+      ? config.destination.trim()
+      : "media_library");
+}
+
+function exportStatusForDestination(destination: string): string {
+  if (destination === "media_library") return "exported";
+  if (destination === "download") return "ready_for_download";
+  return "pending_external_integration";
+}
+
+function exportRecordForNode(args: {
+  node: WorkflowGraphNodeForRun;
+  resolvedInputs: ResolvedInputsForRun;
+  destination: string;
+}) {
+  const config = objectValue(args.node.config);
+  const inputs = args.resolvedInputs.inputs ?? {};
+  const folder = stringFromValue(inputs.folder?.value) ?? stringFromValue(config.folder);
+  const fileName = stringFromValue(inputs.fileName?.value) ?? stringFromValue(config.fileName);
+  const optimizeFor =
+    stringFromValue(inputs.optimizeFor?.value) ??
+    stringFromValue(config.optimizeFor);
+
+  return {
+    destination: args.destination,
+    status: exportStatusForDestination(args.destination),
+    nodeId: args.node.id,
+    nodeType: args.node.type,
+    exportedAt: Date.now(),
+    ...(folder ? { folder } : {}),
+    ...(fileName ? { fileName } : {}),
+    ...(optimizeFor ? { optimizeFor } : {}),
+    externalDelivery:
+      args.destination === "media_library"
+        ? undefined
+        : {
+            status: "not_configured",
+            reason: `${args.destination} export is reserved for a future destination integration.`,
+          },
+  };
+}
+
+function exportedPackageData(args: {
+  packageArtifact: ArtifactDocForRun;
+  exportRecord: ReturnType<typeof exportRecordForNode>;
+}) {
+  const data = objectValue(args.packageArtifact.data);
+  const existingExports = Array.isArray(data.exports) ? data.exports : [];
+  return {
+    ...data,
+    destinationPolicy: {
+      ...objectValue(data.destinationPolicy),
+      destination: args.exportRecord.destination,
+    },
+    exportStatus: args.exportRecord,
+    exports: [...existingExports, args.exportRecord],
+  };
+}
+
+function exportOutputRefsForNode(args: {
+  nodeId: string;
+  packageArtifactIds: Id<"artifacts">[];
+  destination: string;
+  status: string;
+}) {
+  return [{
+    nodeId: args.nodeId,
+    port: "artifact",
+    artifactIds: args.packageArtifactIds,
+    value: {
+      kind: "export",
+      destination: args.destination,
+      status: args.status,
+      packageArtifactIds: args.packageArtifactIds.map((artifactId) => String(artifactId)),
+      artifactId: args.packageArtifactIds[0],
+    },
+  }];
 }
 
 function mediaOutputRefsForNode(
@@ -3544,6 +3636,106 @@ export const executeRun = internalAction({
                 artifactId: packageArtifactId,
                 postType: packageData.postType,
                 mediaSummary: packageData.mediaSummary,
+                outputPorts: outputRefs.map((outputRef) => outputRef.port),
+                placeholderExecution: false,
+              },
+            });
+
+            pendingNodeIds.delete(node.id);
+            completedNodeIds.add(node.id);
+            executedNodeCount += 1;
+            continue;
+          }
+
+          if (isExportNode(node)) {
+            const destination = exportDestinationForNode(node, resolvedInputs);
+            let packageArtifactIds = postPackageArtifactIdsFromInputs(resolvedInputs);
+            let sourceArtifactIds: Id<"artifacts">[] = [];
+
+            if (!packageArtifactIds.length) {
+              sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
+                "slideshow",
+                "media",
+                "video",
+                "image",
+                "audio",
+                "input",
+                "slide_spec",
+              ]);
+              const sourceArtifacts = await artifactsForIds(ctx, sourceArtifactIds);
+              const packageData = postPackageDataForNode({
+                node,
+                resolvedInputs,
+                sourceArtifactIds,
+                sourceArtifacts,
+              });
+              const packageArtifactId = await ctx.runMutation(
+                internal.workflows.runner.createPostPackageArtifact,
+                {
+                  userId: context.run.userId,
+                  brandId: context.run.brandId,
+                  workflowId: context.workflow._id,
+                  workflowRunId: context.run._id,
+                  nodeId: node.id,
+                  label: node.label,
+                  sourceArtifactIds,
+                  packageData,
+                }
+              );
+              packageArtifactIds = [packageArtifactId];
+              emittedArtifactIds.add(packageArtifactId);
+            }
+
+            const packageArtifacts = await artifactsForIds(ctx, packageArtifactIds);
+            const exportRecord = exportRecordForNode({
+              node,
+              resolvedInputs,
+              destination,
+            });
+
+            for (const packageArtifact of packageArtifacts) {
+              await ctx.runMutation(internal.artifacts.records.updateFromRunner, {
+                artifactId: packageArtifact._id,
+                userId: context.run.userId,
+                data: exportedPackageData({
+                  packageArtifact,
+                  exportRecord,
+                }),
+              });
+              finalPackageArtifactIds.add(packageArtifact._id);
+              emittedArtifactIds.add(packageArtifact._id);
+            }
+
+            const outputRefs = exportOutputRefsForNode({
+              nodeId: node.id,
+              packageArtifactIds,
+              destination,
+              status: exportRecord.status,
+            });
+
+            await ctx.runMutation(internal.workflows.runs.transitionNodeState, {
+              runId: context.run._id,
+              nodeId: node.id,
+              status: "succeeded",
+              outputRefs,
+              costUsd: 0,
+            });
+            await ctx.runMutation(internal.workflows.runs.recordEvent, {
+              userId: context.run.userId,
+              workflowRunId: context.run._id,
+              workflowId: context.workflow._id,
+              type: "node_completed",
+              nodeId: node.id,
+              message:
+                destination === "media_library"
+                  ? `${node.label} exported the post package to Media Library.`
+                  : `${node.label} prepared a ${destination} export request.`,
+              data: {
+                nodeType: node.type,
+                destination,
+                status: exportRecord.status,
+                packageArtifactIds,
+                sourceArtifactIds,
                 outputPorts: outputRefs.map((outputRef) => outputRef.port),
                 placeholderExecution: false,
               },

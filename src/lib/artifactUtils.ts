@@ -110,6 +110,10 @@ export function artifactSummary(artifact: ArtifactDoc): string {
         videoCount?: number;
         imageCount?: number;
       };
+      exportStatus?: {
+        destination?: string;
+        status?: string;
+      };
       name?: string;
       postType?: string;
     };
@@ -118,6 +122,9 @@ export function artifactSummary(artifact: ArtifactDoc): string {
       data.name ?? "Post package",
       data.postType,
       mediaCount ? `${mediaCount} media refs` : undefined,
+      data.exportStatus?.destination
+        ? `${data.exportStatus.destination}: ${data.exportStatus.status ?? "export"}`
+        : undefined,
       data.caption ? "caption ready" : undefined,
     ]
       .filter(Boolean)

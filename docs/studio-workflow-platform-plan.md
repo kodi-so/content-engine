@@ -1253,7 +1253,7 @@ Implementation notes:
 
 #### SW-0513: Export node
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1263,6 +1263,19 @@ Deliverables:
 Acceptance criteria:
 
 - Successful run can end without publishing.
+
+Implementation notes:
+
+- Export now executes as a real terminal node and is included in the runner's
+  implemented-node set.
+- Media Library export marks the final post package as exported by appending an
+  export record to the saved `publish_payload` artifact rather than creating a
+  placeholder artifact.
+- If Export receives raw media instead of a post package, it compiles a package
+  first and then exports that package.
+- Download and external destinations are represented as explicit pending export
+  records so future delivery integrations can attach without pretending an
+  upload already happened.
 
 #### SW-0514: Auto Post node
 
