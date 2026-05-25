@@ -786,7 +786,7 @@ Implementation notes:
 
 #### SW-0402: Build graph topological executor
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -798,6 +798,21 @@ Acceptance criteria:
 
 - User-triggered run executes graph from runner to terminal nodes.
 - Many-to-many graph dependencies work.
+
+Implementation notes:
+
+- Replaced the runner stub with a defensive topological executor.
+- The executor starts at the single runner node, walks nodes reachable from the
+  runner, and executes ready batches once all upstream dependencies have
+  succeeded.
+- Fan-out and merge are represented through dependency tracking: multiple ready
+  downstream nodes can run in the same pass, and merge nodes wait for every
+  upstream dependency.
+- Node bodies still use placeholder execution until Phase 5 node-specific
+  tickets land, but run/node status, events, and summaries now reflect real DAG
+  scheduling instead of immediately failing.
+- If the executor cannot make progress, it fails the run with pending/completed
+  node context rather than hanging.
 
 #### SW-0403: Add input binding resolver
 

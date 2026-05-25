@@ -241,6 +241,8 @@ export const transitionRun = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const run = await ctx.db.get(args.runId);
+
     await ctx.db.patch(args.runId, {
       status: args.status,
       ...(args.currentNodeId !== undefined ? { currentNodeId: args.currentNodeId } : {}),
@@ -248,7 +250,7 @@ export const transitionRun = internalMutation({
       ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
       ...(args.errorMessage !== undefined ? { errorMessage: args.errorMessage } : {}),
       ...(args.errorNodeId !== undefined ? { errorNodeId: args.errorNodeId } : {}),
-      ...(args.status === "running" ? { startedAt: now } : {}),
+      ...(args.status === "running" && !run?.startedAt ? { startedAt: now } : {}),
       ...(args.completedAt !== undefined ? { completedAt: args.completedAt } : {}),
       updatedAt: now,
     });
