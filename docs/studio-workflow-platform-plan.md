@@ -911,7 +911,7 @@ Goal: implement the first useful node set for slideshow and video workflows.
 
 #### SW-0501: Runner node
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -923,6 +923,18 @@ Acceptance criteria:
 
 - A workflow must have one runner node.
 - Runner config is visible in canvas inspector.
+
+Implementation notes:
+
+- Runner node defaults now include manual trigger mode, schedule placeholders,
+  retry count, timeout seconds, runs per execution, timezone, and failure
+  behavior.
+- Starter workflows use the same concrete runner config as the node catalog.
+- The canvas inspector renders runner controls as first-class fields with enums
+  for trigger, schedule type, and failure behavior, plus numeric controls for
+  retry/timeout/scheduling values.
+- The one-runner invariant was already enforced by graph validation and the
+  palette add-node guard; this ticket keeps that behavior intact.
 
 #### SW-0502: Media node
 

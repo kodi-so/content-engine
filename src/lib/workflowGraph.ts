@@ -186,6 +186,13 @@ export function createStarterWorkflowGraph(): WorkflowGraph {
         position: { x: 80, y: 180 },
         config: {
           trigger: "manual",
+          scheduleType: "interval",
+          intervalHours: 24,
+          timezone: "America/Chicago",
+          runsPerExecution: 1,
+          retryCount: 0,
+          timeoutSeconds: 900,
+          failureBehavior: "stop_workflow",
         },
       },
       {

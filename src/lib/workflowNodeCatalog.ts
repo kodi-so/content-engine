@@ -71,7 +71,16 @@ export const WORKFLOW_NODE_CATALOG = [
     providerRequirement: "none",
     inputPorts: [],
     outputPorts: [port("run", "Run", "json")],
-    defaultConfig: { trigger: "manual" },
+    defaultConfig: {
+      trigger: "manual",
+      scheduleType: "interval",
+      intervalHours: 24,
+      timezone: "America/Chicago",
+      runsPerExecution: 1,
+      retryCount: 0,
+      timeoutSeconds: 900,
+      failureBehavior: "stop_workflow",
+    },
   },
   {
     type: "comment",

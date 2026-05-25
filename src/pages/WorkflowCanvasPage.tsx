@@ -162,9 +162,11 @@ const primaryConfigFieldKeys = new Set([
   "destination",
   "durationSeconds",
   "endFrameUrl",
+  "failureBehavior",
   "fileName",
   "folder",
   "imageUrl",
+  "intervalHours",
   "maxDurationSeconds",
   "maxTokens",
   "mode",
@@ -180,7 +182,10 @@ const primaryConfigFieldKeys = new Set([
   "request",
   "resolution",
   "responseFormat",
+  "retryCount",
+  "runsPerExecution",
   "scheduledAt",
+  "scheduleType",
   "scriptLengthSeconds",
   "seed",
   "slideCount",
@@ -188,6 +193,8 @@ const primaryConfigFieldKeys = new Set([
   "systemPrompt",
   "temperature",
   "text",
+  "timeoutSeconds",
+  "timezone",
   "tone",
   "trigger",
   "videoUrl",
@@ -629,7 +636,16 @@ function schemaFieldsFromRecordSchema(schema: unknown): ConfigField[] {
 function friendlyConfigFieldKeysForNode(type: WorkflowNodeType): string[] {
   switch (type) {
     case "runner":
-      return ["trigger"];
+      return [
+        "trigger",
+        "scheduleType",
+        "intervalHours",
+        "timezone",
+        "runsPerExecution",
+        "retryCount",
+        "timeoutSeconds",
+        "failureBehavior",
+      ];
     case "comment":
       return ["text"];
     case "media":
@@ -708,14 +724,24 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
       return { ...defaultField, type: "boolean" };
     case "count":
     case "durationSeconds":
+    case "intervalHours":
     case "maxDurationSeconds":
     case "maxTokens":
+    case "retryCount":
+    case "runsPerExecution":
     case "scriptLengthSeconds":
     case "seed":
     case "slideCount":
     case "temperature":
+    case "timeoutSeconds":
     case "cfgScale":
       return { ...defaultField, type: "number" };
+    case "failureBehavior":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: ["stop_workflow", "continue_dependents", "skip_dependents"],
+      };
     case "destination":
       return {
         ...defaultField,
@@ -738,6 +764,12 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
       };
     case "responseFormat":
       return { ...defaultField, type: "enum", enumValues: ["text", "json"] };
+    case "scheduleType":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: ["interval", "daily", "weekly"],
+      };
     case "trigger":
       return { ...defaultField, type: "enum", enumValues: ["manual", "schedule", "event"] };
     case "assetIds":
