@@ -18,9 +18,12 @@ import {
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import {
+  Activity,
+  AlertCircle,
   ArrowLeft,
   Box,
   Brain,
+  Clock,
   Clapperboard,
   Download,
   FileText,
@@ -39,7 +42,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { Page } from "../components/ui";
 import type {
   NodeRetentionMode,
@@ -83,6 +86,7 @@ const nodeIcons = {
 
 type WorkflowCanvasNodeData = Record<string, unknown> & {
   config: Record<string, unknown>;
+  executionStatus?: WorkflowCanvasNodeExecutionStatus;
   label: string;
   model?: string;
   provider?: WorkflowProviderName;
@@ -91,6 +95,8 @@ type WorkflowCanvasNodeData = Record<string, unknown> & {
 };
 
 type WorkflowFlowNode = Node<WorkflowCanvasNodeData>;
+type WorkflowRunDoc = Doc<"workflowRuns">;
+type WorkflowCanvasNodeExecutionStatus = "running" | "failed" | "completed";
 
 type WorkflowConnection = {
   source: string | null;
@@ -129,9 +135,12 @@ const retentionOptions: Array<{ value: NodeRetentionMode; label: string }> = [
 function WorkflowCanvasNode({ data }: NodeProps<WorkflowFlowNode>) {
   const definition = getWorkflowNodeDefinition(data.type);
   const Icon = nodeIcons[data.type] ?? Box;
+  const executionClass = data.executionStatus
+    ? ` workflow-node-execution-${data.executionStatus}`
+    : "";
 
   return (
-    <div className={`workflow-node workflow-node-${definition.role}`}>
+    <div className={`workflow-node workflow-node-${definition.role}${executionClass}`}>
       {definition.inputPorts.map((port, index) => (
         <Handle
           className="workflow-port workflow-port-input"
@@ -149,6 +158,9 @@ function WorkflowCanvasNode({ data }: NodeProps<WorkflowFlowNode>) {
         </span>
         <span>{data.label}</span>
       </div>
+      {data.executionStatus ? (
+        <span className="workflow-node-run-state">{data.executionStatus}</span>
+      ) : null}
       <p>{definition.description}</p>
       <div className="workflow-node-ports">
         {definition.inputPorts.length ? (
@@ -449,20 +461,59 @@ function coerceConfigValue(value: string, previousValue: unknown): unknown {
   return value;
 }
 
+function formatTimestamp(value?: number): string {
+  if (!value) return "Not started";
+  return new Date(value).toLocaleString();
+}
+
+function formatDuration(run: WorkflowRunDoc): string {
+  const start = run.startedAt ?? run.createdAt;
+  const end = run.completedAt ?? Date.now();
+  const seconds = Math.max(0, Math.round((end - start) / 1000));
+
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatStatus(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
+function nodeExecutionStatus(
+  nodeId: string,
+  run: WorkflowRunDoc | null
+): WorkflowCanvasNodeExecutionStatus | undefined {
+  if (!run) return undefined;
+  if (run.errorNodeId === nodeId) return "failed";
+  if (run.currentNodeId === nodeId && run.status === "running") return "running";
+  if (run.currentNodeId === nodeId && run.status === "completed") return "completed";
+  return undefined;
+}
+
 export function WorkflowCanvasPage() {
   const { workflowId } = useParams();
   const workflow = useQuery(
     api.workflows.definitions.get,
     workflowId ? { id: workflowId as Id<"workflows"> } : "skip"
   );
+  const workflowRuns = useQuery(
+    api.workflows.runs.list,
+    workflowId ? { workflowId: workflowId as Id<"workflows"> } : "skip"
+  );
   const updateGraph = useMutation(api.workflows.definitions.updateGraph);
+  const createManualRun = useMutation(api.workflows.runs.createManualRun);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("");
+  const [runActionStatus, setRunActionStatus] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<Id<"workflowRuns"> | null>(null);
 
   const flowNodes = useMemo(
     () => (workflow ? toFlowNodes(workflow.graph as WorkflowGraph) : []),
@@ -482,6 +533,43 @@ export function WorkflowCanvasPage() {
     ? getWorkflowNodeDefinition(selectedNode.data.type)
     : null;
   const selectedConfigEntries = Object.entries(selectedNode?.data.config ?? {});
+  const editableGraph = useMemo(
+    () => (workflow ? toWorkflowGraph(workflow.graph as WorkflowGraph, nodes, edges) : null),
+    [edges, nodes, workflow]
+  );
+  const graphValidation = useMemo(
+    () => (editableGraph ? validateWorkflowGraph(editableGraph) : null),
+    [editableGraph]
+  );
+  const selectedRun = useMemo(
+    () =>
+      workflowRuns?.find((run) => run._id === selectedRunId) ??
+      workflowRuns?.[0] ??
+      null,
+    [selectedRunId, workflowRuns]
+  );
+  const selectedRunEvents = useQuery(
+    api.workflows.runs.getEvents,
+    selectedRun ? { workflowRunId: selectedRun._id } : "skip"
+  );
+  const selectedRunArtifacts = useQuery(
+    api.artifacts.records.list,
+    selectedRun ? { workflowRunId: selectedRun._id } : "skip"
+  );
+  const nodesWithExecutionState = useMemo(
+    () =>
+      nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          executionStatus: nodeExecutionStatus(node.id, selectedRun),
+        },
+      })),
+    [nodes, selectedRun]
+  );
+  const selectedNodeRunEvents = selectedNode
+    ? selectedRunEvents?.filter((event) => event.nodeId === selectedNode.id) ?? []
+    : [];
 
   useEffect(() => {
     if (!workflow) return;
@@ -498,6 +586,17 @@ export function WorkflowCanvasPage() {
       setSelectedNodeId(null);
     }
   }, [nodes, selectedNodeId]);
+
+  useEffect(() => {
+    if (!workflowRuns) return;
+    if (!workflowRuns.length) {
+      setSelectedRunId(null);
+      return;
+    }
+    if (selectedRunId && workflowRuns.some((run) => run._id === selectedRunId)) return;
+
+    setSelectedRunId(workflowRuns[0]._id);
+  }, [selectedRunId, workflowRuns]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<WorkflowFlowNode>[]) => {
@@ -653,6 +752,33 @@ export function WorkflowCanvasPage() {
     }
   }, [edges, nodes, updateGraph, workflow]);
 
+  const handleCreateManualRun = useCallback(async () => {
+    if (!workflow) return;
+
+    if (isDirty) {
+      setRunActionStatus("Save the workflow graph before starting a run.");
+      return;
+    }
+
+    if (!graphValidation?.valid) {
+      setRunActionStatus(graphValidation?.errors[0]?.message ?? "Workflow graph is invalid.");
+      return;
+    }
+
+    setIsCreatingRun(true);
+    setRunActionStatus("");
+
+    try {
+      const runId = await createManualRun({ workflowId: workflow._id });
+      setSelectedRunId(runId);
+      setRunActionStatus("Run queued");
+    } catch (error) {
+      setRunActionStatus(getErrorMessage(error));
+    } finally {
+      setIsCreatingRun(false);
+    }
+  }, [createManualRun, graphValidation, isDirty, workflow]);
+
   if (!workflowId) {
     return (
       <Page title="Workflow" description="No workflow was selected.">
@@ -768,7 +894,7 @@ export function WorkflowCanvasPage() {
               fitViewOptions={{ padding: 0.35 }}
               maxZoom={1.4}
               minZoom={0.35}
-              nodes={nodes}
+              nodes={nodesWithExecutionState}
               nodeTypes={nodeTypes}
               nodesDraggable
               nodesFocusable
@@ -951,6 +1077,27 @@ export function WorkflowCanvasPage() {
                   <p className="workflow-inspector-empty">This node has no static config yet.</p>
                 )}
               </div>
+
+              <div className="workflow-inspector-group">
+                <div className="workflow-inspector-section-heading">
+                  <h3>Run Debug</h3>
+                  <span>{selectedRun ? formatStatus(selectedRun.status) : "No run"}</span>
+                </div>
+                {selectedNodeRunEvents.length ? (
+                  <div className="workflow-node-event-list">
+                    {selectedNodeRunEvents.map((event) => (
+                      <div className="workflow-node-event" key={event._id}>
+                        <span>{formatStatus(event.type)}</span>
+                        <p>{event.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="workflow-inspector-empty">
+                    No node events or debug artifacts for the selected run yet.
+                  </p>
+                )}
+              </div>
             </>
           ) : (
             <div className="workflow-inspector-empty-state">
@@ -960,6 +1107,166 @@ export function WorkflowCanvasPage() {
             </div>
           )}
         </aside>
+
+        <section className="workflow-execution-panel" aria-label="Workflow execution panel">
+          <div className="workflow-execution-header">
+            <div>
+              <h2>Execution</h2>
+              <p>
+                Runs use the saved graph only. Editing nodes or edges never starts execution.
+              </p>
+            </div>
+            <button
+              className="primary-button"
+              disabled={isCreatingRun || isDirty || !graphValidation?.valid}
+              onClick={() => {
+                void handleCreateManualRun();
+              }}
+              type="button"
+            >
+              <Play size={16} />
+              {isCreatingRun ? "Queueing" : "Run workflow"}
+            </button>
+          </div>
+
+          <div className="workflow-execution-summary">
+            <span>
+              <Activity size={14} />
+              {graphValidation?.valid ? "Graph valid" : "Graph needs attention"}
+            </span>
+            <span>
+              <Clock size={14} />
+              {workflow.trigger === "schedule" ? "Scheduled trigger" : "Manual trigger"}
+            </span>
+            <span>
+              <AlertCircle size={14} />
+              {workflow.isActive ? "Active" : "Paused"}
+            </span>
+            <span>{workflowRuns?.length ?? 0} runs</span>
+          </div>
+
+          {isDirty ? (
+            <p className="workflow-execution-warning">Save graph changes before starting a run.</p>
+          ) : null}
+          {!graphValidation?.valid && graphValidation?.errors[0] ? (
+            <p className="workflow-execution-warning">{graphValidation.errors[0].message}</p>
+          ) : null}
+          {runActionStatus ? <p className="workflow-execution-status">{runActionStatus}</p> : null}
+
+          <div className="workflow-execution-grid">
+            <div className="workflow-run-history">
+              <div className="workflow-execution-section-heading">
+                <h3>Recent Runs</h3>
+                <span>{workflowRuns ? `${workflowRuns.length}` : "Loading"}</span>
+              </div>
+              {!workflowRuns ? (
+                <p className="workflow-inspector-empty">Loading runs...</p>
+              ) : workflowRuns.length ? (
+                <div className="workflow-run-list">
+                  {workflowRuns.slice(0, 8).map((run) => (
+                    <button
+                      className={`workflow-run-row${
+                        selectedRun?._id === run._id ? " workflow-run-row-selected" : ""
+                      }`}
+                      key={run._id}
+                      onClick={() => setSelectedRunId(run._id)}
+                      type="button"
+                    >
+                      <span className={`workflow-run-status workflow-run-status-${run.status}`}>
+                        {formatStatus(run.status)}
+                      </span>
+                      <strong>{formatTimestamp(run.createdAt)}</strong>
+                      <small>{run.summary || run.errorMessage || "Workflow run record"}</small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="workflow-inspector-empty">No runs for this workflow yet.</p>
+              )}
+            </div>
+
+            <div className="workflow-run-detail">
+              <div className="workflow-execution-section-heading">
+                <h3>Selected Run</h3>
+                <span>{selectedRun ? formatStatus(selectedRun.status) : "None"}</span>
+              </div>
+
+              {selectedRun ? (
+                <>
+                  <div className="workflow-run-metrics">
+                    <span>
+                      <strong>Started</strong>
+                      {formatTimestamp(selectedRun.startedAt)}
+                    </span>
+                    <span>
+                      <strong>Duration</strong>
+                      {formatDuration(selectedRun)}
+                    </span>
+                    <span>
+                      <strong>Cost</strong>
+                      {selectedRun.costUsd ? `$${selectedRun.costUsd.toFixed(4)}` : "$0"}
+                    </span>
+                    <span>
+                      <strong>Current node</strong>
+                      {selectedRun.currentNodeId || selectedRun.errorNodeId || "None"}
+                    </span>
+                  </div>
+
+                  {selectedRun.errorMessage ? (
+                    <p className="workflow-execution-warning">{selectedRun.errorMessage}</p>
+                  ) : null}
+
+                  <div className="workflow-run-debug-grid">
+                    <div>
+                      <div className="workflow-execution-section-heading">
+                        <h3>Events</h3>
+                        <span>{selectedRunEvents ? selectedRunEvents.length : "Loading"}</span>
+                      </div>
+                      {selectedRunEvents?.length ? (
+                        <div className="workflow-run-event-list">
+                          {selectedRunEvents.map((event) => (
+                            <div className="workflow-run-event" key={event._id}>
+                              <span>{formatStatus(event.type)}</span>
+                              <strong>{event.nodeId || "Workflow"}</strong>
+                              <p>{event.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="workflow-inspector-empty">No events recorded yet.</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="workflow-execution-section-heading">
+                        <h3>Artifacts</h3>
+                        <span>
+                          {selectedRunArtifacts ? selectedRunArtifacts.length : "Loading"}
+                        </span>
+                      </div>
+                      {selectedRunArtifacts?.length ? (
+                        <div className="workflow-run-artifact-list">
+                          {selectedRunArtifacts.map((artifact) => (
+                            <div className="workflow-run-artifact" key={artifact._id}>
+                              <span>{formatStatus(artifact.type)}</span>
+                              <strong>{artifact.title || "Untitled artifact"}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="workflow-inspector-empty">
+                          No artifacts have been produced for this run yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="workflow-inspector-empty">Select or create a run to inspect it.</p>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   );

@@ -563,7 +563,7 @@ Implementation notes:
 
 #### SW-0206: Add canvas execution panel
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -575,6 +575,12 @@ Acceptance criteria:
 
 - User can inspect a run without leaving the canvas.
 - Debug artifacts are visible at the node that produced them.
+
+Implementation notes:
+
+- Added an execution panel to the workflow canvas with a manual run button, graph status, run history, selected-run metrics, events, and artifacts.
+- Manual runs use the existing durable workflow run records and require the saved graph to be valid before queueing.
+- The selected run can highlight current/error node state, and the node inspector shows node-scoped run events when present.
 
 ### Phase 3: BulkAPIs Provider Foundation
 
