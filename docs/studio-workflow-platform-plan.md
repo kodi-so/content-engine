@@ -61,8 +61,8 @@ The current repository already has a useful foundation:
   workflow runs, run events, artifacts, slideshows, distribution plans, and
   metrics.
 - A mature one-off slideshow creation path through `contentRequests`.
-- A generic workflow runner skeleton with model steps, image jobs, slideshow
-  creation, distribution plans, and approval gates.
+- Graph-native workflow versions with the old step-array runner removed; graph
+  execution is intentionally deferred to the runner tickets.
 - Provider abstractions for model providers and publishing providers.
 - Existing adapters for Gemini, fal.ai, OpenRouter, Postiz, and manual
   publishing.
@@ -364,7 +364,7 @@ Acceptance criteria:
 ### Phase 1: Workflow Graph Foundation
 
 Goal: replace the current workflow step array with a typed graph foundation
-while preserving existing workflows until the new system is ready.
+that reflects the workflow canvas architecture directly.
 
 #### SW-0101: Define workflow graph types
 
@@ -387,7 +387,7 @@ Acceptance criteria:
 
 #### SW-0102: Add graph validation helpers
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -404,19 +404,21 @@ Acceptance criteria:
 
 #### SW-0103: Extend workflow version schema for graph JSON
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
-- Add `graph` to workflow versions.
-- Keep existing `steps` temporarily for compatibility.
-- Document migration strategy from old `steps` to graph.
+- Replace workflow version `steps` with canonical `graph` JSON.
+- Update workflow creation to seed a minimal canvas-native graph.
+- Remove old step-array validators and step execution modules.
+- Keep manual runs honest with a graph-runner placeholder until graph
+  execution tickets implement node execution.
 
 Acceptance criteria:
 
-- Existing workflows still load.
-- New workflows can store graph definitions.
-- Old run history remains explainable.
+- Workflow versions store graph definitions.
+- New workflows are created with a valid starter graph.
+- No backend API accepts the old step-array workflow definition.
 
 #### SW-0104: Add workflow draft/version APIs
 

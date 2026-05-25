@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { api } from "../../convex/_generated/api";
 import { EntityGrid, Field, FormPanel, Page, Select } from "../components/ui";
+import { createStarterWorkflowGraph } from "../lib/workflowGraph";
 import type { BrandId, ContentFormat, SocialAccountId } from "../types";
 
 export function WorkflowsPage() {
@@ -37,57 +38,7 @@ export function WorkflowsPage() {
         autoPublish: false,
         defaultPlatforms: ["tiktok"],
       },
-      steps: [
-        {
-          id: "generate-content-spec",
-          name: "Generate content spec",
-          type: "generate_structured",
-          outputRef: "content_spec",
-          config: {
-            artifactType: contentFormat === "slideshow" ? "slide_spec" : "scene_spec",
-          },
-        },
-        {
-          id: "create-image-prompts",
-          name: "Create image prompts",
-          type: "create_image_prompts",
-          inputRefs: ["content_spec"],
-          outputRef: "image_prompts",
-        },
-        {
-          id: "generate-images",
-          name: "Generate images",
-          type: "generate_image",
-          inputRefs: ["image_prompts"],
-          outputRef: "image_jobs",
-        },
-        {
-          id: "resolve-image-jobs",
-          name: "Resolve image jobs",
-          type: "resolve_model_job",
-          inputRefs: ["image_jobs"],
-          outputRef: "images",
-        },
-        {
-          id: "create-slideshow",
-          name: "Create slideshow",
-          type: "create_slideshow",
-          inputRefs: ["content_spec", "images"],
-          outputRef: "slideshow",
-        },
-        {
-          id: "create-distribution-plan",
-          name: "Create distribution plan",
-          type: "create_distribution_plan",
-          inputRefs: ["slideshow"],
-        },
-        {
-          id: "approval-gate",
-          name: "Approval gate",
-          type: "request_approval",
-          inputRefs: ["slideshow"],
-        },
-      ],
+      graph: createStarterWorkflowGraph(),
     });
     setName("");
   };

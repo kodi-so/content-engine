@@ -5,7 +5,7 @@ import {
   contentFormatValidator,
   publishingPolicyValidator,
   scheduleConfigValidator,
-  workflowStepValidator,
+  workflowGraphValidator,
   workflowTriggerValidator,
 } from "../validators";
 
@@ -51,7 +51,7 @@ export const create = mutation({
     approvalPolicy: approvalPolicyValidator,
     publishingPolicy: publishingPolicyValidator,
     strategy: v.optional(v.any()),
-    steps: v.array(workflowStepValidator),
+    graph: workflowGraphValidator,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -91,7 +91,7 @@ export const create = mutation({
       workflowId,
       version: 1,
       strategy: args.strategy,
-      steps: args.steps,
+      graph: args.graph,
       createdAt: now,
       createdBy: identity.subject,
     });

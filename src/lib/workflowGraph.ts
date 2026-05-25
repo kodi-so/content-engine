@@ -160,3 +160,41 @@ export function createEmptyWorkflowGraph(): WorkflowGraph {
     edges: [],
   };
 }
+
+export function createStarterWorkflowGraph(): WorkflowGraph {
+  return {
+    schemaVersion: WORKFLOW_GRAPH_SCHEMA_VERSION,
+    nodes: [
+      {
+        id: "runner",
+        type: "runner",
+        label: "Runner",
+        position: { x: 80, y: 180 },
+        config: {
+          trigger: "manual",
+        },
+      },
+      {
+        id: "export",
+        type: "export",
+        label: "Export",
+        position: { x: 420, y: 180 },
+        config: {
+          destination: "media_library",
+        },
+      },
+    ],
+    edges: [
+      {
+        id: "runner-to-export",
+        sourceNodeId: "runner",
+        sourcePort: "run",
+        targetNodeId: "export",
+        targetPort: "input",
+      },
+    ],
+    canvas: {
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  };
+}

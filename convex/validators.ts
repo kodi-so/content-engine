@@ -72,8 +72,8 @@ export const contentRequestStatusValidator = v.union(
 
 export const workflowRunEventTypeValidator = v.union(
   v.literal("run_created"),
-  v.literal("step_started"),
-  v.literal("step_completed"),
+  v.literal("node_started"),
+  v.literal("node_completed"),
   v.literal("tool_call"),
   v.literal("model_call"),
   v.literal("artifact_created"),
@@ -85,6 +85,46 @@ export const workflowRunEventTypeValidator = v.union(
   v.literal("metric_synced"),
   v.literal("error")
 );
+
+export const workflowGraphValidator = v.object({
+  schemaVersion: v.literal(1),
+  nodes: v.array(
+    v.object({
+      id: v.string(),
+      type: v.string(),
+      label: v.string(),
+      position: v.object({
+        x: v.number(),
+        y: v.number(),
+      }),
+      provider: v.optional(v.string()),
+      model: v.optional(v.string()),
+      config: v.record(v.string(), v.any()),
+      inputBindings: v.optional(v.record(v.string(), v.any())),
+      retention: v.optional(v.any()),
+    })
+  ),
+  edges: v.array(
+    v.object({
+      id: v.string(),
+      sourceNodeId: v.string(),
+      sourcePort: v.string(),
+      targetNodeId: v.string(),
+      targetPort: v.string(),
+    })
+  ),
+  canvas: v.optional(
+    v.object({
+      viewport: v.optional(
+        v.object({
+          x: v.number(),
+          y: v.number(),
+          zoom: v.number(),
+        })
+      ),
+    })
+  ),
+});
 
 export const artifactTypeValidator = v.union(
   v.literal("prompt"),
@@ -132,30 +172,6 @@ export const distributionStatusValidator = v.union(
   v.literal("failed"),
   v.literal("canceled")
 );
-
-export const workflowStepTypeValidator = v.union(
-  v.literal("generate_text"),
-  v.literal("generate_structured"),
-  v.literal("create_image_prompts"),
-  v.literal("generate_image"),
-  v.literal("generate_video"),
-  v.literal("resolve_model_job"),
-  v.literal("create_slideshow"),
-  v.literal("render_asset"),
-  v.literal("create_caption"),
-  v.literal("create_distribution_plan"),
-  v.literal("request_approval"),
-  v.literal("publish")
-);
-
-export const workflowStepValidator = v.object({
-  id: v.string(),
-  name: v.string(),
-  type: workflowStepTypeValidator,
-  config: v.optional(v.any()),
-  inputRefs: v.optional(v.array(v.string())),
-  outputRef: v.optional(v.string()),
-});
 
 export const scheduleConfigValidator = v.object({
   timezone: v.string(),

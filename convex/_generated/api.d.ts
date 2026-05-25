@@ -41,12 +41,8 @@ import type * as system_crons from "../system/crons.js";
 import type * as system_http from "../system/http.js";
 import type * as validators from "../validators.js";
 import type * as workflows_definitions from "../workflows/definitions.js";
-import type * as workflows_distributionStep from "../workflows/distributionStep.js";
-import type * as workflows_execution from "../workflows/execution.js";
-import type * as workflows_modelSteps from "../workflows/modelSteps.js";
 import type * as workflows_runner from "../workflows/runner.js";
 import type * as workflows_runs from "../workflows/runs.js";
-import type * as workflows_slideshowSteps from "../workflows/slideshowSteps.js";
 
 import type {
   ApiFromModules,
@@ -88,12 +84,8 @@ declare const fullApi: ApiFromModules<{
   "system/http": typeof system_http;
   validators: typeof validators;
   "workflows/definitions": typeof workflows_definitions;
-  "workflows/distributionStep": typeof workflows_distributionStep;
-  "workflows/execution": typeof workflows_execution;
-  "workflows/modelSteps": typeof workflows_modelSteps;
   "workflows/runner": typeof workflows_runner;
   "workflows/runs": typeof workflows_runs;
-  "workflows/slideshowSteps": typeof workflows_slideshowSteps;
 }>;
 
 /**
