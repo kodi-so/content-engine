@@ -1364,7 +1364,7 @@ Implementation notes:
 
 #### SW-0603: Build Personas UI
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1376,6 +1376,18 @@ Deliverables:
 Acceptance criteria:
 
 - User can create fictional AI personas, transformation identities, and mascots.
+
+Implementation notes:
+
+- Added a Personas nav tab and page for brand-scoped persona management.
+- The page supports persona list selection, new persona creation, editing the
+  identity profile, visual constraints, usage notes, and persona type.
+- Existing creative assets can be attached as source, generated, or voice
+  references, and new files can be uploaded into creative assets and attached in
+  the same flow.
+- Generated assets are shown as a reusable look set for the selected persona.
+- Workflow media node config now renders a persona picker for `personaIds`
+  instead of requiring raw JSON edits.
 
 #### SW-0604: Add persona generation workflow template
 

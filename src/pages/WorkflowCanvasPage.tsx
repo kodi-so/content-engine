@@ -913,6 +913,10 @@ export function WorkflowCanvasPage() {
     api.workflows.definitions.get,
     workflowId ? { id: workflowId as Id<"workflows"> } : "skip"
   );
+  const workflowPersonas = useQuery(
+    api.accounts.personas.list,
+    workflow ? { brandId: workflow.brandId } : "skip"
+  );
   const workflowRuns = useQuery(
     api.workflows.runs.list,
     workflowId ? { workflowId: workflowId as Id<"workflows"> } : "skip"
@@ -1231,6 +1235,52 @@ export function WorkflowCanvasPage() {
     if (!selectedNode) return null;
 
     const value = configFieldValue(field, selectedNode.data.config);
+
+    if (field.key === "personaIds") {
+      const selectedPersonaIds = Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string")
+        : [];
+
+      return (
+        <div className="workflow-inspector-field" key={field.key}>
+          <span>{field.label}</span>
+          <div className="workflow-persona-picker">
+            {!workflowPersonas && <small>Loading personas...</small>}
+            {workflowPersonas?.length === 0 && (
+              <small>No personas exist for this workflow brand.</small>
+            )}
+            {workflowPersonas?.map((persona) => {
+              const personaId = String(persona._id);
+              const selected = selectedPersonaIds.includes(personaId);
+              return (
+                <button
+                  className={selected ? "selected" : ""}
+                  key={persona._id}
+                  type="button"
+                  onClick={() =>
+                    updateSelectedConfigValue(
+                      field.key,
+                      selected
+                        ? selectedPersonaIds.filter((id) => id !== personaId)
+                        : [...selectedPersonaIds, personaId]
+                    )
+                  }
+                >
+                  <strong>{persona.name}</strong>
+                  <span>
+                    {persona.personaType.replace(/_/g, " ")} ·{" "}
+                    {persona.sourceAssetIds.length +
+                      persona.generatedAssetIds.length +
+                      persona.voiceAssetIds.length} assets
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {field.description ? <small>{field.description}</small> : null}
+        </div>
+      );
+    }
 
     return (
       <label className="workflow-inspector-field" key={field.key}>

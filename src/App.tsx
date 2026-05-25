@@ -13,6 +13,7 @@ import { BrandsPage } from "./pages/BrandsPage";
 import { CreatePage } from "./pages/CreatePage";
 import { Dashboard } from "./pages/Dashboard";
 import { LibraryPage } from "./pages/LibraryPage";
+import { PersonasPage } from "./pages/PersonasPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { WorkflowCanvasPage } from "./pages/WorkflowCanvasPage";
@@ -33,6 +34,7 @@ function AppContent() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/brands" element={<BrandsPage />} />
+          <Route path="/personas" element={<PersonasPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/workflows" element={<WorkflowsPage />} />
           <Route path="/workflows/:workflowId" element={<WorkflowCanvasPage />} />

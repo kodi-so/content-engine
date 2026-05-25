@@ -362,6 +362,53 @@
   line-height: 1.35;
 }
 
+.workflow-persona-picker {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.workflow-persona-picker button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-ink);
+  padding: var(--space-2);
+  text-align: left;
+}
+
+.workflow-persona-picker button:hover {
+  border-color: var(--color-border-strong);
+}
+
+.workflow-persona-picker button.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  box-shadow: var(--focus-ring);
+}
+
+.workflow-persona-picker strong,
+.workflow-persona-picker span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-persona-picker strong {
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.workflow-persona-picker span {
+  color: var(--color-ink-muted);
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
 .workflow-inspector-toggle {
   display: grid;
   grid-template-columns: 1rem minmax(0, 1fr);
