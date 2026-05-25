@@ -3,8 +3,13 @@ import {
   type WorkflowEdge,
   type WorkflowGraph,
   type WorkflowNode,
-  type WorkflowNodeType,
 } from "./workflowGraph";
+import {
+  getWorkflowNodeDefinition,
+  isRunnerWorkflowNodeType,
+  isTerminalWorkflowNodeType,
+  isWorkflowNodeType,
+} from "./workflowNodeCatalog";
 
 export type WorkflowGraphValidationErrorCode =
   | "unsupported_schema_version"
@@ -17,6 +22,7 @@ export type WorkflowGraphValidationErrorCode =
   | "duplicate_edge_id"
   | "missing_edge_endpoint"
   | "unknown_edge_node"
+  | "unknown_edge_port"
   | "self_edge"
   | "missing_runner"
   | "multiple_runners"
@@ -33,29 +39,6 @@ export type WorkflowGraphValidationResult = {
   valid: boolean;
   errors: WorkflowGraphValidationError[];
 };
-
-const workflowNodeTypes = new Set<WorkflowNodeType>([
-  "runner",
-  "comment",
-  "media",
-  "llm",
-  "ai_agent",
-  "image_generation",
-  "video_generation",
-  "audio_generation",
-  "lipsync",
-  "native_slideshow_planner",
-  "native_slideshow_renderer",
-  "ai_video_editor",
-  "post_compiler",
-  "export",
-  "auto_post",
-]);
-
-const terminalNodeTypes = new Set<WorkflowNodeType>([
-  "export",
-  "auto_post",
-]);
 
 function validationError(
   code: WorkflowGraphValidationErrorCode,
@@ -93,7 +76,7 @@ function validateNode(
     seenNodeIds.add(node.id);
   }
 
-  if (!workflowNodeTypes.has(node.type)) {
+  if (!isWorkflowNodeType(node.type)) {
     errors.push(validationError(
       "invalid_node_type",
       `Workflow node type "${node.type}" is not supported.`,
@@ -121,7 +104,7 @@ function validateNode(
 function validateEdge(
   edge: WorkflowEdge,
   index: number,
-  nodeIds: Set<string>,
+  nodesById: Map<string, WorkflowNode>,
   seenEdgeIds: Set<string>,
   errors: WorkflowGraphValidationError[]
 ) {
@@ -160,7 +143,10 @@ function validateEdge(
     ));
   }
 
-  if (!nodeIds.has(edge.sourceNodeId)) {
+  const sourceNode = nodesById.get(edge.sourceNodeId);
+  const targetNode = nodesById.get(edge.targetNodeId);
+
+  if (!sourceNode) {
     errors.push(validationError(
       "unknown_edge_node",
       `Workflow edge source node "${edge.sourceNodeId}" does not exist.`,
@@ -168,12 +154,34 @@ function validateEdge(
     ));
   }
 
-  if (!nodeIds.has(edge.targetNodeId)) {
+  if (!targetNode) {
     errors.push(validationError(
       "unknown_edge_node",
       `Workflow edge target node "${edge.targetNodeId}" does not exist.`,
       `${edgePath}.targetNodeId`
     ));
+  }
+
+  if (sourceNode && isWorkflowNodeType(sourceNode.type)) {
+    const sourceDefinition = getWorkflowNodeDefinition(sourceNode.type);
+    if (!sourceDefinition.outputPorts.some((port) => port.id === edge.sourcePort)) {
+      errors.push(validationError(
+        "unknown_edge_port",
+        `Workflow edge source port "${edge.sourcePort}" does not exist on ${sourceDefinition.label}.`,
+        `${edgePath}.sourcePort`
+      ));
+    }
+  }
+
+  if (targetNode && isWorkflowNodeType(targetNode.type)) {
+    const targetDefinition = getWorkflowNodeDefinition(targetNode.type);
+    if (!targetDefinition.inputPorts.some((port) => port.id === edge.targetPort)) {
+      errors.push(validationError(
+        "unknown_edge_port",
+        `Workflow edge target port "${edge.targetPort}" does not exist on ${targetDefinition.label}.`,
+        `${edgePath}.targetPort`
+      ));
+    }
   }
 }
 
@@ -235,13 +243,19 @@ export function validateWorkflowGraph(
     validateNode(node, index, seenNodeIds, errors);
   });
 
-  const nodeIds = new Set(graph.nodes.map((node) => node.id).filter(Boolean));
+  const nodesById = new Map(
+    graph.nodes
+      .filter((node) => node.id)
+      .map((node) => [node.id, node])
+  );
   const seenEdgeIds = new Set<string>();
   graph.edges.forEach((edge, index) => {
-    validateEdge(edge, index, nodeIds, seenEdgeIds, errors);
+    validateEdge(edge, index, nodesById, seenEdgeIds, errors);
   });
 
-  const runnerNodes = graph.nodes.filter((node) => node.type === "runner");
+  const runnerNodes = graph.nodes.filter((node) =>
+    isWorkflowNodeType(node.type) && isRunnerWorkflowNodeType(node.type)
+  );
   if (runnerNodes.length === 0) {
     errors.push(validationError(
       "missing_runner",
@@ -256,7 +270,9 @@ export function validateWorkflowGraph(
     ));
   }
 
-  if (!graph.nodes.some((node) => terminalNodeTypes.has(node.type))) {
+  if (!graph.nodes.some((node) =>
+    isWorkflowNodeType(node.type) && isTerminalWorkflowNodeType(node.type)
+  )) {
     errors.push(validationError(
       "missing_terminal_node",
       "Workflow graph must include an export or auto-post terminal node.",

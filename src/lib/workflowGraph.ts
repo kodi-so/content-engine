@@ -2,22 +2,25 @@ export const WORKFLOW_GRAPH_SCHEMA_VERSION = 1 as const;
 
 export type WorkflowGraphSchemaVersion = typeof WORKFLOW_GRAPH_SCHEMA_VERSION;
 
-export type WorkflowNodeType =
-  | "runner"
-  | "comment"
-  | "media"
-  | "llm"
-  | "ai_agent"
-  | "image_generation"
-  | "video_generation"
-  | "audio_generation"
-  | "lipsync"
-  | "native_slideshow_planner"
-  | "native_slideshow_renderer"
-  | "ai_video_editor"
-  | "post_compiler"
-  | "export"
-  | "auto_post";
+export const WORKFLOW_NODE_TYPES = [
+  "runner",
+  "comment",
+  "media",
+  "llm",
+  "ai_agent",
+  "image_generation",
+  "video_generation",
+  "audio_generation",
+  "lipsync",
+  "native_slideshow_planner",
+  "native_slideshow_renderer",
+  "ai_video_editor",
+  "post_compiler",
+  "export",
+  "auto_post",
+] as const;
+
+export type WorkflowNodeType = (typeof WORKFLOW_NODE_TYPES)[number];
 
 export type WorkflowPortDataType =
   | "any"

@@ -434,19 +434,26 @@ Acceptance criteria:
 
 #### SW-0105: Add node catalog registry
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
 - Add a typed registry of node definitions, ports, config schema, defaults,
   provider requirements, and output artifact types.
+- Include `runner`, `comment`, `media`, `llm`, `ai_agent`,
+  `image_generation`, `video_generation`, `audio_generation`, `lipsync`,
+  `native_slideshow_planner`, `native_slideshow_renderer`, `ai_video_editor`,
+  `post_compiler`, `export`, and `auto_post`.
+- Mark provider/model-specific config as dynamic so exact BulkAPIs model
+  parameters can be researched in the per-node implementation tickets.
+- Use the catalog for graph node and port validation.
 
 Acceptance criteria:
 
 - Frontend can list node types from the catalog.
 - Runner can resolve execution handlers by node type.
-- Catalog includes at least Runner, Media, LLM, Image Generation, Post Compiler,
-  Export, and Comment.
+- Catalog includes the agreed v1 workflow vocabulary, including Comment, Audio
+  Generation, Lip Sync, and AI Video Editor.
 
 ### Phase 2: Workflow List And Canvas UI
 
