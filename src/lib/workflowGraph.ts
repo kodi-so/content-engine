@@ -46,6 +46,11 @@ export type WorkflowProviderName =
 
 export type WorkflowRunMode = "test" | "production";
 
+export type WorkflowArtifactRetentionMode =
+  | "keep_all"
+  | "final_only"
+  | "keep_on_failure";
+
 export type WorkflowPoint = {
   x: number;
   y: number;
@@ -57,6 +62,11 @@ export type WorkflowCanvasViewport = WorkflowPoint & {
 
 export type WorkflowCanvasState = {
   viewport?: WorkflowCanvasViewport;
+};
+
+export type WorkflowRunSettings = {
+  mode?: WorkflowRunMode;
+  artifactRetention?: WorkflowArtifactRetentionMode;
 };
 
 export type WorkflowPort = {
@@ -129,6 +139,7 @@ export type WorkflowGraph = {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   canvas?: WorkflowCanvasState;
+  runSettings?: WorkflowRunSettings;
 };
 
 export type WorkflowOutputRef = {

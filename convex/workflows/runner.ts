@@ -1,10 +1,12 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalAction } from "../_generated/server";
-import { workflowGraphValidator } from "../validators";
+import { internalAction, internalMutation } from "../_generated/server";
+import { artifactLifecycleValidator, workflowGraphValidator } from "../validators";
 
 type WorkflowGraphForRun = typeof workflowGraphValidator.type;
 type WorkflowGraphNodeForRun = WorkflowGraphForRun["nodes"][number];
+type ArtifactLifecycleForRun = typeof artifactLifecycleValidator.type;
+type NodeRetentionModeForRun = "inherit" | "keep" | "discard" | "keep_on_failure";
 
 function adjacencyForGraph(graph: WorkflowGraphForRun): Map<string, string[]> {
   const adjacency = new Map(graph.nodes.map((node) => [node.id, [] as string[]]));
@@ -77,6 +79,38 @@ function outboundPortsForNode(
         .map((edge) => edge.sourcePort)
     ),
   ].sort();
+}
+
+function retentionModeForNode(node: WorkflowGraphNodeForRun): NodeRetentionModeForRun {
+  const retention = node.retention;
+  if (!retention || typeof retention !== "object" || Array.isArray(retention)) return "inherit";
+  const mode = (retention as Record<string, unknown>).mode;
+
+  if (
+    mode === "inherit" ||
+    mode === "keep" ||
+    mode === "discard" ||
+    mode === "keep_on_failure"
+  ) {
+    return mode;
+  }
+
+  return "inherit";
+}
+
+function placeholderLifecycleForNode(
+  graph: WorkflowGraphForRun,
+  node: WorkflowGraphNodeForRun
+): ArtifactLifecycleForRun {
+  const retentionMode = retentionModeForNode(node);
+  const runMode = graph.runSettings?.mode ?? "production";
+  const graphRetention = graph.runSettings?.artifactRetention;
+
+  if (retentionMode === "keep") return "saved";
+  if (retentionMode === "discard") return "discarded";
+  if (retentionMode === "keep_on_failure") return "discarded";
+  if (runMode === "test" || graphRetention === "keep_all") return "debug";
+  return "discarded";
 }
 
 export const executeRun = internalAction({
@@ -207,12 +241,32 @@ export const executeRun = internalAction({
               inputSummary: resolvedInputs.summary,
             },
           }));
+          const lifecycle = placeholderLifecycleForNode(graph, node);
+          const placeholderArtifactId = await ctx.runMutation(
+            internal.workflows.runner.createPlaceholderArtifact,
+            {
+              userId: context.run.userId,
+              brandId: context.run.brandId,
+              workflowId: context.workflow._id,
+              workflowRunId: context.run._id,
+              nodeId: node.id,
+              nodeType: node.type,
+              label: node.label,
+              lifecycle,
+              inputSummary: resolvedInputs.summary,
+              outputPorts: outputRefs.map((outputRef) => outputRef.port),
+            }
+          );
+          const outputRefsWithArtifact = outputRefs.map((outputRef) => ({
+            ...outputRef,
+            artifactIds: [placeholderArtifactId],
+          }));
 
           await ctx.runMutation(internal.workflows.runs.transitionNodeState, {
             runId: context.run._id,
             nodeId: node.id,
             status: "succeeded",
-            ...(outputRefs.length ? { outputRefs } : {}),
+            ...(outputRefsWithArtifact.length ? { outputRefs: outputRefsWithArtifact } : {}),
             costUsd: 0,
           });
           await ctx.runMutation(internal.workflows.runs.recordEvent, {
@@ -224,7 +278,9 @@ export const executeRun = internalAction({
             message: `${node.label} completed with placeholder execution.`,
             data: {
               nodeType: node.type,
-              outputPorts: outputRefs.map((outputRef) => outputRef.port),
+              lifecycle,
+              artifactId: placeholderArtifactId,
+              outputPorts: outputRefsWithArtifact.map((outputRef) => outputRef.port),
               placeholderExecution: true,
             },
           });
@@ -282,6 +338,42 @@ export const executeRun = internalAction({
       summary: `Executed ${executedNodeCount} workflow nodes.`,
       costUsd: 0,
       completedAt: Date.now(),
+    });
+  },
+});
+
+export const createPlaceholderArtifact = internalMutation({
+  args: {
+    userId: v.string(),
+    brandId: v.id("brands"),
+    workflowId: v.id("workflows"),
+    workflowRunId: v.id("workflowRuns"),
+    nodeId: v.string(),
+    nodeType: v.string(),
+    label: v.string(),
+    lifecycle: artifactLifecycleValidator,
+    inputSummary: v.any(),
+    outputPorts: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("artifacts", {
+      userId: args.userId,
+      brandId: args.brandId,
+      workflowId: args.workflowId,
+      workflowRunId: args.workflowRunId,
+      type: "text_draft",
+      title: `${args.label} placeholder output`,
+      data: {
+        placeholderExecution: true,
+        nodeId: args.nodeId,
+        nodeType: args.nodeType,
+        inputSummary: args.inputSummary,
+        outputPorts: args.outputPorts,
+      },
+      lifecycle: args.lifecycle,
+      reviewStatus: "not_required",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
   },
 });

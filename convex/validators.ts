@@ -96,6 +96,17 @@ export const workflowRunStatusValidator = v.union(
   v.literal("canceled")
 );
 
+export const workflowRunModeValidator = v.union(
+  v.literal("test"),
+  v.literal("production")
+);
+
+export const workflowArtifactRetentionModeValidator = v.union(
+  v.literal("keep_all"),
+  v.literal("final_only"),
+  v.literal("keep_on_failure")
+);
+
 export const workflowRunNodeStatusValidator = v.union(
   v.literal("idle"),
   v.literal("queued"),
@@ -213,6 +224,12 @@ export const workflowGraphValidator = v.object({
       ),
     })
   ),
+  runSettings: v.optional(
+    v.object({
+      mode: v.optional(workflowRunModeValidator),
+      artifactRetention: v.optional(workflowArtifactRetentionModeValidator),
+    })
+  ),
 });
 
 export const artifactTypeValidator = v.union(
@@ -240,6 +257,7 @@ export const reviewStatusValidator = v.union(
 );
 
 export const artifactLifecycleValidator = v.union(
+  v.literal("debug"),
   v.literal("preview"),
   v.literal("saved"),
   v.literal("discarded")

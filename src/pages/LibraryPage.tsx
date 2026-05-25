@@ -60,7 +60,13 @@ export function LibraryPage() {
     const workflowsById = new Map(workflows?.map((workflow) => [workflow._id, workflow]));
 
     return artifacts.filter((artifact) => {
-      if (artifact.lifecycle === "preview" || artifact.lifecycle === "discarded") return false;
+      if (
+        artifact.lifecycle === "debug" ||
+        artifact.lifecycle === "preview" ||
+        artifact.lifecycle === "discarded"
+      ) {
+        return false;
+      }
 
       const workflow = artifact.workflowId
         ? workflowsById.get(artifact.workflowId)

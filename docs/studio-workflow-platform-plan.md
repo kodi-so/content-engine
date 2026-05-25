@@ -843,7 +843,7 @@ Implementation notes:
 
 #### SW-0404: Add artifact retention policies
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -855,6 +855,22 @@ Acceptance criteria:
 
 - Test runs can keep every output.
 - Production runs can keep final output only.
+
+Implementation notes:
+
+- Added a `debug` artifact lifecycle for run/debug outputs that should remain
+  inspectable without becoming Library content.
+- Artifact list queries now return run artifacts for run inspection, but hide
+  debug/preview/discarded artifacts from general Library-style queries unless
+  debug artifacts are explicitly requested.
+- Workflow graph settings now include optional run mode and artifact retention
+  policy fields for future UI/MCP control.
+- Placeholder executor outputs now create lifecycle-tagged artifacts and attach
+  them to node output refs, so retention behavior can be tested before real
+  node implementations create media artifacts.
+- Test/keep-all placeholder outputs are `debug`, node-level `keep` outputs are
+  `saved`, and default production or discarded intermediates are `discarded`
+  until terminal/final-output tickets promote final artifacts.
 
 #### SW-0405: Add terminal post package compiler
 
