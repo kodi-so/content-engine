@@ -10,6 +10,9 @@ import {
   metricsValidator,
   modelProviderValidator,
   platformValidator,
+  providerModelCapabilitiesValidator,
+  providerModelCategoryValidator,
+  providerModelSchemaSnapshotValidator,
   publishingPolicyValidator,
   publishingProviderValidator,
   reviewStatusValidator,
@@ -79,6 +82,25 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_provider", ["userId", "provider"]),
+
+  providerModels: defineTable({
+    provider: modelProviderValidator,
+    modelId: v.string(),
+    displayName: v.string(),
+    description: v.optional(v.string()),
+    category: providerModelCategoryValidator,
+    capabilities: providerModelCapabilitiesValidator,
+    pricing: v.optional(v.any()),
+    schemaSnapshot: providerModelSchemaSnapshotValidator,
+    isActive: v.boolean(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_provider", ["provider"])
+    .index("by_provider_category", ["provider", "category"])
+    .index("by_provider_model", ["provider", "modelId"]),
 
   socialAccounts: defineTable({
     userId: v.string(),

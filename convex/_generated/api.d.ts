@@ -31,6 +31,7 @@ import type * as providers_gemini from "../providers/gemini.js";
 import type * as providers_index from "../providers/index.js";
 import type * as providers_manual from "../providers/manual.js";
 import type * as providers_model from "../providers/model.js";
+import type * as providers_modelCatalog from "../providers/modelCatalog.js";
 import type * as providers_openrouter from "../providers/openrouter.js";
 import type * as providers_postiz from "../providers/postiz.js";
 import type * as providers_publishing from "../providers/publishing.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   "providers/index": typeof providers_index;
   "providers/manual": typeof providers_manual;
   "providers/model": typeof providers_model;
+  "providers/modelCatalog": typeof providers_modelCatalog;
   "providers/openrouter": typeof providers_openrouter;
   "providers/postiz": typeof providers_postiz;
   "providers/publishing": typeof providers_publishing;

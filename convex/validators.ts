@@ -15,6 +15,41 @@ export const modelProviderValidator = v.union(
   v.literal("manual")
 );
 
+export const providerModelCategoryValidator = v.union(
+  v.literal("chat"),
+  v.literal("image"),
+  v.literal("video"),
+  v.literal("video_render"),
+  v.literal("audio"),
+  v.literal("music"),
+  v.literal("lipsync"),
+  v.literal("speech_to_text"),
+  v.literal("upscale"),
+  v.literal("unknown")
+);
+
+export const providerModelCapabilitiesValidator = v.object({
+  text: v.boolean(),
+  structured: v.boolean(),
+  image: v.boolean(),
+  video: v.boolean(),
+  audio: v.boolean(),
+  music: v.boolean(),
+  lipsync: v.boolean(),
+  videoRender: v.boolean(),
+  speechToText: v.boolean(),
+  asyncJobs: v.boolean(),
+  vision: v.boolean(),
+});
+
+export const providerModelSchemaSnapshotValidator = v.object({
+  inputSchema: v.optional(v.any()),
+  resultSchema: v.optional(v.any()),
+  raw: v.optional(v.any()),
+  source: v.optional(v.string()),
+  sourceSyncedAt: v.optional(v.number()),
+});
+
 export const platformValidator = v.union(
   v.literal("tiktok"),
   v.literal("instagram"),

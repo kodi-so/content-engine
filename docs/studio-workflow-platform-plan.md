@@ -636,7 +636,7 @@ Implementation notes:
 
 #### SW-0303: Add provider model catalog table
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -648,6 +648,12 @@ Acceptance criteria:
 - BulkAPIs model metadata can be cached.
 - Node configuration can reference the provider schema snapshot it was built
   from.
+
+Implementation notes:
+
+- Added a shared `providerModels` table for model metadata, pricing, capabilities, schema snapshots, and sync timestamps.
+- Added provider/category/model indexes for UI lookup and sync upserts.
+- Added model catalog list/get/upsert backend functions; live BulkAPIs fetching remains in SW-0304.
 
 #### SW-0304: Implement BulkAPIs model catalog sync
 
