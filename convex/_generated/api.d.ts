@@ -25,6 +25,7 @@ import type * as content_slideshows from "../content/slideshows.js";
 import type * as content_types from "../content/types.js";
 import type * as lib_text from "../lib/text.js";
 import type * as mcp_resources from "../mcp/resources.js";
+import type * as mcp_runArtifacts from "../mcp/runArtifacts.js";
 import type * as mcp_workflows from "../mcp/workflows.js";
 import type * as providers_bulkapis from "../providers/bulkapis.js";
 import type * as providers_bulkapisConfig from "../providers/bulkapisConfig.js";
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   "content/types": typeof content_types;
   "lib/text": typeof lib_text;
   "mcp/resources": typeof mcp_resources;
+  "mcp/runArtifacts": typeof mcp_runArtifacts;
   "mcp/workflows": typeof mcp_workflows;
   "providers/bulkapis": typeof providers_bulkapis;
   "providers/bulkapisConfig": typeof providers_bulkapisConfig;

@@ -67,6 +67,7 @@ Recommended initial scopes:
 - `runs:read`
 - `runs:write`
 - `artifacts:read`
+- `artifacts:write`
 - `publishing:plan`
 - `publishing:publish`
 - `settings:read`

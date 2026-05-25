@@ -351,6 +351,14 @@ Workflow tool contract:
 - Tool handlers operate on the same workflow graph model as the web app and
   validate graph changes before saving.
 
+Run/artifact tool contract:
+
+- The canonical run and artifact tool list is documented in
+  [MCP Run And Artifact Tools](./mcp-run-artifact-tools.md).
+- The backend run/artifact tool handlers live in `convex/mcp/runArtifacts.ts`.
+- Tool handlers reuse existing artifact review, revision, distribution plan, and
+  publishing behavior instead of creating MCP-only execution paths.
+
 ## Phase Plan And Tickets
 
 ### Phase 0: Stabilize Planning Baseline
@@ -1623,7 +1631,7 @@ Implementation notes:
 
 #### SW-0804: Add run/artifact MCP tools
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1635,6 +1643,17 @@ Deliverables:
 Acceptance criteria:
 
 - External agents can operate workflow debugging loops.
+
+Implementation notes:
+
+- Added `convex/mcp/runArtifacts.ts` with user-scoped run listing, full run
+  inspection, node output inspection, run artifact listing, distribution plan
+  listing, artifact review/revision actions, distribution plan creation/status
+  updates, and publish/schedule wrapping.
+- Reused existing artifact review, revision reconciliation, distribution plan,
+  and publishing actions so MCP does not fork execution behavior.
+- Added `docs/mcp-run-artifact-tools.md` to document the run/artifact MCP tool
+  contract, debugging loop, safety rules, and future scope mapping.
 
 #### SW-0805: Add prompt engineering knowledge base resources
 
