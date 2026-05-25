@@ -323,7 +323,8 @@
 }
 
 .workflow-inspector-field input,
-.workflow-inspector-field select {
+.workflow-inspector-field select,
+.workflow-inspector-field textarea {
   width: 100%;
   min-height: 2.45rem;
   border: 1px solid var(--color-border);
@@ -335,6 +336,12 @@
   padding: 0 var(--space-3);
 }
 
+.workflow-inspector-field textarea {
+  min-height: 6.5rem;
+  padding: var(--space-3);
+  resize: vertical;
+}
+
 .workflow-inspector-field input[type="checkbox"] {
   width: 1rem;
   min-height: 1rem;
@@ -343,9 +350,16 @@
 }
 
 .workflow-inspector-field input:disabled,
-.workflow-inspector-field select:disabled {
+.workflow-inspector-field select:disabled,
+.workflow-inspector-field textarea:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.workflow-inspector-field small {
+  color: var(--color-ink-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .workflow-inspector-toggle {
@@ -403,6 +417,13 @@
   color: var(--color-ink-muted);
   font-family: var(--font-mono);
   font-size: 0.72rem;
+}
+
+.workflow-inspector-advanced {
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+  padding-top: var(--space-3);
 }
 
 .workflow-inspector-empty,

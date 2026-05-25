@@ -679,7 +679,7 @@ Implementation notes:
 
 #### SW-0305: Add dynamic schema-driven settings renderer
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -691,6 +691,15 @@ Acceptance criteria:
 
 - Image/video/audio/lipsync nodes change fields when model changes.
 - Unknown schema fields are still editable in an advanced section.
+
+Implementation notes:
+
+- The canvas inspector now reads cached provider models and switches the model
+  control from free text to a catalog-backed selector.
+- Node config fields are merged from the selected model's cached `inputSchema`,
+  node-specific friendly fields, and any existing saved config keys.
+- Unknown or structured fields render in an editable Advanced section instead
+  of becoming read-only blobs.
 
 #### SW-0306: Evaluate BulkAPIs publishing coverage
 

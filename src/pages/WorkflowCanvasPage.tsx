@@ -95,8 +95,22 @@ type WorkflowCanvasNodeData = Record<string, unknown> & {
 };
 
 type WorkflowFlowNode = Node<WorkflowCanvasNodeData>;
+type ProviderCatalogName = Exclude<WorkflowProviderName, "postiz">;
+type ProviderModelDoc = Doc<"providerModels">;
 type WorkflowRunDoc = Doc<"workflowRuns">;
 type WorkflowCanvasNodeExecutionStatus = "running" | "failed" | "completed";
+type ConfigFieldType = "string" | "number" | "boolean" | "enum" | "json";
+
+type ConfigField = {
+  key: string;
+  label: string;
+  type: ConfigFieldType;
+  required: boolean;
+  advanced: boolean;
+  defaultValue?: unknown;
+  description?: string;
+  enumValues?: string[];
+};
 
 type WorkflowConnection = {
   source: string | null;
@@ -131,6 +145,50 @@ const retentionOptions: Array<{ value: NodeRetentionMode; label: string }> = [
   { value: "discard", label: "Discard output" },
   { value: "keep_on_failure", label: "Keep on failure" },
 ];
+
+const primaryConfigFieldKeys = new Set([
+  "agentMode",
+  "aspectRatio",
+  "audioUrl",
+  "autoPublish",
+  "caption",
+  "count",
+  "destination",
+  "durationSeconds",
+  "endFrameUrl",
+  "fileName",
+  "folder",
+  "imageUrl",
+  "maxDurationSeconds",
+  "maxTokens",
+  "mode",
+  "name",
+  "optimizeFor",
+  "platform",
+  "postType",
+  "prompt",
+  "referenceImageUrl",
+  "referenceVideoUrl",
+  "removeSilence",
+  "renderMode",
+  "request",
+  "resolution",
+  "responseFormat",
+  "scheduledAt",
+  "scriptLengthSeconds",
+  "seed",
+  "slideCount",
+  "startFrameUrl",
+  "systemPrompt",
+  "temperature",
+  "text",
+  "tone",
+  "trigger",
+  "videoUrl",
+  "voice",
+  "voiceReferenceUrl",
+  "webhookUrl",
+]);
 
 function WorkflowCanvasNode({ data }: NodeProps<WorkflowFlowNode>) {
   const definition = getWorkflowNodeDefinition(data.type);
@@ -442,20 +500,313 @@ function formatConfigLabel(key: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function isPrimitiveConfigValue(value: unknown): value is string | number | boolean {
-  return ["string", "number", "boolean"].includes(typeof value);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function configInputType(value: unknown): "text" | "number" | "checkbox" {
+function isProviderCatalogName(value?: WorkflowProviderName): value is ProviderCatalogName {
+  return value === "bulkapis" || value === "gemini" || value === "fal" || value === "openrouter" || value === "manual";
+}
+
+function schemaFieldTypeFromValue(value: unknown): ConfigFieldType {
   if (typeof value === "number") return "number";
-  if (typeof value === "boolean") return "checkbox";
-  return "text";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "string") return "string";
+  return "json";
 }
 
-function coerceConfigValue(value: string, previousValue: unknown): unknown {
-  if (typeof previousValue === "number") {
+function enumValuesFromSchemaProperty(property: Record<string, unknown>): string[] | undefined {
+  const enumValues = Array.isArray(property.enum) ? property.enum : property.options;
+  if (!Array.isArray(enumValues)) return undefined;
+
+  const values = enumValues
+    .map((value) => {
+      if (isRecord(value)) {
+        const nestedValue = value.value ?? value.id ?? value.name ?? value.label;
+        return nestedValue === undefined ? null : String(nestedValue);
+      }
+      return value === undefined || value === null ? null : String(value);
+    })
+    .filter((value): value is string => Boolean(value));
+
+  return values.length ? values : undefined;
+}
+
+function schemaPropertyFieldType(property: Record<string, unknown>): ConfigFieldType {
+  if (enumValuesFromSchemaProperty(property)?.length) return "enum";
+
+  const type = Array.isArray(property.type) ? property.type[0] : property.type;
+  if (type === "number" || type === "integer") return "number";
+  if (type === "boolean") return "boolean";
+  if (type === "string") return "string";
+  return "json";
+}
+
+function schemaFieldsFromRecordSchema(schema: unknown): ConfigField[] {
+  if (!isRecord(schema)) return [];
+
+  const candidateSchema =
+    isRecord(schema.properties) || Array.isArray(schema.required)
+      ? schema
+      : isRecord(schema.schema)
+        ? schema.schema
+        : isRecord(schema.parameters)
+          ? schema.parameters
+          : schema;
+
+  if (isRecord(candidateSchema.properties)) {
+    const requiredKeys = new Set(
+      Array.isArray(candidateSchema.required)
+        ? candidateSchema.required.map((key) => String(key))
+        : []
+    );
+
+    return Object.entries(candidateSchema.properties).map(([key, rawProperty]) => {
+      const property = isRecord(rawProperty) ? rawProperty : {};
+      const enumValues = enumValuesFromSchemaProperty(property);
+      const type = schemaPropertyFieldType(property);
+
+      return {
+        key,
+        label: typeof property.title === "string" ? property.title : formatConfigLabel(key),
+        type,
+        required: requiredKeys.has(key),
+        advanced: isAdvancedConfigField(key, type),
+        defaultValue: property.default,
+        description: typeof property.description === "string" ? property.description : undefined,
+        enumValues,
+      };
+    });
+  }
+
+  const fieldList =
+    Array.isArray(candidateSchema.fields)
+      ? candidateSchema.fields
+      : Array.isArray(candidateSchema.inputs)
+        ? candidateSchema.inputs
+        : Array.isArray(candidateSchema.parameters)
+          ? candidateSchema.parameters
+          : [];
+
+  return fieldList.flatMap((rawField) => {
+    if (!isRecord(rawField)) return [];
+    const keyValue = rawField.key ?? rawField.name ?? rawField.id;
+    if (typeof keyValue !== "string" || !keyValue) return [];
+
+    const enumValues = enumValuesFromSchemaProperty(rawField);
+    const type =
+      enumValues?.length
+        ? "enum"
+        : rawField.type === "number" || rawField.type === "integer"
+          ? "number"
+          : rawField.type === "boolean"
+            ? "boolean"
+            : rawField.type === "string"
+              ? "string"
+              : schemaFieldTypeFromValue(rawField.default);
+
+    return [
+      {
+        key: keyValue,
+        label: typeof rawField.label === "string" ? rawField.label : formatConfigLabel(keyValue),
+        type,
+        required: rawField.required === true,
+        advanced: isAdvancedConfigField(keyValue, type),
+        defaultValue: rawField.default,
+        description: typeof rawField.description === "string" ? rawField.description : undefined,
+        enumValues,
+      },
+    ];
+  });
+}
+
+function friendlyConfigFieldKeysForNode(type: WorkflowNodeType): string[] {
+  switch (type) {
+    case "runner":
+      return ["trigger"];
+    case "comment":
+      return ["text"];
+    case "media":
+      return ["assetIds"];
+    case "llm":
+      return ["systemPrompt", "prompt", "responseFormat", "temperature", "maxTokens", "seed"];
+    case "ai_agent":
+      return ["agentMode", "request", "scriptLengthSeconds", "referenceImageUrl"];
+    case "image_generation":
+      return ["prompt", "aspectRatio", "resolution", "count", "seed", "referenceImageUrl", "webhookUrl"];
+    case "video_generation":
+      return [
+        "prompt",
+        "aspectRatio",
+        "durationSeconds",
+        "resolution",
+        "seed",
+        "imageUrl",
+        "startFrameUrl",
+        "endFrameUrl",
+        "referenceVideoUrl",
+        "webhookUrl",
+      ];
+    case "audio_generation":
+      return ["mode", "text", "voice", "voiceReferenceUrl", "temperature", "cfgScale", "seed", "removeSilence", "webhookUrl"];
+    case "lipsync":
+      return ["videoUrl", "audioUrl", "webhookUrl"];
+    case "native_slideshow_planner":
+      return ["prompt", "slideCount", "aspectRatio", "platform", "tone"];
+    case "native_slideshow_renderer":
+      return ["renderMode", "aspectRatio", "resolution"];
+    case "ai_video_editor":
+      return ["renderMode", "prompt", "systemPrompt", "knowledgeBase", "aspectRatio", "maxDurationSeconds", "webhookUrl"];
+    case "post_compiler":
+      return ["postType", "caption", "name"];
+    case "export":
+      return ["destination", "folder", "fileName", "optimizeFor"];
+    case "auto_post":
+      return ["platforms", "caption", "scheduledAt", "autoPublish"];
+  }
+}
+
+function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>): ConfigField {
+  const currentValue = config[key];
+  const defaultField: ConfigField = {
+    key,
+    label: formatConfigLabel(key),
+    type: schemaFieldTypeFromValue(currentValue),
+    required: false,
+    advanced: isAdvancedConfigField(key, schemaFieldTypeFromValue(currentValue)),
+  };
+
+  switch (key) {
+    case "agentMode":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: [
+          "analyze_input",
+          "script_writer",
+          "prompt_variation",
+          "sora_prompting",
+          "image_gen_agent",
+          "kling_prompting",
+          "grab_frame_extract_audio",
+        ],
+      };
+    case "aspectRatio":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: ["9:16", "16:9", "1:1", "4:5", "3:4"],
+      };
+    case "autoPublish":
+    case "removeSilence":
+      return { ...defaultField, type: "boolean" };
+    case "count":
+    case "durationSeconds":
+    case "maxDurationSeconds":
+    case "maxTokens":
+    case "scriptLengthSeconds":
+    case "seed":
+    case "slideCount":
+    case "temperature":
+    case "cfgScale":
+      return { ...defaultField, type: "number" };
+    case "destination":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: ["media_library", "download", "google_drive"],
+      };
+    case "mode":
+      return { ...defaultField, type: "enum", enumValues: ["tts", "sound_effect", "music"] };
+    case "postType":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: ["video", "slideshow", "carousel", "single_image", "thread"],
+      };
+    case "renderMode":
+      return {
+        ...defaultField,
+        type: "enum",
+        enumValues: ["video_render", "music_edit", "native"],
+      };
+    case "responseFormat":
+      return { ...defaultField, type: "enum", enumValues: ["text", "json"] };
+    case "trigger":
+      return { ...defaultField, type: "enum", enumValues: ["manual", "schedule", "event"] };
+    case "assetIds":
+    case "knowledgeBase":
+    case "platforms":
+      return { ...defaultField, type: "json", advanced: true };
+    default:
+      return defaultField;
+  }
+}
+
+function isAdvancedConfigField(key: string, type: ConfigFieldType): boolean {
+  if (type === "json") return true;
+
+  return !primaryConfigFieldKeys.has(key);
+}
+
+function configFieldsForNode(
+  type: WorkflowNodeType,
+  config: Record<string, unknown>,
+  selectedModel: ProviderModelDoc | null
+): ConfigField[] {
+  const fieldsByKey = new Map<string, ConfigField>();
+  const modelSchemaFields = schemaFieldsFromRecordSchema(selectedModel?.schemaSnapshot?.inputSchema);
+
+  for (const field of modelSchemaFields) {
+    fieldsByKey.set(field.key, field);
+  }
+
+  for (const key of friendlyConfigFieldKeysForNode(type)) {
+    if (!fieldsByKey.has(key)) {
+      fieldsByKey.set(key, friendlyConfigFieldForKey(key, config));
+    }
+  }
+
+  for (const key of Object.keys(config)) {
+    if (!fieldsByKey.has(key)) {
+      fieldsByKey.set(key, friendlyConfigFieldForKey(key, config));
+    }
+  }
+
+  return [...fieldsByKey.values()].sort((a, b) => {
+    if (a.advanced !== b.advanced) return a.advanced ? 1 : -1;
+    if (a.required !== b.required) return a.required ? -1 : 1;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function configFieldValue(field: ConfigField, config: Record<string, unknown>): unknown {
+  if (config[field.key] !== undefined) return config[field.key];
+  if (field.defaultValue !== undefined) return field.defaultValue;
+  if (field.type === "boolean") return false;
+  return "";
+}
+
+function formatConfigFieldTextareaValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "";
+  return JSON.stringify(value, null, 2);
+}
+
+function coerceConfigFieldValue(field: ConfigField, value: string, previousValue: unknown): unknown {
+  if (field.type === "number") {
+    if (!value.trim()) return "";
     const parsedValue = Number(value);
     return Number.isFinite(parsedValue) ? parsedValue : previousValue;
+  }
+
+  if (field.type === "json") {
+    if (!value.trim()) return "";
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
   }
 
   return value;
@@ -532,7 +883,33 @@ export function WorkflowCanvasPage() {
   const selectedNodeDefinition = selectedNode
     ? getWorkflowNodeDefinition(selectedNode.data.type)
     : null;
-  const selectedConfigEntries = Object.entries(selectedNode?.data.config ?? {});
+  const selectedProviderCatalogName = isProviderCatalogName(selectedNode?.data.provider)
+    ? selectedNode.data.provider
+    : undefined;
+  const selectedProviderModels = useQuery(
+    api.providers.modelCatalog.list,
+    selectedProviderCatalogName ? { provider: selectedProviderCatalogName } : "skip"
+  );
+  const selectedProviderModel = useMemo(
+    () =>
+      selectedProviderModels?.find(
+        (model) => model.modelId === selectedNode?.data.model
+      ) ?? null,
+    [selectedNode?.data.model, selectedProviderModels]
+  );
+  const selectedConfigFields = useMemo(
+    () =>
+      selectedNode
+        ? configFieldsForNode(
+            selectedNode.data.type,
+            selectedNode.data.config,
+            selectedProviderModel
+          )
+        : [],
+    [selectedNode, selectedProviderModel]
+  );
+  const selectedPrimaryConfigFields = selectedConfigFields.filter((field) => !field.advanced);
+  const selectedAdvancedConfigFields = selectedConfigFields.filter((field) => field.advanced);
   const editableGraph = useMemo(
     () => (workflow ? toWorkflowGraph(workflow.graph as WorkflowGraph, nodes, edges) : null),
     [edges, nodes, workflow]
@@ -779,6 +1156,63 @@ export function WorkflowCanvasPage() {
     }
   }, [createManualRun, graphValidation, isDirty, workflow]);
 
+  const renderConfigField = (field: ConfigField) => {
+    if (!selectedNode) return null;
+
+    const value = configFieldValue(field, selectedNode.data.config);
+
+    return (
+      <label className="workflow-inspector-field" key={field.key}>
+        <span>
+          {field.label}
+          {field.required ? " *" : ""}
+        </span>
+        {field.type === "boolean" ? (
+          <input
+            checked={Boolean(value)}
+            onChange={(event) => updateSelectedConfigValue(field.key, event.target.checked)}
+            type="checkbox"
+          />
+        ) : field.type === "enum" ? (
+          <select
+            onChange={(event) => updateSelectedConfigValue(field.key, event.target.value)}
+            value={String(value)}
+          >
+            {!field.required ? <option value="">Unset</option> : null}
+            {(field.enumValues ?? []).map((option) => (
+              <option key={option} value={option}>
+                {formatConfigLabel(option)}
+              </option>
+            ))}
+          </select>
+        ) : field.type === "json" ? (
+          <textarea
+            onChange={(event) =>
+              updateSelectedConfigValue(
+                field.key,
+                coerceConfigFieldValue(field, event.target.value, value)
+              )
+            }
+            spellCheck={false}
+            value={formatConfigFieldTextareaValue(value)}
+          />
+        ) : (
+          <input
+            onChange={(event) =>
+              updateSelectedConfigValue(
+                field.key,
+                coerceConfigFieldValue(field, event.target.value, value)
+              )
+            }
+            type={field.type === "number" ? "number" : "text"}
+            value={String(value)}
+          />
+        )}
+        {field.description ? <small>{field.description}</small> : null}
+      </label>
+    );
+  };
+
   if (!workflowId) {
     return (
       <Page title="Workflow" description="No workflow was selected.">
@@ -951,13 +1385,16 @@ export function WorkflowCanvasPage() {
                   <span>Provider</span>
                   <select
                     disabled={selectedNodeDefinition.providerRequirement === "none"}
-                    onChange={(event) =>
-                      updateSelectedNodeData(() => ({
-                        provider: event.target.value
-                          ? (event.target.value as WorkflowProviderName)
-                          : undefined,
-                      }))
-                    }
+                    onChange={(event) => {
+                      const provider = event.target.value
+                        ? (event.target.value as WorkflowProviderName)
+                        : undefined;
+
+                      updateSelectedNodeData((data) => ({
+                        provider,
+                        model: provider === data.provider ? data.model : undefined,
+                      }));
+                    }}
                     value={selectedNode.data.provider ?? ""}
                   >
                     <option value="">No provider</option>
@@ -971,17 +1408,35 @@ export function WorkflowCanvasPage() {
 
                 <label className="workflow-inspector-field">
                   <span>Model</span>
-                  <input
-                    disabled={selectedNodeDefinition.providerRequirement === "none"}
+                  <select
+                    disabled={
+                      selectedNodeDefinition.providerRequirement === "none" ||
+                      !selectedProviderCatalogName ||
+                      !selectedProviderModels?.length
+                    }
                     onChange={(event) =>
                       updateSelectedNodeData(() => ({
                         model: event.target.value || undefined,
                       }))
                     }
-                    placeholder="Provider model id"
-                    type="text"
                     value={selectedNode.data.model ?? ""}
-                  />
+                  >
+                    <option value="">
+                      {selectedProviderCatalogName
+                        ? selectedProviderModels === undefined
+                          ? "Loading models"
+                          : "Select model"
+                        : "No model catalog"}
+                    </option>
+                    {selectedNode.data.model && !selectedProviderModel ? (
+                      <option value={selectedNode.data.model}>{selectedNode.data.model}</option>
+                    ) : null}
+                    {(selectedProviderModels ?? []).map((model) => (
+                      <option key={model._id} value={model.modelId}>
+                        {model.displayName} ({model.category})
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
@@ -1027,55 +1482,28 @@ export function WorkflowCanvasPage() {
               <div className="workflow-inspector-group">
                 <div className="workflow-inspector-section-heading">
                   <h3>Config</h3>
-                  <span>{selectedNodeDefinition.configSchemaMode.replace(/_/g, " ")}</span>
+                  <span>
+                    {selectedProviderModel
+                      ? selectedProviderModel.displayName
+                      : selectedNodeDefinition.configSchemaMode.replace(/_/g, " ")}
+                  </span>
                 </div>
 
-                {selectedConfigEntries.length ? (
-                  selectedConfigEntries.map(([configKey, configValue]) => {
-                    if (!isPrimitiveConfigValue(configValue)) {
-                      return (
-                        <div className="workflow-inspector-static-field" key={configKey}>
-                          <span>{formatConfigLabel(configKey)}</span>
-                          <code>
-                            {Array.isArray(configValue)
-                              ? `${configValue.length} items`
-                              : "Structured value"}
-                          </code>
-                        </div>
-                      );
-                    }
-
-                    const inputType = configInputType(configValue);
-
-                    return (
-                      <label className="workflow-inspector-field" key={configKey}>
-                        <span>{formatConfigLabel(configKey)}</span>
-                        {inputType === "checkbox" ? (
-                          <input
-                            checked={Boolean(configValue)}
-                            onChange={(event) =>
-                              updateSelectedConfigValue(configKey, event.target.checked)
-                            }
-                            type="checkbox"
-                          />
-                        ) : (
-                          <input
-                            onChange={(event) =>
-                              updateSelectedConfigValue(
-                                configKey,
-                                coerceConfigValue(event.target.value, configValue)
-                              )
-                            }
-                            type={inputType}
-                            value={String(configValue)}
-                          />
-                        )}
-                      </label>
-                    );
-                  })
+                {selectedPrimaryConfigFields.length ? (
+                  selectedPrimaryConfigFields.map((field) => renderConfigField(field))
                 ) : (
                   <p className="workflow-inspector-empty">This node has no static config yet.</p>
                 )}
+
+                {selectedAdvancedConfigFields.length ? (
+                  <div className="workflow-inspector-advanced">
+                    <div className="workflow-inspector-section-heading">
+                      <h3>Advanced</h3>
+                      <span>{selectedAdvancedConfigFields.length} fields</span>
+                    </div>
+                    {selectedAdvancedConfigFields.map((field) => renderConfigField(field))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="workflow-inspector-group">
