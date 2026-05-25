@@ -23,10 +23,23 @@ export type BrandAssetDoc = Doc<"brandAssets">;
 export type SlideshowRenderingMode = "background_plus_overlay" | "full_graphic_generation";
 
 export type SlideshowTextBlock = {
+  id?: string;
   role?: "eyebrow" | "headline" | "body" | "bullet_list" | "cta";
   text?: string;
   items?: string[];
   emphasis?: "primary" | "secondary" | "muted";
+  x?: number;
+  y?: number;
+  width?: number;
+  align?: "left" | "center" | "right";
+  fontSize?: number;
+  fontWeight?: number;
+  color?: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  backgroundStyle?: "none" | "solid";
+  backgroundColor?: string;
+  backgroundOpacity?: number;
 };
 
 export type CanonicalSlideshowSlide = {

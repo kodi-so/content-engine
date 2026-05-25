@@ -21,8 +21,7 @@ export const slideshowSpecSchema = {
         required: [
           "index",
           "role",
-          "headline",
-          "body",
+          "textBlocks",
           "visualPrompt",
           "layout",
         ],
@@ -32,8 +31,23 @@ export const slideshowSpecSchema = {
             type: "string",
             enum: ["hook", "setup", "insight", "proof", "payoff", "cta"],
           },
-          headline: { type: "string" },
-          body: { type: "string" },
+          textBlocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 4,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["text", "x", "y", "width", "align"],
+              properties: {
+                text: { type: "string" },
+                x: { type: "number" },
+                y: { type: "number" },
+                width: { type: "number" },
+                align: { type: "string", enum: ["left", "center", "right"] },
+              },
+            },
+          },
           visualPrompt: { type: "string" },
           layout: {
             type: "object",
@@ -102,7 +116,7 @@ export function buildStructuredGenerationPrompt(args: {
       args.offer ? `Offer: ${args.offer}` : undefined,
       args.constraints?.length ? `Constraints: ${args.constraints.join("; ")}` : undefined,
       "Return one cohesive slideshow with 4-8 slides.",
-      "Each slide needs concise overlay text and a detailed visual prompt suitable for image generation.",
+      "Each slide needs concise editable textBlocks and a detailed visual prompt suitable for image generation.",
       "Make the sequence feel specific, useful, and scroll-stopping.",
     ]
       .filter(Boolean)

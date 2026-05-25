@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import type { CanonicalSlideshowSlide } from "../../types";
+import type { CanonicalSlideshowSlide, SlideshowTextBlock } from "../../types";
 import type {
   BrandAssetDoc,
   BrandDoc,
@@ -45,9 +45,7 @@ export type CreativePlan = {
 };
 
 export type SlideTextUpdate = {
-  primaryText: string;
-  secondaryText?: string;
-  bullets: string[];
+  textBlocks: SlideshowTextBlock[];
 };
 
 export type CreatePageData = {

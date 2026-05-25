@@ -322,38 +322,59 @@ async function getOwnedSlideshow(
   return slideshow;
 }
 
-function textBlocksFromEdit(args: {
-  primaryText: string;
-  secondaryText?: string;
-  bullets?: string[];
-}): SlideshowTextBlock[] {
-  const blocks: SlideshowTextBlock[] = [
-    {
-      role: "headline",
-      text: args.primaryText.trim(),
-      items: [],
-      emphasis: "primary",
-    },
-  ];
+function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+  const number = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(Math.max(number, min), max);
+}
 
-  const bullets = (args.bullets ?? []).filter((item) => item.trim()).slice(0, 4);
-  if (bullets.length > 0) {
-    blocks.push({
-      role: "bullet_list",
-      text: "",
-      items: bullets,
-      emphasis: "secondary",
-    });
-  } else if (args.secondaryText?.trim()) {
-    blocks.push({
-      role: "body",
-      text: args.secondaryText.trim(),
-      items: [],
-      emphasis: "secondary",
-    });
-  }
+function normalizeHexColor(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value.toUpperCase()
+    : fallback;
+}
 
-  return blocks;
+function normalizeEditableTextBlocks(value: unknown): SlideshowTextBlock[] {
+  if (!Array.isArray(value)) throw new Error("Text blocks are required");
+
+  const blocks = value.map((item, index): SlideshowTextBlock | null => {
+    if (!item || typeof item !== "object") return null;
+    const block = item as Record<string, unknown>;
+    const text = typeof block.text === "string"
+      ? block.text.trim()
+      : Array.isArray(block.items)
+        ? block.items.filter((line) => typeof line === "string" && line.trim()).join("\n")
+        : "";
+    if (!text) return null;
+
+    const role = index === 0 ? "headline" : "body";
+    const emphasis = index === 0 ? "primary" : "secondary";
+    const backgroundStyle = block.backgroundStyle === "solid" ? "solid" : "none";
+
+    return {
+      id: typeof block.id === "string" && block.id.trim()
+        ? block.id.trim().slice(0, 64)
+        : `text-${index + 1}`,
+      role,
+      text: text.slice(0, 280),
+      items: [],
+      emphasis,
+      x: clampNumber(block.x, 10, 0, 96),
+      y: clampNumber(block.y, index === 0 ? 42 : 56, 0, 96),
+      width: clampNumber(block.width, 80, 12, 100),
+      align: block.align === "left" || block.align === "right" ? block.align : "center",
+      fontSize: clampNumber(block.fontSize, index === 0 ? 72 : 44, 20, 150),
+      fontWeight: clampNumber(block.fontWeight, role === "body" ? 700 : 800, 400, 900),
+      color: normalizeHexColor(block.color, "#FFFFFF"),
+      strokeColor: normalizeHexColor(block.strokeColor, "#000000"),
+      strokeWidth: clampNumber(block.strokeWidth, 16, 0, 48),
+      backgroundStyle,
+      backgroundColor: backgroundStyle === "solid" ? normalizeHexColor(block.backgroundColor, "#FFFFFF") : "#000000",
+      backgroundOpacity: backgroundStyle === "solid" ? 1 : 0,
+    };
+  }).filter((block): block is SlideshowTextBlock => Boolean(block));
+
+  if (!blocks.length) throw new Error("At least one text block is required");
+  return blocks.slice(0, 12);
 }
 
 async function cleanupArtifactStorage(ctx: MutationCtx, artifact: Doc<"artifacts">) {
@@ -726,22 +747,14 @@ export const updateSlideText = mutation({
   args: {
     slideshowId: v.id("slideshows"),
     slideId: v.string(),
-    primaryText: v.string(),
-    secondaryText: v.optional(v.string()),
-    bullets: v.optional(v.array(v.string())),
+    textBlocks: v.array(v.any()),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
     const slideshow = await getOwnedSlideshow(ctx, { slideshowId: args.slideshowId, userId });
-    const primaryText = args.primaryText.trim();
-    if (!primaryText) throw new Error("Primary text is required");
 
     const spec = normalizeCanonicalSpec(slideshow.spec);
-    const textBlocks = textBlocksFromEdit({
-      primaryText,
-      secondaryText: args.secondaryText,
-      bullets: args.bullets,
-    });
+    const textBlocks = normalizeEditableTextBlocks(args.textBlocks);
     const nextSpec = {
       ...spec,
       slides: spec.slides.map((slide) =>

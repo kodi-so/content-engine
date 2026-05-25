@@ -1,4 +1,7 @@
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   ArrowLeft,
   ArrowRight,
   ChevronLeft,
@@ -6,11 +9,13 @@ import {
   Edit3,
   FileText,
   Image,
+  Plus,
   Send,
   RefreshCw,
   Trash2,
+  Type,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import type {
   CanonicalSlideshowSlide,
   CanonicalSlideshowSpec,
@@ -99,6 +104,15 @@ const editorLabelClass =
 const editorInputClass =
   "w-full min-w-0 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-[var(--space-3)] text-[0.9rem] text-[var(--color-ink)] focus:border-[var(--color-primary)] focus:shadow-[var(--focus-ring)] focus:outline-none";
 
+const textWorkspaceInspectorClass =
+  "flex max-h-[38.75rem] min-h-[29rem] w-full flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-sm)] max-[1079px]:max-h-none max-[1079px]:min-h-0";
+
+const rangeClass =
+  "h-2 w-full accent-[var(--color-primary)]";
+
+const colorInputClass =
+  "h-9 w-12 cursor-pointer rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1";
+
 function centerItemInScrollContainer({
   behavior,
   container,
@@ -148,6 +162,96 @@ function slideTitle(slide: CanonicalSlideshowSlide) {
 function blockText(block: SlideshowTextBlock) {
   if (block.text?.trim()) return block.text.trim();
   return block.items?.filter(Boolean).join("\n") ?? "";
+}
+
+function textBlockId(block: SlideshowTextBlock, index: number) {
+  return block.id || `text-${index}`;
+}
+
+function normalizedTextBlock(block: SlideshowTextBlock, index: number): SlideshowTextBlock {
+  const text = blockText(block) || "Add text here";
+  const isPrimary = index === 0;
+  const role = isPrimary ? "headline" : "body";
+
+  return {
+    ...block,
+    id: textBlockId(block, index),
+    role,
+    text,
+    items: [],
+    emphasis: isPrimary ? "primary" : "secondary",
+    x: typeof block.x === "number" ? block.x : 10,
+    y: typeof block.y === "number" ? block.y : isPrimary ? 42 : 56,
+    width: typeof block.width === "number" ? block.width : 80,
+    align: block.align ?? "center",
+    fontSize: typeof block.fontSize === "number" ? block.fontSize : isPrimary ? 72 : 46,
+    fontWeight: typeof block.fontWeight === "number" ? block.fontWeight : isPrimary ? 800 : 700,
+    color: block.color ?? "#FFFFFF",
+    strokeColor: block.strokeColor ?? "#000000",
+    strokeWidth: typeof block.strokeWidth === "number" ? block.strokeWidth : 16,
+    backgroundStyle: block.backgroundStyle ?? "none",
+    backgroundColor: block.backgroundColor ?? "#FFFFFF",
+    backgroundOpacity: block.backgroundStyle === "solid" ? block.backgroundOpacity ?? 1 : 0,
+  };
+}
+
+function normalizedTextBlocks(slide: CanonicalSlideshowSlide): SlideshowTextBlock[] {
+  const source = slide.textBlocks?.length
+    ? slide.textBlocks
+    : [{ role: "headline" as const, text: slide.visibleText || slide.purpose || "Add text here", items: [], emphasis: "primary" as const }];
+  return source.map(normalizedTextBlock).filter((block) => blockText(block));
+}
+
+function textBlockCss(block: SlideshowTextBlock, thumbnail: boolean): CSSProperties {
+  const fontSize = Math.max(20, block.fontSize ?? 72);
+  const strokeWidth = Math.max(0, block.strokeWidth ?? 0);
+  const scale = thumbnail ? 0.55 : 1;
+
+  return {
+    left: `${block.x ?? 10}%`,
+    top: `${block.y ?? 42}%`,
+    width: `${block.width ?? 80}%`,
+    color: block.color ?? "#FFFFFF",
+    fontSize: `${(fontSize * scale / 1080) * 100}cqw`,
+    fontWeight: block.fontWeight ?? 800,
+    textAlign: block.align ?? "center",
+    WebkitTextStrokeColor: block.strokeColor ?? "#000000",
+    WebkitTextStrokeWidth: `${(strokeWidth * scale / 1080) * 100}cqw`,
+  };
+}
+
+function textBlockInlineCss(block: SlideshowTextBlock): CSSProperties {
+  const backgroundIsSolid = block.backgroundStyle === "solid";
+
+  return {
+    backgroundColor: backgroundIsSolid
+      ? `${block.backgroundColor ?? "#FFFFFF"}${Math.round((block.backgroundOpacity ?? 1) * 255).toString(16).padStart(2, "0")}`
+      : "transparent",
+    borderRadius: backgroundIsSolid ? "1.35cqw" : undefined,
+    boxDecorationBreak: "clone",
+    WebkitBoxDecorationBreak: "clone",
+  };
+}
+
+function newTextBlock(index: number): SlideshowTextBlock {
+  return normalizedTextBlock({
+    id: `text-${Date.now()}`,
+    role: index === 0 ? "headline" : "body",
+    text: "Add text here",
+    items: [],
+    emphasis: index === 0 ? "primary" : "secondary",
+    x: 16,
+    y: Math.min(82, 38 + index * 12),
+    width: 68,
+    align: "center",
+    fontSize: index === 0 ? 72 : 48,
+    fontWeight: 800,
+    color: "#FFFFFF",
+    strokeColor: "#000000",
+    strokeWidth: 16,
+    backgroundStyle: "none",
+    backgroundColor: "#FFFFFF",
+  }, index);
 }
 
 function inferPromptSection(content: string): { heading?: string; body: string } {
@@ -263,35 +367,10 @@ function AutoHeightTextarea({
   );
 }
 
-function textZoneClass(slide: CanonicalSlideshowSlide) {
-  const textZone = slide.layout?.textZone;
-  if (textZone === "top") return "top-[14%] content-start";
-  if (textZone === "bottom") return "bottom-[14%] content-end";
-  return "top-1/2 content-center -translate-y-1/2";
-}
-
 function contrastOverlayClass(contrast: NonNullable<CanonicalSlideshowSlide["layout"]>["contrast"]) {
   if (contrast === "shadow") return "bg-[oklch(0%_0_0_/_0.16)]";
   if (contrast === "solid_scrim") return "bg-[oklch(0%_0_0_/_0.48)]";
   return "bg-[linear-gradient(180deg,oklch(0%_0_0_/_0.54),transparent_30%,transparent_60%,oklch(0%_0_0_/_0.64)),oklch(0%_0_0_/_0.14)]";
-}
-
-function liveTextBlockClass(block: SlideshowTextBlock, thumbnail: boolean) {
-  const isPrimary =
-    block.role === "headline" ||
-    block.role === "cta" ||
-    block.emphasis === "primary";
-
-  if (thumbnail) {
-    return "mx-auto line-clamp-2 max-w-full overflow-hidden text-ellipsis whitespace-pre-line text-[0.44rem] font-extrabold leading-[1.05] [overflow-wrap:anywhere] [paint-order:stroke_fill] [-webkit-box-orient:vertical] [-webkit-text-stroke-color:oklch(0%_0_0_/_0.86)] [-webkit-text-stroke-width:0.45px]";
-  }
-
-  return cx(
-    "mx-auto max-w-full whitespace-pre-line font-extrabold leading-[1.08] [overflow-wrap:anywhere] [paint-order:stroke_fill] [-webkit-text-stroke-color:oklch(0%_0_0_/_0.86)]",
-    isPrimary
-      ? "text-[clamp(1.05rem,8cqw,2.35rem)] [-webkit-text-stroke-width:1.6px]"
-      : "text-[clamp(0.7rem,3.8cqw,1.15rem)] leading-[1.18] [-webkit-text-stroke-width:1.1px]"
-  );
 }
 
 function LiveSlideFrame({
@@ -300,22 +379,83 @@ function LiveSlideFrame({
   total,
   renderingMode,
   thumbnail = false,
+  editable = false,
+  selectedBlockId,
+  onSelectBlock,
+  onChangeBlockText,
+  onPatchBlock,
+  onBeginTextEdit,
 }: {
   slide: CanonicalSlideshowSlide;
   index: number;
   total: number;
   renderingMode?: CanonicalSlideshowSpec["renderingMode"];
   thumbnail?: boolean;
+  editable?: boolean;
+  selectedBlockId?: string;
+  onSelectBlock?: (blockId: string) => void;
+  onChangeBlockText?: (blockId: string, text: string) => void;
+  onPatchBlock?: (blockId: string, patch: Partial<SlideshowTextBlock>) => void;
+  onBeginTextEdit?: (blockId: string) => void;
 }) {
   const slideRenderingMode = slide.renderingMode ?? renderingMode;
   const blocks = slideRenderingMode === "background_plus_overlay"
-    ? slide.textBlocks?.filter((block) => blockText(block)) ?? []
+    ? normalizedTextBlocks(slide)
     : [];
   const contrast = slide.layout?.contrast ?? "gradient_scrim";
   const isFullGraphic = slideRenderingMode === "full_graphic_generation";
+  const dragRef = useRef<{
+    blockId: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    rect: DOMRect;
+  } | null>(null);
+
+  const startDrag = (
+    event: PointerEvent<HTMLDivElement>,
+    block: SlideshowTextBlock,
+    blockId: string
+  ) => {
+    if (!editable || !onPatchBlock) return;
+    if ((event.target as HTMLElement).isContentEditable) return;
+    const frame = event.currentTarget.closest("[data-slide-frame]");
+    const rect = frame?.getBoundingClientRect();
+    if (!rect) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      blockId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: block.x ?? 10,
+      originY: block.y ?? 42,
+      rect,
+    };
+    onSelectBlock?.(blockId);
+  };
+
+  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !onPatchBlock) return;
+    const deltaX = ((event.clientX - drag.startX) / drag.rect.width) * 100;
+    const deltaY = ((event.clientY - drag.startY) / drag.rect.height) * 100;
+    onPatchBlock(drag.blockId, {
+      x: Math.min(Math.max(drag.originX + deltaX, 0), 96),
+      y: Math.min(Math.max(drag.originY + deltaY, 0), 96),
+    });
+  };
+
+  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+  };
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[oklch(13%_0.028_220)] [container-type:inline-size]">
+    <div data-slide-frame className="relative h-full w-full overflow-hidden bg-[oklch(13%_0.028_220)] [container-type:inline-size]">
       {slide.backgroundImageUrl ? (
         <img
           className="absolute inset-0 h-full w-full object-cover"
@@ -328,33 +468,66 @@ function LiveSlideFrame({
       {!thumbnail && !isFullGraphic && contrast !== "none" && (
         <div className={cx("absolute inset-0", contrastOverlayClass(contrast))} />
       )}
-      {!thumbnail && !isFullGraphic && (
-        <div
-          className={cx(
-            "absolute z-10 grid text-center text-white",
-            thumbnail
-              ? "inset-x-[8%] gap-0.5 [text-shadow:0_1px_3px_oklch(0%_0_0_/_0.6)]"
-              : "inset-x-[8%] gap-[var(--space-3)] [text-shadow:0_2px_8px_oklch(0%_0_0_/_0.35)]",
-            textZoneClass(slide)
-          )}
-        >
-          {blocks.map((block, blockIndex) => (
-            <div
-              className={liveTextBlockClass(block, thumbnail)}
-              key={`${block.role ?? "block"}-${blockIndex}`}
-            >
-              {block.items?.length ? (
-                <ul className="grid list-none gap-[var(--space-2)] p-0 m-0">
-                  {block.items.map((item, itemIndex) => (
-                    <li key={`${item}-${itemIndex}`}>{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                block.text
-              )}
-            </div>
-          ))}
-        </div>
+      {!isFullGraphic && (
+        <>
+          {blocks.map((block, blockIndex) => {
+            const blockId = textBlockId(block, blockIndex);
+            const selected = editable && selectedBlockId === blockId;
+            return (
+              <div
+                className={cx(
+                  "absolute z-10 whitespace-pre-line font-extrabold leading-[1.08] [overflow-wrap:anywhere] [paint-order:stroke_fill]",
+                  "text-[length:inherit] [-webkit-text-stroke-color:inherit] [-webkit-text-stroke-width:inherit]",
+                  editable && "cursor-move outline outline-1 outline-offset-1 outline-white/55",
+                  !editable && onBeginTextEdit && "cursor-text",
+                  selected && "outline-2 outline-[var(--color-primary)]"
+                )}
+                key={blockId}
+                style={textBlockCss(block, thumbnail)}
+                onPointerDown={(event) => startDrag(event, block, blockId)}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                onClick={(event) => {
+                  if (!editable) {
+                    if (!onBeginTextEdit) return;
+                    event.stopPropagation();
+                    onBeginTextEdit?.(blockId);
+                    return;
+                  }
+                  event.stopPropagation();
+                  onSelectBlock?.(blockId);
+                }}
+              >
+                {selected && (
+                  <div
+                    className="absolute -left-2 -top-2 size-4 rounded-full border-2 border-white bg-[var(--color-primary)] shadow-[var(--shadow-sm)]"
+                    onPointerDown={(event) => startDrag(event, block, blockId)}
+                  />
+                )}
+                {editable && !thumbnail ? (
+                  <div
+                    className="inline min-h-[1.3em] cursor-text px-[1.65cqw] py-[0.62cqw] outline-none [-webkit-box-decoration-break:clone] [box-decoration-break:clone]"
+                    contentEditable
+                    style={textBlockInlineCss(block)}
+                    suppressContentEditableWarning
+                    onInput={(event) => onChangeBlockText?.(blockId, event.currentTarget.innerText)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {block.text}
+                  </div>
+                ) : (
+                  <span
+                    className="inline px-[1.65cqw] py-[0.62cqw] [-webkit-box-decoration-break:clone] [box-decoration-break:clone]"
+                    style={textBlockInlineCss(block)}
+                  >
+                    {blockText(block)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </>
       )}
       {!thumbnail && (
         <div className={cx("absolute bottom-[var(--space-3)] right-[var(--space-3)] bg-[oklch(100%_0.002_232_/_0.92)]", statusPillClass)}>
@@ -519,7 +692,7 @@ export function CreateSlideshowPreview({
   onMoveSlide?: (slide: CanonicalSlideshowSlide, direction: "left" | "right") => Promise<void>;
   onUpdateSlideText?: (
     slide: CanonicalSlideshowSlide,
-    args: { primaryText: string; secondaryText?: string; bullets: string[] }
+    args: { textBlocks: SlideshowTextBlock[] }
   ) => Promise<void>;
   onRegenerateSlideImage?: (
     slide: CanonicalSlideshowSlide,
@@ -536,7 +709,7 @@ export function CreateSlideshowPreview({
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const previewTrackRef = useRef<HTMLDivElement | null>(null);
-  const previewSlideRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const previewSlideRefs = useRef<Array<HTMLElement | null>>([]);
   const thumbnailTrackRef = useRef<HTMLDivElement | null>(null);
   const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const hasCenteredPreviewOnce = useRef(false);
@@ -546,21 +719,14 @@ export function CreateSlideshowPreview({
   const [useReferenceImage, setUseReferenceImage] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [isEditingText, setIsEditingText] = useState(false);
-  const [primaryText, setPrimaryText] = useState("");
-  const [secondaryText, setSecondaryText] = useState("");
-  const [bulletsText, setBulletsText] = useState("");
+  const [localTextBlocks, setLocalTextBlocks] = useState<SlideshowTextBlock[]>([]);
+  const [selectedTextBlockId, setSelectedTextBlockId] = useState("");
   const activeSlide = slides[Math.min(activeIndex, Math.max(slides.length - 1, 0))];
   const activeRenderingMode = activeSlide?.renderingMode ?? spec.renderingMode ?? "background_plus_overlay";
   const isFullGraphic = activeRenderingMode === "full_graphic_generation";
-  const headlineBlock = !isFullGraphic
-    ? activeSlide?.textBlocks?.find((block) => block.role === "headline" || block.role === "cta")
-    : undefined;
-  const bodyBlock = !isFullGraphic
-    ? activeSlide?.textBlocks?.find((block) => block.role === "body")
-    : undefined;
-  const bulletBlock = !isFullGraphic
-    ? activeSlide?.textBlocks?.find((block) => block.role === "bullet_list")
-    : undefined;
+  const selectedTextBlock = localTextBlocks.find((block, index) =>
+    textBlockId(block, index) === selectedTextBlockId
+  );
   const imagePrompt = activeSlide
     ? activeRenderingMode === "full_graphic_generation"
       ? activeSlide.finalImagePrompt
@@ -578,6 +744,13 @@ export function CreateSlideshowPreview({
       setActiveIndex(Math.max(slides.length - 1, 0));
     }
   }, [activeIndex, slides.length]);
+
+  useEffect(() => {
+    if (!isEditingText || !activeSlide || isFullGraphic) return;
+    const blocks = normalizedTextBlocks(activeSlide);
+    setLocalTextBlocks(blocks);
+    setSelectedTextBlockId(textBlockId(blocks[0], 0));
+  }, [activeSlide?.slideId, isEditingText, isFullGraphic]);
 
   useEffect(() => {
     const track = previewTrackRef.current;
@@ -619,26 +792,87 @@ export function CreateSlideshowPreview({
     setTouchStart(null);
   };
 
-  const beginTextEdit = () => {
+  const beginTextEdit = (targetBlockId?: string) => {
     if (isFullGraphic) return;
-    setPrimaryText(headlineBlock?.text ?? "");
-    setSecondaryText(bodyBlock?.text ?? "");
-    setBulletsText((bulletBlock?.items ?? []).join("\n"));
+    const blocks = normalizedTextBlocks(activeSlide);
+    setLocalTextBlocks(blocks);
+    const hasTarget = targetBlockId && blocks.some((block, index) => textBlockId(block, index) === targetBlockId);
+    setSelectedTextBlockId(hasTarget ? targetBlockId : textBlockId(blocks[0], 0));
     setIsEditingText(true);
   };
 
   const saveTextEdit = async () => {
-    if (!onUpdateSlideText || !primaryText.trim()) return;
+    if (!onUpdateSlideText || !localTextBlocks.some((block) => blockText(block))) return;
 
     await onUpdateSlideText(activeSlide, {
-      primaryText: primaryText.trim(),
-      secondaryText: secondaryText.trim() || undefined,
-      bullets: bulletsText
-        .split("\n")
-        .map((item) => item.trim())
-        .filter(Boolean),
+      textBlocks: localTextBlocks
+        .map((block, index) => normalizedTextBlock(block, index))
+        .filter((block) => blockText(block)),
     });
     setIsEditingText(false);
+  };
+
+  const patchTextBlock = (blockId: string, patch: Partial<SlideshowTextBlock>) => {
+    setLocalTextBlocks((current) =>
+      current.map((block, index) =>
+        textBlockId(block, index) === blockId ? { ...block, ...patch } : block
+      )
+    );
+  };
+
+  const updateTextBlockText = (blockId: string, text: string) => {
+    patchTextBlock(blockId, { text });
+  };
+
+  const addTextBlock = () => {
+    setLocalTextBlocks((current) => {
+      const block = newTextBlock(current.length);
+      setSelectedTextBlockId(textBlockId(block, current.length));
+      return [...current, block];
+    });
+    setIsEditingText(true);
+  };
+
+  const deleteSelectedTextBlock = () => {
+    setLocalTextBlocks((current) => {
+      if (current.length <= 1) return current;
+      const next = current.filter((block, index) => textBlockId(block, index) !== selectedTextBlockId);
+      setSelectedTextBlockId(next[0] ? textBlockId(next[0], 0) : "");
+      return next;
+    });
+  };
+
+  const patchSelectedTextBlock = (patch: Partial<SlideshowTextBlock>) => {
+    if (!selectedTextBlockId) return;
+    patchTextBlock(selectedTextBlockId, patch);
+  };
+
+  const patchBackgroundBox = (enabled: boolean) => {
+    patchSelectedTextBlock(enabled
+      ? {
+          backgroundStyle: "solid",
+          backgroundColor: "#FFFFFF",
+          backgroundOpacity: 1,
+          color: "#000000",
+          strokeWidth: 0,
+        }
+      : {
+          backgroundStyle: "none",
+          backgroundOpacity: 0,
+          color: "#FFFFFF",
+          strokeColor: "#000000",
+          strokeWidth: 16,
+        });
+  };
+
+  const patchBackgroundColor = (color: string) => {
+    const normalizedColor = color.toUpperCase();
+    patchSelectedTextBlock({
+      backgroundColor: normalizedColor,
+      ...(normalizedColor === "#FFFFFF"
+        ? { color: "#000000", strokeWidth: 0 }
+        : {}),
+    });
   };
 
   const regenerateActiveImage = async () => {
@@ -662,6 +896,150 @@ export function CreateSlideshowPreview({
     await onUpdateSlideImagePrompt(activeSlide, prompt);
   };
 
+  const textSettingsPanel = isEditingText ? (
+    <aside className={textWorkspaceInspectorClass} aria-label="Text settings">
+      <div className="grid min-h-0 flex-1 content-start gap-[var(--space-3)] overflow-y-auto p-[var(--space-4)]">
+        <div className="entity-eyebrow">
+          <Type size={13} />
+          Text blocks
+        </div>
+        <div className="grid gap-[var(--space-2)]">
+          {localTextBlocks.map((block, index) => {
+            const blockId = textBlockId(block, index);
+            return (
+              <button
+                className={cx(
+                  "min-w-0 truncate rounded-[var(--radius-md)] border px-[var(--space-3)] py-[var(--space-2)] text-left text-[0.8rem] font-[650]",
+                  selectedTextBlockId === blockId
+                    ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)]"
+                )}
+                key={blockId}
+                type="button"
+                onClick={() => setSelectedTextBlockId(blockId)}
+              >
+                {blockText(block)}
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedTextBlock ? (
+          <>
+            <div className="entity-eyebrow border-t border-[var(--color-border)] pt-[var(--space-3)]">
+              <Edit3 size={13} />
+              Selected text
+            </div>
+            <label className={editorLabelClass}>
+              <span>Text</span>
+              <textarea
+                className={editorInputClass}
+                value={selectedTextBlock.text ?? ""}
+                rows={3}
+                onChange={(event) => patchSelectedTextBlock({ text: event.target.value })}
+              />
+            </label>
+            <div className="grid content-end gap-[var(--space-2)]">
+              <span className="text-[0.86rem] font-[650] text-[var(--color-ink)]">Align</span>
+              <div className="flex gap-[var(--space-1)]" aria-label="Text alignment">
+                {[
+                  { value: "left", icon: AlignLeft },
+                  { value: "center", icon: AlignCenter },
+                  { value: "right", icon: AlignRight },
+                ].map(({ value, icon: Icon }) => (
+                  <button
+                    className={cx(
+                      "grid size-9 place-items-center rounded-[var(--radius-md)] border",
+                      selectedTextBlock.align === value
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink-muted)]"
+                    )}
+                    key={value}
+                    type="button"
+                    onClick={() => patchSelectedTextBlock({ align: value as SlideshowTextBlock["align"] })}
+                  >
+                    <Icon size={16} />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-[var(--space-2)]">
+              <label className={editorLabelClass}>
+                <span>X: {Math.round(selectedTextBlock.x ?? 0)}%</span>
+                <input className={rangeClass} type="range" min={0} max={88} value={selectedTextBlock.x ?? 0} onChange={(event) => patchSelectedTextBlock({ x: Number(event.target.value) })} />
+              </label>
+              <label className={editorLabelClass}>
+                <span>Y: {Math.round(selectedTextBlock.y ?? 0)}%</span>
+                <input className={rangeClass} type="range" min={0} max={92} value={selectedTextBlock.y ?? 42} onChange={(event) => patchSelectedTextBlock({ y: Number(event.target.value) })} />
+              </label>
+            </div>
+            <label className={editorLabelClass}>
+              <span>Width: {Math.round(selectedTextBlock.width ?? 80)}%</span>
+              <input className={rangeClass} type="range" min={12} max={100} value={selectedTextBlock.width ?? 80} onChange={(event) => patchSelectedTextBlock({ width: Number(event.target.value) })} />
+            </label>
+            <div className="grid grid-cols-2 gap-[var(--space-2)]">
+              <label className={editorLabelClass}>
+                <span>Size: {Math.round(selectedTextBlock.fontSize ?? 72)}px</span>
+                <input className={rangeClass} type="range" min={20} max={150} value={selectedTextBlock.fontSize ?? 72} onChange={(event) => patchSelectedTextBlock({ fontSize: Number(event.target.value) })} />
+              </label>
+              <label className={editorLabelClass}>
+                <span>Weight: {Math.round(selectedTextBlock.fontWeight ?? 800)}</span>
+                <input className={rangeClass} type="range" min={400} max={900} step={100} value={selectedTextBlock.fontWeight ?? 800} onChange={(event) => patchSelectedTextBlock({ fontWeight: Number(event.target.value) })} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-[var(--space-2)]">
+              <div className={editorLabelClass}>
+                <span>Color</span>
+                <input className={colorInputClass} type="color" value={selectedTextBlock.color ?? "#FFFFFF"} onChange={(event) => patchSelectedTextBlock({ color: event.target.value })} />
+              </div>
+              <div className={editorLabelClass}>
+                <span>Stroke</span>
+                <input className={colorInputClass} type="color" value={selectedTextBlock.strokeColor ?? "#000000"} onChange={(event) => patchSelectedTextBlock({ strokeColor: event.target.value })} />
+              </div>
+            </div>
+            <label className={editorLabelClass}>
+              <span>Stroke width: {Math.round(selectedTextBlock.strokeWidth ?? 16)}px</span>
+              <input className={rangeClass} type="range" min={0} max={48} value={selectedTextBlock.strokeWidth ?? 16} onChange={(event) => patchSelectedTextBlock({ strokeWidth: Number(event.target.value) })} />
+            </label>
+            <label className="flex items-center gap-[var(--space-2)] text-[0.86rem] font-[650] text-[var(--color-ink)]">
+              <input
+                checked={selectedTextBlock.backgroundStyle === "solid"}
+                className="size-4 accent-[var(--color-primary)]"
+                type="checkbox"
+                onChange={(event) => patchBackgroundBox(event.target.checked)}
+              />
+              <span>Background box</span>
+            </label>
+            {selectedTextBlock.backgroundStyle === "solid" && (
+              <div className={editorLabelClass}>
+                <span>Background color</span>
+                <input className={colorInputClass} type="color" value={selectedTextBlock.backgroundColor ?? "#FFFFFF"} onChange={(event) => patchBackgroundColor(event.target.value)} />
+              </div>
+            )}
+          </>
+        ) : (
+          <p className={inspectorTextClass}>Select a text block on the slide.</p>
+        )}
+      </div>
+
+      <div className="flex shrink-0 flex-wrap gap-[var(--space-2)] border-t border-[var(--color-border)] bg-[var(--color-surface-raised)] px-[var(--space-4)] py-[var(--space-3)]">
+        <button className="secondary-button" type="button" onClick={addTextBlock}>
+          <Plus size={16} />
+          Add
+        </button>
+        <button className="primary-button" type="button" disabled={!localTextBlocks.some((block) => blockText(block))} onClick={() => void saveTextEdit()}>
+          Save
+        </button>
+        <button className="secondary-button" type="button" onClick={() => setIsEditingText(false)}>
+          Cancel
+        </button>
+        <button className="danger-button" type="button" disabled={localTextBlocks.length <= 1} onClick={deleteSelectedTextBlock}>
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </aside>
+  ) : null;
+
   return (
     <article className={createBundleCardClass}>
       <div className={bundleHeaderClass}>
@@ -675,7 +1053,14 @@ export function CreateSlideshowPreview({
         </div>
       </div>
 
-      <div className="grid items-center gap-[var(--space-3)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[radial-gradient(circle_at_18%_20%,oklch(100%_0_0_/_0.75),transparent_24%),linear-gradient(135deg,var(--color-page)_0%,var(--color-page-quiet)_100%)] px-[var(--space-3)] py-[var(--space-5)] min-[901px]:grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] max-[900px]:grid-cols-1">
+      <div
+        className={cx(
+          "grid items-center gap-[var(--space-3)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[radial-gradient(circle_at_18%_20%,oklch(100%_0_0_/_0.75),transparent_24%),linear-gradient(135deg,var(--color-page)_0%,var(--color-page-quiet)_100%)] px-[var(--space-3)] py-[var(--space-5)] max-[900px]:grid-cols-1",
+          isEditingText
+            ? "min-[901px]:grid-cols-[2.75rem_minmax(0,1fr)_18rem_2.75rem]"
+            : "min-[901px]:grid-cols-[2.75rem_minmax(0,1fr)_2.75rem]"
+        )}
+      >
         <button
           className={navButtonClass}
           type="button"
@@ -686,40 +1071,75 @@ export function CreateSlideshowPreview({
           <ChevronLeft size={22} />
         </button>
         <div
-          className="flex min-h-[29rem] max-h-[38.75rem] items-center gap-[var(--space-4)] overflow-x-auto [padding-left:max(0px,calc(50%_-_7.8125rem))] [padding-right:max(0px,calc(75%_-_7.8125rem))] [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden"
+          className={cx(
+            "min-h-[29rem] max-h-[38.75rem] items-center gap-[var(--space-4)] overflow-x-auto [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden",
+            isEditingText
+              ? "grid place-items-center overflow-hidden px-[var(--space-2)]"
+              : "flex [padding-left:max(0px,calc(50%_-_7.8125rem))] [padding-right:max(0px,calc(75%_-_7.8125rem))]"
+          )}
           ref={previewTrackRef}
         >
-          {slides.map((slide, index) => (
-            <button
-              className={cx(
-                "grid w-[15.625rem] shrink-0 cursor-pointer place-items-center border-0 bg-transparent p-0 [scroll-snap-align:center] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)]",
-                index === activeIndex ? "scale-100 opacity-100" : "scale-[0.72] opacity-[0.58]"
-              )}
-              key={slide.slideId}
-              ref={(node) => {
-                previewSlideRefs.current[index] = node;
-              }}
-              type="button"
-              onClick={() => {
-                setActiveIndex(index);
-                setShowImagePrompt(false);
-                setIsEditingText(false);
-              }}
-            >
+          {slides.map((slide, index) => {
+            const isActive = index === activeIndex;
+            if (isEditingText && !isActive) return null;
+            const slideForFrame = isActive && isEditingText
+              ? { ...slide, textBlocks: localTextBlocks }
+              : slide;
+            const frame = (
               <div
                 className={cx(
                   phoneFrameClass,
                   "w-full min-h-0",
-                  index === activeIndex ? "" : "border-4"
+                  isActive ? "" : "border-4"
                 )}
                 onTouchStart={(event) => setTouchStart(event.touches[0]?.clientX ?? null)}
                 onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
               >
-                <LiveSlideFrame slide={slide} index={index} total={slides.length} renderingMode={spec.renderingMode} />
+                <LiveSlideFrame
+                  slide={slideForFrame}
+                  index={index}
+                  total={slides.length}
+                  renderingMode={spec.renderingMode}
+                  editable={isActive && isEditingText}
+                  selectedBlockId={selectedTextBlockId}
+                  onSelectBlock={setSelectedTextBlockId}
+                  onChangeBlockText={updateTextBlockText}
+                  onPatchBlock={patchTextBlock}
+                  onBeginTextEdit={isActive && !isFullGraphic ? beginTextEdit : undefined}
+                />
               </div>
-            </button>
-          ))}
+            );
+
+            return isActive ? (
+              <div
+                className="grid w-[15.625rem] shrink-0 place-items-center border-0 bg-transparent p-0 [scroll-snap-align:center] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)]"
+                key={slide.slideId}
+                ref={(node) => {
+                  previewSlideRefs.current[index] = node;
+                }}
+              >
+                {frame}
+              </div>
+            ) : (
+              <button
+                className="grid w-[15.625rem] shrink-0 cursor-pointer place-items-center border-0 bg-transparent p-0 [scroll-snap-align:center] scale-[0.72] opacity-[0.58] transition-[background-color,border-color,box-shadow,color,opacity,transform] duration-[180ms] ease-[var(--ease-out)]"
+                key={slide.slideId}
+                ref={(node) => {
+                  previewSlideRefs.current[index] = node;
+                }}
+                type="button"
+                onClick={() => {
+                  setActiveIndex(index);
+                  setShowImagePrompt(false);
+                  setIsEditingText(false);
+                }}
+              >
+                {frame}
+              </button>
+            );
+          })}
         </div>
+        {textSettingsPanel}
         <button
           className={navButtonClass}
           type="button"
@@ -745,7 +1165,11 @@ export function CreateSlideshowPreview({
         </button>
         <button className={actionButtonClass} type="button" disabled={isFullGraphic} onClick={beginTextEdit}>
           <Edit3 size={16} />
-          Edit text
+          {isEditingText ? "Editing text" : "Edit text"}
+        </button>
+        <button className={actionButtonClass} type="button" disabled={isFullGraphic} onClick={addTextBlock}>
+          <Plus size={16} />
+          Add text
         </button>
         <button
           className={actionButtonClass}
@@ -814,31 +1238,6 @@ export function CreateSlideshowPreview({
             >
               <RefreshCw size={16} />
               {isRegeneratingImage ? "Regenerating..." : "Regenerate slide image"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isEditingText && (
-        <div className={inspectorClass}>
-          <label className={editorLabelClass}>
-            <span>Primary text</span>
-            <input className={editorInputClass} value={primaryText} onChange={(event) => setPrimaryText(event.target.value)} />
-          </label>
-          <label className={editorLabelClass}>
-            <span>Secondary text</span>
-            <textarea className={editorInputClass} value={secondaryText} onChange={(event) => setSecondaryText(event.target.value)} rows={2} />
-          </label>
-          <label className={editorLabelClass}>
-            <span>Bullets, one per line</span>
-            <textarea className={editorInputClass} value={bulletsText} onChange={(event) => setBulletsText(event.target.value)} rows={3} />
-          </label>
-          <div className="button-row">
-            <button className="primary-button" type="button" disabled={!primaryText.trim()} onClick={() => void saveTextEdit()}>
-              Save text
-            </button>
-            <button className="secondary-button" type="button" onClick={() => setIsEditingText(false)}>
-              Cancel
             </button>
           </div>
         </div>

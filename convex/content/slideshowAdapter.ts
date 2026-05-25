@@ -47,10 +47,30 @@ function isTextBlock(value: unknown): value is SlideshowTextBlock {
   const block = value as Record<string, unknown>;
   return (
     typeof block.role === "string" &&
-    typeof block.text === "string" &&
-    Array.isArray(block.items) &&
-    typeof block.emphasis === "string"
+    typeof block.text === "string"
   );
+}
+
+function normalizeTextBlock(block: SlideshowTextBlock, index: number): SlideshowTextBlock {
+  const isPrimary = block.role === "headline" || block.role === "cta" || index === 0;
+  return {
+    ...block,
+    id: block.id ?? `text-${index + 1}`,
+    items: block.items ?? [],
+    emphasis: block.emphasis ?? (isPrimary ? "primary" : block.role === "eyebrow" ? "muted" : "secondary"),
+    x: block.x ?? 10,
+    y: block.y ?? (isPrimary ? 42 : 56),
+    width: block.width ?? 80,
+    align: block.align ?? "center",
+    fontSize: block.fontSize ?? (isPrimary ? 72 : 46),
+    fontWeight: block.fontWeight ?? (isPrimary ? 800 : 700),
+    color: block.color ?? "#FFFFFF",
+    strokeColor: block.strokeColor ?? "#000000",
+    strokeWidth: block.strokeWidth ?? (isPrimary ? 5 : 3),
+    backgroundStyle: block.backgroundStyle ?? "none",
+    backgroundColor: block.backgroundColor ?? "#FFFFFF",
+    backgroundOpacity: block.backgroundStyle === "solid" ? block.backgroundOpacity ?? 1 : 0,
+  };
 }
 
 function textBlocksFromCopy(args: {
@@ -94,6 +114,7 @@ export function slideFromCopy(args: {
   const role = normalizeSlideRole(args.role);
   const existingBlocks = Array.isArray(args.textBlocks)
     ? args.textBlocks.filter(isTextBlock)
+        .map((block, index) => normalizeTextBlock(block, index))
     : [];
 
   return {

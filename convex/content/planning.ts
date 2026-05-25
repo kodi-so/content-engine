@@ -14,6 +14,8 @@ import type {
   SlideshowSlideRole,
   SlideshowTextBlock,
   SlideshowPlannerOutput,
+  TextBlockAlign,
+  TextBlockBackgroundStyle,
   TextDensity,
   TextPlacement,
 } from "./types";
@@ -73,21 +75,15 @@ function requiredBoolean(value: unknown, label: string): boolean {
   return value;
 }
 
-function optionalString(value: unknown, label: string): string {
-  if (value === undefined || value === null) return "";
-  if (typeof value !== "string") {
-    failPlanning(`${label} must be a string`);
+function requiredNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    failPlanning(`${label} must be a finite number`);
   }
-  return value.trim();
+  return value;
 }
 
-function requiredStringArray(value: unknown, label: string, maxItems: number): string[] {
-  if (!Array.isArray(value)) {
-    failPlanning(`${label} must be an array`);
-  }
-  return value
-    .map((item, index) => requiredString(item, `${label}[${index}]`))
-    .slice(0, maxItems);
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 function requiredArray(value: unknown, label: string): unknown[] {
@@ -112,6 +108,16 @@ function requiredDensity(value: unknown, label: string): TextDensity {
 function requiredContrast(value: unknown, label: string): ContrastStrategy {
   if (value === "none" || value === "shadow" || value === "gradient_scrim" || value === "solid_scrim") return value;
   failPlanning(`${label} must be none, shadow, gradient_scrim, or solid_scrim`);
+}
+
+function requiredTextAlign(value: unknown, label: string): TextBlockAlign {
+  if (value === "left" || value === "center" || value === "right") return value;
+  failPlanning(`${label} must be left, center, or right`);
+}
+
+function requiredBackgroundStyle(value: unknown, label: string): TextBlockBackgroundStyle {
+  if (value === "none" || value === "solid") return value;
+  failPlanning(`${label} must be none or solid`);
 }
 
 function requiredAspectRatio(value: unknown): SlideshowPlan["aspectRatio"] {
@@ -150,10 +156,10 @@ function normalizeBrief(
 }
 
 function templateForSlide(
-  slide: Pick<OverlayPlannerSlide, "bullets"> & { layout: OverlayPlannerSlide["layout"] & { textPlacement: TextPlacement } },
+  slide: Pick<OverlayPlannerSlide, "textBlocks"> & { layout: OverlayPlannerSlide["layout"] & { textPlacement: TextPlacement } },
   index: number
 ): SlideTemplate {
-  if (slide.bullets.length > 0) return "checklist";
+  if (slide.textBlocks.length > 2) return "checklist";
   if (index === 0 || slide.layout.textPlacement === "center") return "center_punch";
   if (slide.layout.textPlacement === "top") return "top_hook_bottom_body";
   return "bottom_stack";
@@ -169,48 +175,56 @@ function roleForPurpose(purpose: string, index: number, total: number): Slidesho
   return "insight";
 }
 
-function textBlocksForSlide(slide: OverlayPlannerSlide, role: SlideshowSlideRole): SlideshowTextBlock[] {
-  const blocks: SlideshowTextBlock[] = [
-    {
-      role: role === "cta" ? "cta" : "headline",
-      text: clampText(slide.primaryText, 82),
-      items: [],
-      emphasis: "primary",
-    },
-  ];
+function normalizeHexColor(value: unknown, label: string, fallback: string): string {
+  const color = requiredString(value, label);
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : fallback;
+}
 
-  if (slide.bullets.length > 0) {
-    blocks.push({
-      role: "bullet_list",
-      text: "",
-      items: slide.bullets.map((item) => clampText(item, 58)).slice(0, 4),
-      emphasis: "secondary",
-    });
-  } else if (slide.secondaryText?.trim()) {
-    blocks.push({
-      role: "body",
-      text: clampText(slide.secondaryText, 150),
-      items: [],
-      emphasis: "secondary",
-    });
-  }
+function normalizeTextBlock(value: unknown, slideIndex: number, blockIndex: number): SlideshowTextBlock {
+  const data = requiredObject(value, `slides[${slideIndex}].textBlocks[${blockIndex}]`);
+  const role = blockIndex === 0 ? "headline" : "body";
+  const fontWeight = requiredNumber(data.fontWeight, `slides[${slideIndex}].textBlocks[${blockIndex}].fontWeight`);
+  const backgroundStyle = requiredBackgroundStyle(data.backgroundStyle, `slides[${slideIndex}].textBlocks[${blockIndex}].backgroundStyle`);
 
-  return blocks.filter((block) => block.text || block.items.length).slice(0, 4);
+  return {
+    id: clampText(requiredString(data.id, `slides[${slideIndex}].textBlocks[${blockIndex}].id`), 48),
+    role,
+    text: clampText(requiredString(data.text, `slides[${slideIndex}].textBlocks[${blockIndex}].text`), 180),
+    items: [],
+    emphasis: blockIndex === 0 ? "primary" : "secondary",
+    x: clampNumber(requiredNumber(data.x, `slides[${slideIndex}].textBlocks[${blockIndex}].x`), 0, 88),
+    y: clampNumber(requiredNumber(data.y, `slides[${slideIndex}].textBlocks[${blockIndex}].y`), 0, 92),
+    width: clampNumber(requiredNumber(data.width, `slides[${slideIndex}].textBlocks[${blockIndex}].width`), 12, 96),
+    align: requiredTextAlign(data.align, `slides[${slideIndex}].textBlocks[${blockIndex}].align`),
+    fontSize: clampNumber(requiredNumber(data.fontSize, `slides[${slideIndex}].textBlocks[${blockIndex}].fontSize`), 28, 128),
+    fontWeight: [400, 500, 600, 700, 800, 900].includes(fontWeight) ? fontWeight : 800,
+    color: normalizeHexColor(data.color, `slides[${slideIndex}].textBlocks[${blockIndex}].color`, "#FFFFFF"),
+    strokeColor: normalizeHexColor(data.strokeColor, `slides[${slideIndex}].textBlocks[${blockIndex}].strokeColor`, "#000000"),
+    strokeWidth: clampNumber(requiredNumber(data.strokeWidth, `slides[${slideIndex}].textBlocks[${blockIndex}].strokeWidth`), 0, 48),
+    backgroundStyle,
+    backgroundColor: backgroundStyle === "none"
+      ? "#000000"
+      : normalizeHexColor(data.backgroundColor, `slides[${slideIndex}].textBlocks[${blockIndex}].backgroundColor`, "#FFFFFF"),
+    backgroundOpacity: backgroundStyle === "none" ? 0 : 1,
+  };
 }
 
 function normalizeOverlayPlannerSlide(value: unknown, index: number): OverlayPlannerSlide {
   const data = requiredObject(value, `slides[${index}]`);
   const layout = requiredObject(data.layout, `slides[${index}].layout`);
-  const bullets = requiredStringArray(data.bullets, `slides[${index}].bullets`, 4);
-  const primaryText = requiredString(data.primaryText, `slides[${index}].primaryText`);
+  const textBlocks = requiredArray(data.textBlocks, `slides[${index}].textBlocks`)
+    .map((block, blockIndex) => normalizeTextBlock(block, index, blockIndex))
+    .filter((block) => block.text.trim())
+    .slice(0, 4);
+  if (!textBlocks.length) {
+    failPlanning(`slides[${index}].textBlocks must include at least one non-empty text block`);
+  }
 
   return {
     slideId: requiredString(data.slideId, `slides[${index}].slideId`),
     purpose: clampText(requiredString(data.purpose, `slides[${index}].purpose`), 90),
     useReferenceImage: requiredBoolean(data.useReferenceImage, `slides[${index}].useReferenceImage`),
-    primaryText: clampText(primaryText, 90),
-    secondaryText: clampText(optionalString(data.secondaryText, `slides[${index}].secondaryText`), 160),
-    bullets: bullets.map((item) => clampText(item, 58)),
+    textBlocks,
     layout: {
       intent: clampText(requiredString(layout.intent, `slides[${index}].layout.intent`), 140),
       density: requiredDensity(layout.density, `slides[${index}].layout.density`),
@@ -300,11 +314,7 @@ function overlayPromptPlannerSlide(slide: OverlayPlannerSlide) {
     slideId: slide.slideId,
     purpose: slide.purpose,
     useReferenceImage: slide.useReferenceImage,
-    sceneCues: [
-      slide.primaryText,
-      slide.secondaryText,
-      ...slide.bullets,
-    ].filter((cue): cue is string => Boolean(cue?.trim())),
+    sceneCues: slide.textBlocks.map((block) => block.text).filter((cue) => Boolean(cue.trim())),
   };
 }
 
@@ -345,9 +355,7 @@ function promptSlideForImageWriter(
     slideId: data.slideId,
     purpose: data.purpose ?? "",
     useReferenceImage: data.useReferenceImage === true,
-    primaryText: data.primaryText ?? "",
-    secondaryText: data.secondaryText,
-    bullets: Array.isArray(data.bullets) ? data.bullets : [],
+    textBlocks: Array.isArray(data.textBlocks) ? data.textBlocks as SlideshowTextBlock[] : [],
     layout: {
       intent: data.layout?.intent ?? "",
       density: data.layout?.density ?? "sparse",
@@ -379,7 +387,7 @@ function normalizeOverlayPlan(
     renderingMode: "background_plus_overlay",
     aspectRatio: shared.aspectRatio,
     title: shared.title,
-    hook: clampText(plannerSlides[0].primaryText, 120),
+    hook: clampText(plannerSlides[0].textBlocks.map((block) => block.text).join(" "), 120),
     visualSystem: shared.visualSystem,
     creativeBrief: `${shared.strategy.narrativePattern} ${shared.strategy.reasoning}`.trim(),
     strategy: shared.strategy,
@@ -396,7 +404,7 @@ function normalizeOverlayPlan(
         purpose: slide.purpose,
         useReferenceImage: slide.useReferenceImage ? true : undefined,
         backgroundPrompt: requiredString(imagePromptMap.get(slideId), `image prompt for ${slideId}`),
-        textBlocks: textBlocksForSlide(slide, role),
+        textBlocks: slide.textBlocks,
         layout: {
           intent: layout.intent,
           template: templateForSlide({ ...slide, layout }, index),
@@ -520,10 +528,11 @@ export function buildOverlayPlannerPrompt(args: PromptArgs): string {
     "- visualSystem summarizes the image style requested by the user.",
     "",
     "SLIDE COPY:",
-    "- primaryText preserves user-provided slide text when the prompt gives explicit slides.",
-    "- secondaryText represents supporting copy requested or clearly described by the user prompt.",
-    "- bullets represent checklist items requested or clearly described by the user prompt.",
-    "- For an explicit slide list with titles only, set secondaryText to an empty string and bullets to an empty array.",
+    "- Each slide has textBlocks: independent editable text boxes, not primary/secondary/bullet fields.",
+    "- Preserve user-provided slide text exactly inside textBlocks when the prompt gives explicit slides.",
+    "- Use one text block for a title-only slide. Use multiple text blocks only when the user asks for separate labels, captions, CTA text, or supporting copy.",
+    "- Give each block sensible default geometry: x/y/width as percentages of the 9:16 slide, large readable font sizes, and mobile-safe placement.",
+    "- For TikTok-style overlay copy, default to white text, 16px black stroke, high font weight, centered alignment, and no background unless the user requests a sticker/card/background.",
     "",
     "Return exactly the requested JSON schema.",
   ].filter((line) => line !== undefined).join("\n");

@@ -68,14 +68,16 @@ function drawOutlinedText(
   text: string,
   x: number,
   y: number,
-  strokeWidth: number
+  strokeWidth: number,
+  fillColor: string,
+  strokeColor: string
 ) {
   ctx.lineJoin = "round";
   ctx.miterLimit = 2;
   ctx.lineWidth = strokeWidth;
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.86)";
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = strokeColor;
+  if (strokeWidth > 0) ctx.strokeText(text, x, y);
+  ctx.fillStyle = fillColor;
   ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
   ctx.shadowBlur = Math.max(4, strokeWidth * 3);
   ctx.shadowOffsetY = Math.max(2, strokeWidth);
@@ -83,6 +85,29 @@ function drawOutlinedText(
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
+}
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.lineTo(x + width - safeRadius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  ctx.lineTo(x + width, y + height - safeRadius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  ctx.lineTo(x + safeRadius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  ctx.lineTo(x, y + safeRadius);
+  ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawTextBlocks(
@@ -94,36 +119,62 @@ function drawTextBlocks(
   const blocks = slide.textBlocks?.filter((block) => blockText(block)) ?? [];
   if (!blocks.length) return;
 
-  const maxWidth = width * 0.82;
-  const renderedLines = blocks.flatMap((block) => {
+  ctx.textBaseline = "top";
+  blocks.forEach((block, index) => {
     const isPrimary =
       block.emphasis === "primary" ||
       block.role === "headline" ||
-      block.role === "cta";
-    const fontSize = isPrimary ? Math.round(height * 0.055) : Math.round(height * 0.024);
-    ctx.font = `800 ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      block.role === "cta" ||
+      index === 0;
+    const fontSize = Math.round(block.fontSize ?? (isPrimary ? height * 0.055 : height * 0.024));
+    const fontWeight = Math.round(block.fontWeight ?? (isPrimary ? 800 : 700));
+    const maxWidth = width * ((block.width ?? 82) / 100);
+    const x = width * ((block.x ?? 9) / 100);
+    let y = height * ((block.y ?? (slide.layout?.textZone === "top" ? 14 : slide.layout?.textZone === "bottom" ? 76 : 44)) / 100);
+    const lineHeight = Math.round(fontSize * 1.12);
+
+    ctx.font = `${fontWeight} ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
     const lines = wrapText(ctx, blockText(block), maxWidth);
-    return lines.map((line) => ({
-      line,
-      fontSize,
-      lineHeight: Math.round(fontSize * 1.12),
-      strokeWidth: isPrimary ? Math.max(3, Math.round(fontSize * 0.055)) : Math.max(2, Math.round(fontSize * 0.05)),
-    }));
+    ctx.textAlign = block.align ?? "center";
+    const textX = block.align === "left"
+      ? x
+      : block.align === "right"
+        ? x + maxWidth
+        : x + maxWidth / 2;
+    for (const line of lines) {
+      const measuredWidth = ctx.measureText(line).width;
+      if (block.backgroundStyle === "solid") {
+        const paddingX = Math.round(fontSize * 0.48);
+        const paddingY = Math.round(fontSize * 0.16);
+        const backgroundX = block.align === "left"
+          ? textX - paddingX
+          : block.align === "right"
+            ? textX - measuredWidth - paddingX
+            : textX - measuredWidth / 2 - paddingX;
+        ctx.fillStyle = block.backgroundColor ?? "#FFFFFF";
+        ctx.globalAlpha = block.backgroundOpacity ?? 1;
+        drawRoundedRect(
+          ctx,
+          backgroundX,
+          y - paddingY,
+          measuredWidth + paddingX * 2,
+          lineHeight + paddingY * 2,
+          Math.round(fontSize * 0.48)
+        );
+        ctx.globalAlpha = 1;
+      }
+      drawOutlinedText(
+        ctx,
+        line,
+        textX,
+        y,
+        Math.round(block.strokeWidth ?? (isPrimary ? Math.max(3, fontSize * 0.055) : Math.max(2, fontSize * 0.05))),
+        block.color ?? "#FFFFFF",
+        block.strokeColor ?? "rgba(0, 0, 0, 0.86)"
+      );
+      y += lineHeight;
+    }
   });
-
-  const totalHeight = renderedLines.reduce((sum, line) => sum + line.lineHeight, 0);
-  const textZone = slide.layout?.textZone;
-  let y = height / 2 - totalHeight / 2;
-  if (textZone === "top") y = height * 0.14;
-  if (textZone === "bottom") y = height * 0.86 - totalHeight;
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  for (const line of renderedLines) {
-    ctx.font = `800 ${line.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    drawOutlinedText(ctx, line.line, width / 2, y, line.strokeWidth);
-    y += line.lineHeight;
-  }
 }
 
 export async function renderSlideToBlob(

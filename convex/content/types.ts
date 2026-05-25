@@ -1,5 +1,7 @@
 export type TextBlockRole = "eyebrow" | "headline" | "body" | "bullet_list" | "cta";
 export type TextBlockEmphasis = "primary" | "secondary" | "muted";
+export type TextBlockAlign = "left" | "center" | "right";
+export type TextBlockBackgroundStyle = "none" | "solid";
 export type SlideTemplate = "center_punch" | "bottom_stack" | "top_hook_bottom_body" | "checklist";
 export type TextPlacement = "top" | "center" | "bottom" | "split";
 export type TextDensity = "sparse" | "medium" | "dense";
@@ -12,10 +14,23 @@ export type LayoutStrategy = {
 };
 
 export type SlideshowTextBlock = {
+  id?: string;
   role: TextBlockRole;
   text: string;
   items: string[];
   emphasis: TextBlockEmphasis;
+  x?: number;
+  y?: number;
+  width?: number;
+  align?: TextBlockAlign;
+  fontSize?: number;
+  fontWeight?: number;
+  color?: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  backgroundColor?: string;
+  backgroundStyle?: TextBlockBackgroundStyle;
+  backgroundOpacity?: number;
 };
 
 export type SlideshowSlideRole = "hook" | "setup" | "insight" | "proof" | "payoff" | "cta";
@@ -107,9 +122,7 @@ export type OverlayPlannerSlide = {
   slideId?: string;
   purpose: string;
   useReferenceImage: boolean;
-  primaryText: string;
-  secondaryText?: string;
-  bullets: string[];
+  textBlocks: SlideshowTextBlock[];
   layout: {
     intent: string;
     density: TextDensity;
@@ -204,6 +217,41 @@ const overlayLayoutSchema = {
   },
 };
 
+const overlayTextBlockSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "text",
+    "x",
+    "y",
+    "width",
+    "align",
+    "fontSize",
+    "fontWeight",
+    "color",
+    "strokeColor",
+    "strokeWidth",
+    "backgroundStyle",
+    "backgroundColor",
+  ],
+  properties: {
+    id: { type: "string" },
+    text: { type: "string" },
+    x: { type: "number", description: "Left position as a percentage of slide width, 0-100." },
+    y: { type: "number", description: "Top position as a percentage of slide height, 0-100." },
+    width: { type: "number", description: "Text box width as a percentage of slide width, 12-96." },
+    align: { type: "string", enum: ["left", "center", "right"] },
+    fontSize: { type: "number", description: "Font size in pixels for a 1080x1920 export canvas." },
+    fontWeight: { type: "number", enum: [400, 500, 600, 700, 800, 900] },
+    color: { type: "string", description: "Text fill color as a hex value." },
+    strokeColor: { type: "string", description: "Text stroke color as a hex value." },
+    strokeWidth: { type: "number", description: "Text stroke width in pixels for a 1080x1920 export canvas." },
+    backgroundStyle: { type: "string", enum: ["none", "solid"] },
+    backgroundColor: { type: "string", description: "Text box background color as a hex value. Use #000000 when backgroundStyle is none." },
+  },
+};
+
 export const overlaySlideshowPlanSchema = {
   type: "object",
   additionalProperties: false,
@@ -225,7 +273,7 @@ export const overlaySlideshowPlanSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["slideId", "purpose", "useReferenceImage", "primaryText", "secondaryText", "bullets", "layout"],
+        required: ["slideId", "purpose", "useReferenceImage", "textBlocks", "layout"],
         properties: {
           slideId: { type: "string" },
           purpose: {
@@ -236,12 +284,11 @@ export const overlaySlideshowPlanSchema = {
             type: "boolean",
             description: "True when selected reference assets are part of this slide image generation.",
           },
-          primaryText: { type: "string" },
-          secondaryText: { type: "string" },
-          bullets: {
+          textBlocks: {
             type: "array",
+            minItems: 1,
             maxItems: 4,
-            items: { type: "string" },
+            items: overlayTextBlockSchema,
           },
           layout: overlayLayoutSchema,
         },
