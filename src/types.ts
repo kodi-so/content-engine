@@ -11,7 +11,15 @@ export type ContentRequestId = Id<"contentRequests">;
 
 export type PublishingProvider = "postiz" | "post_bridge" | "reel_farm" | "manual";
 export type Platform = "tiktok" | "instagram" | "youtube" | "x" | "linkedin";
-export type ContentFormat = "slideshow" | "hook_demo_video" | "ai_ugc_video";
+export type ContentFormat =
+  | "slideshow"
+  | "hook_demo_video"
+  | "ai_ugc_video"
+  | "talking_avatar"
+  | "short_educational_video"
+  | "static_image"
+  | "thread"
+  | "caption_set";
 export type CreativeAssetKind =
   | "product"
   | "style_reference"

@@ -5,6 +5,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { Field, FormPanel, Page, Panel, Select } from "../components/ui";
 import { createStarterWorkflowGraph } from "../lib/workflowGraph";
+import {
+  WORKFLOW_TEMPLATES,
+  createWorkflowGraphFromTemplate,
+  type WorkflowTemplateId,
+} from "../lib/workflowTemplates";
 import type { BrandId, ContentFormat, SocialAccountId } from "../types";
 
 type WorkflowStatusFilter = "all" | "active" | "paused";
@@ -25,6 +30,7 @@ export function WorkflowsPage() {
   const [formatFilter, setFormatFilter] = useState<WorkflowFormatFilter>("all");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [scheduleFilter, setScheduleFilter] = useState<WorkflowScheduleFilter>("all");
+  const [createStatus, setCreateStatus] = useState("");
 
   const brandAccounts = useMemo(
     () =>
@@ -57,22 +63,62 @@ export function WorkflowsPage() {
     event.preventDefault();
     if (!brandId || !name.trim()) return;
 
-    const workflowId = await createWorkflow({
-      brandId: brandId as BrandId,
-      socialAccountId: socialAccountId ? (socialAccountId as SocialAccountId) : undefined,
-      name: name.trim(),
-      contentFormat,
-      trigger: "manual",
-      approvalPolicy: { mode: "always" },
-      publishingPolicy: {
-        provider: "postiz",
-        autoPublish: false,
-        defaultPlatforms: ["tiktok"],
-      },
-      graph: createStarterWorkflowGraph(),
-    });
-    setName("");
-    navigate(`/workflows/${workflowId}`);
+    setCreateStatus("Creating blank workflow");
+    try {
+      const workflowId = await createWorkflow({
+        brandId: brandId as BrandId,
+        socialAccountId: socialAccountId ? (socialAccountId as SocialAccountId) : undefined,
+        name: name.trim(),
+        contentFormat,
+        trigger: "manual",
+        approvalPolicy: { mode: "always" },
+        publishingPolicy: {
+          provider: "postiz",
+          autoPublish: false,
+          defaultPlatforms: ["tiktok"],
+        },
+        graph: createStarterWorkflowGraph(),
+      });
+      setName("");
+      setCreateStatus("");
+      navigate(`/workflows/${workflowId}`);
+    } catch (error) {
+      setCreateStatus(error instanceof Error ? error.message : "Workflow creation failed");
+    }
+  };
+
+  const handleCreateFromTemplate = async (templateId: WorkflowTemplateId) => {
+    if (!brandId) {
+      setCreateStatus("Select a brand before creating a template workflow.");
+      return;
+    }
+
+    const template = WORKFLOW_TEMPLATES.find((candidate) => candidate.id === templateId);
+    if (!template) return;
+
+    setCreateStatus(`Creating ${template.name}`);
+    try {
+      const workflowId = await createWorkflow({
+        brandId: brandId as BrandId,
+        socialAccountId: socialAccountId ? (socialAccountId as SocialAccountId) : undefined,
+        name: name.trim() || template.name,
+        description: template.description,
+        contentFormat: template.contentFormat,
+        trigger: "manual",
+        approvalPolicy: { mode: "always" },
+        publishingPolicy: {
+          provider: "manual",
+          autoPublish: false,
+          defaultPlatforms: ["tiktok"],
+        },
+        graph: createWorkflowGraphFromTemplate(template.id),
+      });
+      setName("");
+      setCreateStatus("");
+      navigate(`/workflows/${workflowId}`);
+    } catch (error) {
+      setCreateStatus(error instanceof Error ? error.message : "Template creation failed");
+    }
   };
 
   return (
@@ -108,10 +154,19 @@ export function WorkflowsPage() {
           <Plus size={16} />
           New blank workflow
         </button>
-        <button className="secondary-button" disabled type="button">
-          <LayoutTemplate size={16} />
-          From template
-        </button>
+        {WORKFLOW_TEMPLATES.map((template) => (
+          <button
+            className="secondary-button"
+            disabled={!brandId}
+            key={template.id}
+            type="button"
+            onClick={() => void handleCreateFromTemplate(template.id)}
+          >
+            <LayoutTemplate size={16} />
+            {template.name}
+          </button>
+        ))}
+        {createStatus && <p className="muted">{createStatus}</p>}
       </FormPanel>
 
       <Panel title="Workflow List">

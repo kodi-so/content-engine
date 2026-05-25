@@ -510,8 +510,7 @@ Deliverables:
 - Add filters for brand, format, status, and schedule state.
 - Add actions for new blank workflow, new from template, and open workflow.
 - New blank workflow creation navigates directly to the workflow canvas.
-- Template creation is represented as a disabled action until workflow
-  templates are implemented.
+- Template creation is enabled once workflow templates are implemented.
 
 Acceptance criteria:
 
@@ -1391,7 +1390,7 @@ Implementation notes:
 
 #### SW-0604: Add persona generation workflow template
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1400,6 +1399,20 @@ Deliverables:
 Acceptance criteria:
 
 - Generated assets attached to personas can be reused in content workflows.
+
+Implementation notes:
+
+- Added a reusable workflow template module and a `Persona image set` template.
+- The Workflows page can now create a workflow from this template instead of
+  showing a disabled template action.
+- The template creates a canvas with Runner, Persona References, Persona Prompt
+  Agent, Image Generation, Export, and an operator note.
+- The template is designed for selecting personas in the Media node, generating
+  a consistent image set, exporting outputs to the media library, and attaching
+  approved images back to personas as generated assets.
+- Updated the workflow executor so upstream source nodes such as Media execute
+  when they feed a runner-reachable branch, even if they are not directly
+  downstream of the Runner node.
 
 ### Phase 7: Templates And Create Migration
 

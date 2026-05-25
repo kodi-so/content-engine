@@ -99,6 +99,25 @@ function reachableNodeIdsFromRunner(graph: WorkflowGraphForRun): Set<string> {
   return reachableNodeIds;
 }
 
+function runnableNodeIdsForGraph(graph: WorkflowGraphForRun): Set<string> {
+  const runnableNodeIds = reachableNodeIdsFromRunner(graph);
+  let addedDependency = true;
+
+  while (addedDependency) {
+    addedDependency = false;
+    for (const edge of graph.edges) {
+      if (!runnableNodeIds.has(edge.targetNodeId) || runnableNodeIds.has(edge.sourceNodeId)) {
+        continue;
+      }
+
+      runnableNodeIds.add(edge.sourceNodeId);
+      addedDependency = true;
+    }
+  }
+
+  return runnableNodeIds;
+}
+
 function dependencyNodeIdsForGraph(graph: WorkflowGraphForRun): Map<string, string[]> {
   const dependenciesByNodeId = new Map(
     graph.nodes.map((node) => [node.id, new Set<string>()])
@@ -1804,8 +1823,8 @@ export const executeRun = internalAction({
     }
 
     const graph = context.workflow.graph;
-    const reachableNodeIds = reachableNodeIdsFromRunner(graph);
-    const runnableNodes = graph.nodes.filter((node) => reachableNodeIds.has(node.id));
+    const runnableNodeIds = runnableNodeIdsForGraph(graph);
+    const runnableNodes = graph.nodes.filter((node) => runnableNodeIds.has(node.id));
     const dependencyNodeIdsByNode = dependencyNodeIdsForGraph(graph);
     const pendingNodeIds = new Set(runnableNodes.map((node) => node.id));
     const completedNodeIds = new Set<string>();
@@ -4346,8 +4365,8 @@ export const executeRun = internalAction({
         finalPackageArtifactIds: [...finalPackageArtifactIds],
         passCount,
         costUsd: totalCostUsd,
-        skippedUnreachableNodeIds: graph.nodes
-          .filter((node) => !reachableNodeIds.has(node.id))
+        skippedNonRunnableNodeIds: graph.nodes
+          .filter((node) => !runnableNodeIds.has(node.id))
           .map((node) => node.id),
       },
     });
