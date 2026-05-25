@@ -98,7 +98,13 @@ type WorkflowFlowNode = Node<WorkflowCanvasNodeData>;
 type ProviderCatalogName = Exclude<WorkflowProviderName, "postiz">;
 type ProviderModelDoc = Doc<"providerModels">;
 type WorkflowRunDoc = Doc<"workflowRuns">;
-type WorkflowCanvasNodeExecutionStatus = "running" | "failed" | "completed";
+type WorkflowRunNodeStateDoc = Doc<"workflowRunNodeStates">;
+type WorkflowCanvasNodeExecutionStatus =
+  | "queued"
+  | "running"
+  | "failed"
+  | "blocked"
+  | "completed";
 type ConfigFieldType = "string" | "number" | "boolean" | "enum" | "json";
 
 type ConfigField = {
@@ -834,12 +840,16 @@ function formatStatus(value: string): string {
 
 function nodeExecutionStatus(
   nodeId: string,
-  run: WorkflowRunDoc | null
+  nodeStates: WorkflowRunNodeStateDoc[] | undefined
 ): WorkflowCanvasNodeExecutionStatus | undefined {
-  if (!run) return undefined;
-  if (run.errorNodeId === nodeId) return "failed";
-  if (run.currentNodeId === nodeId && run.status === "running") return "running";
-  if (run.currentNodeId === nodeId && run.status === "completed") return "completed";
+  const nodeState = nodeStates?.find((state) => state.nodeId === nodeId);
+  if (!nodeState) return undefined;
+
+  if (nodeState.status === "queued") return "queued";
+  if (nodeState.status === "running") return "running";
+  if (nodeState.status === "failed") return "failed";
+  if (nodeState.status === "blocked") return "blocked";
+  if (nodeState.status === "succeeded") return "completed";
   return undefined;
 }
 
@@ -929,6 +939,10 @@ export function WorkflowCanvasPage() {
     api.workflows.runs.getEvents,
     selectedRun ? { workflowRunId: selectedRun._id } : "skip"
   );
+  const selectedRunNodeStates = useQuery(
+    api.workflows.runs.getNodeStates,
+    selectedRun ? { workflowRunId: selectedRun._id } : "skip"
+  );
   const selectedRunArtifacts = useQuery(
     api.artifacts.records.list,
     selectedRun ? { workflowRunId: selectedRun._id } : "skip"
@@ -939,11 +953,14 @@ export function WorkflowCanvasPage() {
         ...node,
         data: {
           ...node.data,
-          executionStatus: nodeExecutionStatus(node.id, selectedRun),
+          executionStatus: nodeExecutionStatus(node.id, selectedRunNodeStates),
         },
       })),
-    [nodes, selectedRun]
+    [nodes, selectedRunNodeStates]
   );
+  const selectedNodeRunState = selectedNode
+    ? selectedRunNodeStates?.find((state) => state.nodeId === selectedNode.id) ?? null
+    : null;
   const selectedNodeRunEvents = selectedNode
     ? selectedRunEvents?.filter((event) => event.nodeId === selectedNode.id) ?? []
     : [];
@@ -1509,8 +1526,35 @@ export function WorkflowCanvasPage() {
               <div className="workflow-inspector-group">
                 <div className="workflow-inspector-section-heading">
                   <h3>Run Debug</h3>
-                  <span>{selectedRun ? formatStatus(selectedRun.status) : "No run"}</span>
+                  <span>
+                    {selectedNodeRunState
+                      ? formatStatus(selectedNodeRunState.status)
+                      : selectedRun
+                        ? formatStatus(selectedRun.status)
+                        : "No run"}
+                  </span>
                 </div>
+                {selectedNodeRunState ? (
+                  <div className="workflow-node-state-card">
+                    <span>{formatStatus(selectedNodeRunState.status)}</span>
+                    <strong>
+                      {selectedNodeRunState.startedAt
+                        ? formatTimestamp(selectedNodeRunState.startedAt)
+                        : "Not started"}
+                    </strong>
+                    {selectedNodeRunState.errorMessage ? (
+                      <p>{selectedNodeRunState.errorMessage}</p>
+                    ) : selectedNodeRunState.blockedByNodeIds?.length ? (
+                      <p>Blocked by {selectedNodeRunState.blockedByNodeIds.join(", ")}</p>
+                    ) : (
+                      <p>
+                        {selectedNodeRunState.dependencyNodeIds.length
+                          ? `Depends on ${selectedNodeRunState.dependencyNodeIds.join(", ")}`
+                          : "No upstream dependencies"}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
                 {selectedNodeRunEvents.length ? (
                   <div className="workflow-node-event-list">
                     {selectedNodeRunEvents.map((event) => (
@@ -1645,6 +1689,38 @@ export function WorkflowCanvasPage() {
                   ) : null}
 
                   <div className="workflow-run-debug-grid">
+                    <div>
+                      <div className="workflow-execution-section-heading">
+                        <h3>Nodes</h3>
+                        <span>
+                          {selectedRunNodeStates ? selectedRunNodeStates.length : "Loading"}
+                        </span>
+                      </div>
+                      {selectedRunNodeStates?.length ? (
+                        <div className="workflow-run-node-state-list">
+                          {selectedRunNodeStates.map((nodeState) => (
+                            <div
+                              className={`workflow-run-node-state workflow-run-node-state-${nodeState.status}`}
+                              key={nodeState._id}
+                            >
+                              <span>{formatStatus(nodeState.status)}</span>
+                              <strong>{nodeState.label}</strong>
+                              <p>
+                                {nodeState.errorMessage ||
+                                  (nodeState.blockedByNodeIds?.length
+                                    ? `Blocked by ${nodeState.blockedByNodeIds.join(", ")}`
+                                    : `${nodeState.dependencyNodeIds.length} dependencies`)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="workflow-inspector-empty">
+                          No node execution state recorded yet.
+                        </p>
+                      )}
+                    </div>
+
                     <div>
                       <div className="workflow-execution-section-heading">
                         <h3>Events</h3>

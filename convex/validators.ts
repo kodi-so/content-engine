@@ -96,6 +96,33 @@ export const workflowRunStatusValidator = v.union(
   v.literal("canceled")
 );
 
+export const workflowRunNodeStatusValidator = v.union(
+  v.literal("idle"),
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("blocked"),
+  v.literal("skipped")
+);
+
+export const workflowRunProviderJobValidator = v.object({
+  provider: v.string(),
+  model: v.optional(v.string()),
+  externalJobId: v.string(),
+  status: v.optional(v.string()),
+  submittedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  raw: v.optional(v.any()),
+});
+
+export const workflowRunOutputRefValidator = v.object({
+  nodeId: v.string(),
+  port: v.string(),
+  artifactIds: v.optional(v.array(v.id("artifacts"))),
+  value: v.optional(v.any()),
+});
+
 export const contentRequestStatusValidator = v.union(
   v.literal("queued"),
   v.literal("planning"),

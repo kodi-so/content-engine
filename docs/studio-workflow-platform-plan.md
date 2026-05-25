@@ -758,7 +758,7 @@ Goal: execute workflow graphs node by node with durable run state.
 
 #### SW-0401: Add graph run execution model
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -770,6 +770,19 @@ Acceptance criteria:
 
 - A run can show status per node.
 - A failed node blocks dependent nodes.
+
+Implementation notes:
+
+- Added durable `workflowRunNodeStates` records with per-node status,
+  dependency IDs, blocked-by IDs, provider jobs, output refs, timing, cost, and
+  errors.
+- Manual run creation now snapshots one node-state row per saved graph node.
+- Added backend queries/mutations for reading node states and transitioning a
+  node state; failed nodes mark downstream dependent nodes as blocked.
+- The current runner stub now fails against the runner node so the canvas can
+  display failed/blocked node state before the real executor lands.
+- The workflow canvas execution panel now reads node states and shows per-node
+  run status in both the canvas nodes and selected run debug panel.
 
 #### SW-0402: Build graph topological executor
 

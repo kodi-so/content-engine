@@ -2,9 +2,35 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
+  workflowGraphValidator,
   workflowRunEventTypeValidator,
+  workflowRunNodeStatusValidator,
+  workflowRunOutputRefValidator,
+  workflowRunProviderJobValidator,
   workflowRunStatusValidator,
 } from "../validators";
+
+type WorkflowGraphForRun = typeof workflowGraphValidator.type;
+
+const terminalNodeStatuses = new Set(["succeeded", "failed", "blocked", "skipped"]);
+
+function dependencyNodeIdsForGraph(graph: WorkflowGraphForRun): Map<string, string[]> {
+  const dependenciesByNodeId = new Map(
+    graph.nodes.map((node) => [node.id, new Set<string>()])
+  );
+
+  for (const edge of graph.edges) {
+    const dependencies = dependenciesByNodeId.get(edge.targetNodeId);
+    if (dependencies) dependencies.add(edge.sourceNodeId);
+  }
+
+  return new Map(
+    [...dependenciesByNodeId.entries()].map(([nodeId, dependencies]) => [
+      nodeId,
+      [...dependencies].sort(),
+    ])
+  );
+}
 
 export const list = query({
   args: { workflowId: v.optional(v.id("workflows")) },
@@ -47,6 +73,24 @@ export const getEvents = query({
   },
 });
 
+export const getNodeStates = query({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run || run.userId !== identity.subject) return [];
+
+    const states = await ctx.db
+      .query("workflowRunNodeStates")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", args.workflowRunId))
+      .collect();
+
+    return states.sort((a, b) => a.createdAt - b.createdAt);
+  },
+});
+
 export const createManualRun = mutation({
   args: { workflowId: v.id("workflows") },
   handler: async (ctx, args) => {
@@ -69,6 +113,22 @@ export const createManualRun = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    const dependencyNodeIdsByNode = dependencyNodeIdsForGraph(workflow.graph);
+    for (const node of workflow.graph.nodes) {
+      await ctx.db.insert("workflowRunNodeStates", {
+        userId: identity.subject,
+        workflowRunId: runId,
+        workflowId: workflow._id,
+        nodeId: node.id,
+        nodeType: node.type,
+        label: node.label,
+        status: "idle",
+        dependencyNodeIds: dependencyNodeIdsByNode.get(node.id) ?? [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
 
     await ctx.db.insert("workflowRunEvents", {
       userId: identity.subject,
@@ -136,6 +196,16 @@ export const remove = mutation({
       }
     }
 
+    const nodeStates = await ctx.db
+      .query("workflowRunNodeStates")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", args.id))
+      .collect();
+    for (const nodeState of nodeStates) {
+      if (nodeState.userId === identity.subject) {
+        await ctx.db.delete(nodeState._id);
+      }
+    }
+
     await ctx.db.delete(args.id);
   },
 });
@@ -173,15 +243,97 @@ export const transitionRun = internalMutation({
     const now = Date.now();
     await ctx.db.patch(args.runId, {
       status: args.status,
-      currentNodeId: args.currentNodeId,
-      summary: args.summary,
-      costUsd: args.costUsd,
-      errorMessage: args.errorMessage,
-      errorNodeId: args.errorNodeId,
-      startedAt: args.status === "running" ? now : undefined,
-      completedAt: args.completedAt,
+      ...(args.currentNodeId !== undefined ? { currentNodeId: args.currentNodeId } : {}),
+      ...(args.summary !== undefined ? { summary: args.summary } : {}),
+      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+      ...(args.errorMessage !== undefined ? { errorMessage: args.errorMessage } : {}),
+      ...(args.errorNodeId !== undefined ? { errorNodeId: args.errorNodeId } : {}),
+      ...(args.status === "running" ? { startedAt: now } : {}),
+      ...(args.completedAt !== undefined ? { completedAt: args.completedAt } : {}),
       updatedAt: now,
     });
+  },
+});
+
+export const transitionNodeState = internalMutation({
+  args: {
+    runId: v.id("workflowRuns"),
+    nodeId: v.string(),
+    status: workflowRunNodeStatusValidator,
+    providerJob: v.optional(workflowRunProviderJobValidator),
+    outputRefs: v.optional(v.array(workflowRunOutputRefValidator)),
+    costUsd: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const state = await ctx.db
+      .query("workflowRunNodeStates")
+      .withIndex("by_run_node", (q) =>
+        q.eq("workflowRunId", args.runId).eq("nodeId", args.nodeId)
+      )
+      .unique();
+    if (!state) throw new Error(`Workflow run node state not found for ${args.nodeId}`);
+
+    const now = Date.now();
+    const existingProviderJobs = state.providerJobs ?? [];
+    const isTerminalStatus = terminalNodeStatuses.has(args.status);
+
+    await ctx.db.patch(state._id, {
+      status: args.status,
+      providerJobs: args.providerJob
+        ? [...existingProviderJobs, args.providerJob]
+        : state.providerJobs,
+      outputRefs: args.outputRefs ?? state.outputRefs,
+      costUsd: args.costUsd ?? state.costUsd,
+      errorMessage: args.errorMessage,
+      startedAt: args.startedAt ?? (args.status === "running" ? now : state.startedAt),
+      completedAt: args.completedAt ?? (isTerminalStatus ? now : state.completedAt),
+      updatedAt: now,
+    });
+
+    if (args.status !== "failed") return;
+
+    const states = await ctx.db
+      .query("workflowRunNodeStates")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", args.runId))
+      .collect();
+
+    const blockedNodeIds = new Set([args.nodeId]);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+
+      for (const candidateState of states) {
+        if (blockedNodeIds.has(candidateState.nodeId)) continue;
+        if (candidateState.dependencyNodeIds.some((nodeId) => blockedNodeIds.has(nodeId))) {
+          blockedNodeIds.add(candidateState.nodeId);
+          changed = true;
+        }
+      }
+    }
+
+    for (const dependentState of states) {
+      const blockedByNodeIds = dependentState.dependencyNodeIds.filter((nodeId) =>
+        blockedNodeIds.has(nodeId)
+      );
+      if (!blockedByNodeIds.length) continue;
+      if (terminalNodeStatuses.has(dependentState.status)) continue;
+
+      const mergedBlockedByNodeIds = new Set(dependentState.blockedByNodeIds ?? []);
+      for (const nodeId of blockedByNodeIds) {
+        mergedBlockedByNodeIds.add(nodeId);
+      }
+
+      await ctx.db.patch(dependentState._id, {
+        status: "blocked",
+        blockedByNodeIds: [...mergedBlockedByNodeIds].sort(),
+        completedAt: now,
+        updatedAt: now,
+      });
+    }
   },
 });
 

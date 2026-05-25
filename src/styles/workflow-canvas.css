@@ -452,13 +452,16 @@
 }
 
 .workflow-node-event-list,
+.workflow-run-node-state-list,
 .workflow-run-event-list,
 .workflow-run-artifact-list {
   display: grid;
   gap: var(--space-2);
 }
 
+.workflow-node-state-card,
 .workflow-node-event,
+.workflow-run-node-state,
 .workflow-run-event,
 .workflow-run-artifact {
   display: grid;
@@ -469,7 +472,9 @@
   padding: var(--space-2) var(--space-3);
 }
 
+.workflow-node-state-card span,
 .workflow-node-event span,
+.workflow-run-node-state span,
 .workflow-run-event span,
 .workflow-run-artifact span {
   color: var(--color-ink-soft);
@@ -478,7 +483,9 @@
   text-transform: capitalize;
 }
 
+.workflow-node-state-card strong,
 .workflow-node-event strong,
+.workflow-run-node-state strong,
 .workflow-run-event strong,
 .workflow-run-artifact strong {
   min-width: 0;
@@ -490,12 +497,23 @@
   white-space: nowrap;
 }
 
+.workflow-node-state-card p,
 .workflow-node-event p,
+.workflow-run-node-state p,
 .workflow-run-event p {
   margin: 0;
   color: var(--color-ink-muted);
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.workflow-run-node-state-failed,
+.workflow-run-node-state-blocked {
+  border-color: oklch(61% 0.12 32);
+}
+
+.workflow-run-node-state-succeeded {
+  border-color: oklch(61% 0.11 154);
 }
 
 .workflow-execution-header,
@@ -786,9 +804,18 @@
   box-shadow: 0 16px 36px oklch(58% 0.12 220 / 0.16);
 }
 
+.workflow-node-execution-queued {
+  border-color: oklch(68% 0.12 82);
+}
+
 .workflow-node-execution-failed {
   border-color: oklch(55% 0.14 25);
   box-shadow: 0 16px 36px oklch(55% 0.14 25 / 0.14);
+}
+
+.workflow-node-execution-blocked {
+  border-color: oklch(60% 0.065 42);
+  box-shadow: 0 16px 36px oklch(60% 0.065 42 / 0.12);
 }
 
 .workflow-node-execution-completed {

@@ -21,6 +21,9 @@ import {
   socialAccountStatusValidator,
   workflowGraphValidator,
   workflowRunEventTypeValidator,
+  workflowRunNodeStatusValidator,
+  workflowRunOutputRefValidator,
+  workflowRunProviderJobValidator,
   workflowRunStatusValidator,
   workflowTriggerValidator,
 } from "./validators";
@@ -227,6 +230,30 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_run", ["workflowRunId"])
+    .index("by_workflow", ["workflowId"]),
+
+  workflowRunNodeStates: defineTable({
+    userId: v.string(),
+    workflowRunId: v.id("workflowRuns"),
+    workflowId: v.id("workflows"),
+    nodeId: v.string(),
+    nodeType: v.string(),
+    label: v.string(),
+    status: workflowRunNodeStatusValidator,
+    dependencyNodeIds: v.array(v.string()),
+    blockedByNodeIds: v.optional(v.array(v.string())),
+    providerJobs: v.optional(v.array(workflowRunProviderJobValidator)),
+    outputRefs: v.optional(v.array(workflowRunOutputRefValidator)),
+    costUsd: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["workflowRunId"])
+    .index("by_run_node", ["workflowRunId", "nodeId"])
+    .index("by_run_status", ["workflowRunId", "status"])
     .index("by_workflow", ["workflowId"]),
 
   artifacts: defineTable({
