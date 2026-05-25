@@ -31,11 +31,7 @@ export const get = query({
     const workflow = await ctx.db.get(args.id);
     if (!workflow || workflow.userId !== identity.subject) return null;
 
-    const activeVersion = workflow.activeVersionId
-      ? await ctx.db.get(workflow.activeVersionId)
-      : null;
-
-    return { ...workflow, activeVersion };
+    return workflow;
   },
 });
 
@@ -50,7 +46,6 @@ export const create = mutation({
     scheduleConfig: v.optional(scheduleConfigValidator),
     approvalPolicy: approvalPolicyValidator,
     publishingPolicy: publishingPolicyValidator,
-    strategy: v.optional(v.any()),
     graph: workflowGraphValidator,
   },
   handler: async (ctx, args) => {
@@ -81,27 +76,34 @@ export const create = mutation({
       scheduleConfig: args.scheduleConfig,
       approvalPolicy: args.approvalPolicy,
       publishingPolicy: args.publishingPolicy,
+      graph: args.graph,
       isActive: false,
       createdAt: now,
       updatedAt: now,
     });
 
-    const versionId = await ctx.db.insert("workflowVersions", {
-      userId: identity.subject,
-      workflowId,
-      version: 1,
-      strategy: args.strategy,
-      graph: args.graph,
-      createdAt: now,
-      createdBy: identity.subject,
-    });
-
-    await ctx.db.patch(workflowId, {
-      activeVersionId: versionId,
-      updatedAt: now,
-    });
-
     return workflowId;
+  },
+});
+
+export const updateGraph = mutation({
+  args: {
+    id: v.id("workflows"),
+    graph: workflowGraphValidator,
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const workflow = await ctx.db.get(args.id);
+    if (!workflow || workflow.userId !== identity.subject) {
+      throw new Error("Workflow not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      graph: args.graph,
+      updatedAt: Date.now(),
+    });
   },
 });
 

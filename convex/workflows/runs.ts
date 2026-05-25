@@ -57,15 +57,11 @@ export const createManualRun = mutation({
     if (!workflow || workflow.userId !== identity.subject) {
       throw new Error("Workflow not found");
     }
-    if (!workflow.activeVersionId) {
-      throw new Error("Workflow has no active version");
-    }
 
     const now = Date.now();
     const runId = await ctx.db.insert("workflowRuns", {
       userId: identity.subject,
       workflowId: workflow._id,
-      workflowVersionId: workflow.activeVersionId,
       brandId: workflow.brandId,
       socialAccountId: workflow.socialAccountId,
       trigger: "manual",
@@ -151,15 +147,14 @@ export const getExecutionContext = internalQuery({
     if (!run) return null;
 
     const workflow = await ctx.db.get(run.workflowId);
-    const version = await ctx.db.get(run.workflowVersionId);
     const brand = await ctx.db.get(run.brandId);
     const socialAccount = run.socialAccountId
       ? await ctx.db.get(run.socialAccountId)
       : null;
 
-    if (!workflow || !version || !brand) return null;
+    if (!workflow || !brand) return null;
 
-    return { run, workflow, version, brand, socialAccount };
+    return { run, workflow, brand, socialAccount };
   },
 });
 

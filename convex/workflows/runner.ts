@@ -18,7 +18,7 @@ export const executeRun = internalAction({
     });
 
     const message =
-      "Graph workflow execution is not implemented yet. Workflow versions now store graph JSON; the graph runner lands in the execution tickets.";
+      "Graph workflow execution is not implemented yet. Workflows now store graph JSON; the graph runner lands in the execution tickets.";
 
     await ctx.runMutation(internal.workflows.runs.recordEvent, {
       userId: context.run.userId,
@@ -27,9 +27,9 @@ export const executeRun = internalAction({
       type: "error",
       message,
       data: {
-        schemaVersion: context.version.graph.schemaVersion,
-        nodeCount: context.version.graph.nodes.length,
-        edgeCount: context.version.graph.edges.length,
+        schemaVersion: context.workflow.graph.schemaVersion,
+        nodeCount: context.workflow.graph.nodes.length,
+        edgeCount: context.workflow.graph.edges.length,
       },
     });
 

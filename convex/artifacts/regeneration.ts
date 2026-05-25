@@ -61,13 +61,13 @@ export const regenerate = action({
     });
     if (!context) throw new Error("Artifact not found");
 
-    const { artifact, parentArtifacts, workflowVersion } = context;
+    const { artifact, parentArtifacts, workflow } = context;
     if (artifact.reviewStatus !== "needs_revision") {
       throw new Error("Only artifacts marked as needs_revision can be regenerated");
     }
 
     const note = latestRevisionNote(artifact);
-    const modelDefaults = workflowVersion?.modelDefaults;
+    const modelDefaults = workflow?.modelDefaults;
     const textProvider = getModelProvider(
       getModelProviderName(modelDefaults?.textProvider, "openrouter")
     );

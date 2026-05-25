@@ -113,21 +113,6 @@ export default defineSchema({
     scheduleConfig: v.optional(scheduleConfigValidator),
     approvalPolicy: approvalPolicyValidator,
     publishingPolicy: publishingPolicyValidator,
-    activeVersionId: v.optional(v.id("workflowVersions")),
-    isActive: v.boolean(),
-    nextRunAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_brand", ["brandId"])
-    .index("by_active_next_run", ["isActive", "nextRunAt"]),
-
-  workflowVersions: defineTable({
-    userId: v.string(),
-    workflowId: v.id("workflows"),
-    version: v.number(),
-    strategy: v.optional(v.any()),
     graph: workflowGraphValidator,
     modelDefaults: v.optional(
       v.object({
@@ -138,11 +123,14 @@ export default defineSchema({
         preferredVideoModel: v.optional(v.string()),
       })
     ),
+    isActive: v.boolean(),
+    nextRunAt: v.optional(v.number()),
     createdAt: v.number(),
-    createdBy: v.optional(v.string()),
+    updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_workflow", ["workflowId"]),
+    .index("by_brand", ["brandId"])
+    .index("by_active_next_run", ["isActive", "nextRunAt"]),
 
   contentRequests: defineTable({
     userId: v.string(),
@@ -184,7 +172,6 @@ export default defineSchema({
   workflowRuns: defineTable({
     userId: v.string(),
     workflowId: v.id("workflows"),
-    workflowVersionId: v.id("workflowVersions"),
     brandId: v.id("brands"),
     socialAccountId: v.optional(v.id("socialAccounts")),
     trigger: workflowTriggerValidator,

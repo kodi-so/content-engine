@@ -240,9 +240,6 @@ export const getRegenerationContext = internalQuery({
     const workflow = artifact.workflowId
       ? await ctx.db.get(artifact.workflowId)
       : null;
-    const workflowVersion = workflow?.activeVersionId
-      ? await ctx.db.get(workflow.activeVersionId)
-      : null;
 
     return {
       artifact,
@@ -251,7 +248,6 @@ export const getRegenerationContext = internalQuery({
           Boolean(parentArtifact && parentArtifact.userId === args.userId)
       ),
       workflow,
-      workflowVersion,
     };
   },
 });

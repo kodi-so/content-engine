@@ -57,11 +57,10 @@ caption sets, and future formats.
 
 The current repository already has a useful foundation:
 
-- Convex tables for brands, social accounts, workflows, workflow versions,
-  workflow runs, run events, artifacts, slideshows, distribution plans, and
-  metrics.
+- Convex tables for brands, social accounts, workflows, workflow runs, run
+  events, artifacts, slideshows, distribution plans, and metrics.
 - A mature one-off slideshow creation path through `contentRequests`.
-- Graph-native workflow versions with the old step-array runner removed; graph
+- Graph-native workflow definitions stored directly on workflows; graph
   execution is intentionally deferred to the runner tickets.
 - Provider abstractions for model providers and publishing providers.
 - Existing adapters for Gemini, fal.ai, OpenRouter, Postiz, and manual
@@ -160,15 +159,9 @@ workflow foundation is stable.
 A workflow is a saved content system. It has a list/card entry point and a
 canvas detail view. Every saved workflow has a graph definition.
 
-### Workflow Version
-
-A workflow version stores the typed graph at a point in time. Editing a
-workflow creates or updates a draft version. Executed runs should always point
-to the exact workflow version they used.
-
 ### Workflow Graph
 
-The graph should be stored as domain JSON, not raw React Flow JSON:
+Each workflow stores its current graph as domain JSON, not raw React Flow JSON:
 
 ```ts
 type WorkflowGraph = {
@@ -206,9 +199,9 @@ Content Engine.
 
 ### Workflow Run
 
-A run is one execution of one workflow version. A run should produce one final
-post package. Runs can have debug outputs, node logs, provider jobs, costs,
-errors, and final artifacts.
+A run is one execution of the workflow's current graph. A run should produce
+one final post package. Runs keep status, node logs, provider jobs, costs,
+errors, and final artifacts; they do not preserve historical workflow graphs.
 
 ### Node Execution
 
@@ -402,13 +395,13 @@ Acceptance criteria:
 - A workflow cannot run without a runner node.
 - A workflow cannot run without a terminal export/post/compiler path.
 
-#### SW-0103: Extend workflow version schema for graph JSON
+#### SW-0103: Store graph JSON for workflows
 
 Status: `Done`
 
 Deliverables:
 
-- Replace workflow version `steps` with canonical `graph` JSON.
+- Replace workflow definition `steps` with canonical `graph` JSON.
 - Update workflow creation to seed a minimal canvas-native graph.
 - Remove old step-array validators and step execution modules.
 - Keep manual runs honest with a graph-runner placeholder until graph
@@ -416,23 +409,28 @@ Deliverables:
 
 Acceptance criteria:
 
-- Workflow versions store graph definitions.
+- Workflows store graph definitions.
 - New workflows are created with a valid starter graph.
 - No backend API accepts the old step-array workflow definition.
 
-#### SW-0104: Add workflow draft/version APIs
+#### SW-0104: Collapse workflow versions into current workflow graph
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
-- Add APIs for creating a draft graph, updating the graph, publishing a version,
-  and retrieving active/draft versions.
+- Remove `workflowVersions`.
+- Remove `activeVersionId` from workflows and `workflowVersionId` from runs.
+- Store the current graph directly on each workflow.
+- Add an API for saving the current workflow graph.
+- Keep run history as statuses, node events, and artifact references instead
+  of historical graph snapshots.
 
 Acceptance criteria:
 
 - Canvas can save without running.
-- Running uses an immutable version snapshot.
+- Runs use the workflow's current graph.
+- No backend API or schema field references workflow versions.
 
 #### SW-0105: Add node catalog registry
 
@@ -597,7 +595,8 @@ Deliverables:
 Acceptance criteria:
 
 - BulkAPIs model metadata can be cached.
-- Schema snapshots can be referenced by workflow versions.
+- Node configuration can reference the provider schema snapshot it was built
+  from.
 
 #### SW-0304: Implement BulkAPIs model catalog sync
 
