@@ -542,7 +542,7 @@ Implementation notes:
 
 #### SW-0205: Build edge/port connection UI
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -554,6 +554,12 @@ Acceptance criteria:
 
 - User can connect many-to-many graph relationships.
 - Invalid connections are blocked or clearly marked.
+
+Implementation notes:
+
+- Added visible input/output port labels on workflow nodes.
+- Users can connect compatible ports directly on the canvas; edges persist through the existing graph save.
+- Duplicate edges, self-edges, incompatible port types, missing ports, and cycles are blocked before saving.
 
 #### SW-0206: Add canvas execution panel
 

@@ -1,4 +1,5 @@
 import {
+  addEdge,
   Background,
   Controls,
   Handle,
@@ -8,7 +9,9 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
   type NodeChange,
   type NodeProps,
@@ -45,6 +48,8 @@ import type {
   WorkflowGraph,
   WorkflowNode,
   WorkflowNodeType,
+  WorkflowPort,
+  WorkflowPortDataType,
   WorkflowProviderName,
 } from "../lib/workflowGraph";
 import {
@@ -52,6 +57,7 @@ import {
   isWorkflowNodeType,
   listWorkflowNodeDefinitions,
 } from "../lib/workflowNodeCatalog";
+import { validateWorkflowGraph } from "../lib/workflowGraphValidation";
 
 const nodeTypes = {
   workflowNode: WorkflowCanvasNode,
@@ -85,6 +91,13 @@ type WorkflowCanvasNodeData = Record<string, unknown> & {
 };
 
 type WorkflowFlowNode = Node<WorkflowCanvasNodeData>;
+
+type WorkflowConnection = {
+  source: string | null;
+  sourceHandle?: string | null;
+  target: string | null;
+  targetHandle?: string | null;
+};
 
 const paletteSections = [
   { category: "control", label: "Control" },
@@ -137,6 +150,27 @@ function WorkflowCanvasNode({ data }: NodeProps<WorkflowFlowNode>) {
         <span>{data.label}</span>
       </div>
       <p>{definition.description}</p>
+      <div className="workflow-node-ports">
+        {definition.inputPorts.length ? (
+          <div className="workflow-node-port-list">
+            {definition.inputPorts.map((port) => (
+              <span key={port.id}>{port.label}</span>
+            ))}
+          </div>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+
+        {definition.outputPorts.length ? (
+          <div className="workflow-node-port-list workflow-node-port-list-output">
+            {definition.outputPorts.map((port) => (
+              <span key={port.id}>{port.label}</span>
+            ))}
+          </div>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+      </div>
       <div className="workflow-node-meta">
         <span>{definition.category}</span>
         <span>{definition.configSchemaMode.replace(/_/g, " ")}</span>
@@ -188,6 +222,7 @@ function toFlowEdges(graph: WorkflowGraph): Edge[] {
     target: edge.targetNodeId,
     targetHandle: edge.targetPort,
     animated: false,
+    deletable: true,
     type: "smoothstep",
   }));
 }
@@ -215,6 +250,131 @@ function nextNodePosition(nodes: WorkflowFlowNode[]) {
     x: 140 + (index % 3) * 300,
     y: 120 + Math.floor(index / 3) * 210,
   };
+}
+
+function sanitizeEdgeIdPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9-]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function nextEdgeId(connection: Connection, edges: Edge[]): string {
+  const baseId = [
+    connection.source,
+    connection.sourceHandle,
+    "to",
+    connection.target,
+    connection.targetHandle,
+  ]
+    .filter(Boolean)
+    .map((value) => sanitizeEdgeIdPart(String(value)))
+    .join("-");
+  const usedIds = new Set(edges.map((edge) => edge.id));
+  let edgeId = baseId;
+  let index = 2;
+
+  while (usedIds.has(edgeId)) {
+    edgeId = `${baseId}-${index}`;
+    index += 1;
+  }
+
+  return edgeId;
+}
+
+function portTypesAreCompatible(
+  sourceType: WorkflowPortDataType,
+  targetType: WorkflowPortDataType
+): boolean {
+  if (targetType === "any" || sourceType === "any" || sourceType === targetType) return true;
+  if (targetType === "media") {
+    return ["image", "video", "audio", "slideshow", "media", "artifact"].includes(sourceType);
+  }
+  if (targetType === "text" || targetType === "prompt") {
+    return sourceType === "text" || sourceType === "prompt";
+  }
+  if (targetType === "artifact") {
+    return ["image", "video", "audio", "slideshow", "artifact"].includes(sourceType);
+  }
+
+  return false;
+}
+
+function findPort(
+  node: WorkflowFlowNode,
+  handleId: string,
+  direction: "input" | "output"
+): WorkflowPort | null {
+  const definition = getWorkflowNodeDefinition(node.data.type);
+  const ports = direction === "input" ? definition.inputPorts : definition.outputPorts;
+
+  return ports.find((port) => port.id === handleId) ?? null;
+}
+
+function wouldCreateCycle(
+  connection: WorkflowConnection,
+  edges: Edge[]
+): boolean {
+  if (!connection.source || !connection.target) return false;
+  const adjacency = new Map<string, string[]>();
+
+  for (const edge of edges) {
+    const targets = adjacency.get(edge.source) ?? [];
+    targets.push(edge.target);
+    adjacency.set(edge.source, targets);
+  }
+
+  const sourceTargets = adjacency.get(connection.source) ?? [];
+  sourceTargets.push(connection.target);
+  adjacency.set(connection.source, sourceTargets);
+
+  const stack = [connection.target];
+  const visited = new Set<string>();
+
+  while (stack.length) {
+    const nodeId = stack.pop();
+    if (!nodeId || visited.has(nodeId)) continue;
+    if (nodeId === connection.source) return true;
+
+    visited.add(nodeId);
+    stack.push(...(adjacency.get(nodeId) ?? []));
+  }
+
+  return false;
+}
+
+function validateCanvasConnection(
+  connection: WorkflowConnection,
+  nodes: WorkflowFlowNode[],
+  edges: Edge[]
+): string | null {
+  if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) {
+    return "Connection must start and end on a named port.";
+  }
+  if (connection.source === connection.target) {
+    return "A node cannot connect to itself.";
+  }
+  if (edges.some((edge) =>
+    edge.source === connection.source &&
+    edge.target === connection.target &&
+    edge.sourceHandle === connection.sourceHandle &&
+    edge.targetHandle === connection.targetHandle
+  )) {
+    return "That port connection already exists.";
+  }
+
+  const sourceNode = nodes.find((node) => node.id === connection.source);
+  const targetNode = nodes.find((node) => node.id === connection.target);
+  if (!sourceNode || !targetNode) return "Connection references a missing node.";
+
+  const sourcePort = findPort(sourceNode, connection.sourceHandle, "output");
+  const targetPort = findPort(targetNode, connection.targetHandle, "input");
+  if (!sourcePort || !targetPort) return "Connection references an unknown port.";
+  if (!portTypesAreCompatible(sourcePort.dataType, targetPort.dataType)) {
+    return `${sourcePort.label} output cannot connect to ${targetPort.label} input.`;
+  }
+  if (wouldCreateCycle(connection, edges)) {
+    return "Connection would create a cycle.";
+  }
+
+  return null;
 }
 
 function toWorkflowGraph(
@@ -301,6 +461,7 @@ export function WorkflowCanvasPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const flowNodes = useMemo(
@@ -329,6 +490,7 @@ export function WorkflowCanvasPage() {
     setEdges(flowEdges);
     setIsDirty(false);
     setSaveStatus("");
+    setConnectionStatus("");
   }, [flowEdges, flowNodes, setEdges, setNodes, workflow]);
 
   useEffect(() => {
@@ -347,6 +509,19 @@ export function WorkflowCanvasPage() {
       onNodesChange(changes);
     },
     [onNodesChange]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange<Edge>[]) => {
+      if (changes.some((change) => change.type === "remove" || change.type === "add")) {
+        setIsDirty(true);
+        setSaveStatus("");
+        setConnectionStatus("");
+      }
+
+      onEdgesChange(changes);
+    },
+    [onEdgesChange]
   );
 
   const handleAddNode = useCallback(
@@ -377,8 +552,43 @@ export function WorkflowCanvasPage() {
       });
       setIsDirty(true);
       setSaveStatus("");
+      setConnectionStatus("");
     },
     [hasRunnerNode, setNodes]
+  );
+
+  const isValidConnection = useCallback(
+    (connection: Connection | Edge) =>
+      validateCanvasConnection(connection, nodes, edges) === null,
+    [edges, nodes]
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const validationError = validateCanvasConnection(connection, nodes, edges);
+
+      if (validationError) {
+        setConnectionStatus(validationError);
+        return;
+      }
+
+      setEdges((currentEdges) =>
+        addEdge(
+          {
+            ...connection,
+            id: nextEdgeId(connection, currentEdges),
+            animated: false,
+            deletable: true,
+            type: "smoothstep",
+          },
+          currentEdges
+        )
+      );
+      setIsDirty(true);
+      setSaveStatus("");
+      setConnectionStatus("Connected");
+    },
+    [edges, nodes, setEdges]
   );
 
   const updateSelectedNodeData = useCallback(
@@ -400,6 +610,7 @@ export function WorkflowCanvasPage() {
       );
       setIsDirty(true);
       setSaveStatus("");
+      setConnectionStatus("");
     },
     [selectedNodeId, setNodes]
   );
@@ -424,9 +635,17 @@ export function WorkflowCanvasPage() {
 
     try {
       const graph = toWorkflowGraph(workflow.graph as WorkflowGraph, nodes, edges);
+      const validation = validateWorkflowGraph(graph);
+
+      if (!validation.valid) {
+        setSaveStatus(validation.errors[0]?.message ?? "Workflow graph is invalid.");
+        return;
+      }
+
       await updateGraph({ id: workflow._id, graph });
       setIsDirty(false);
       setSaveStatus("Saved");
+      setConnectionStatus("");
     } catch (error) {
       setSaveStatus(getErrorMessage(error));
     } finally {
@@ -553,7 +772,9 @@ export function WorkflowCanvasPage() {
               nodeTypes={nodeTypes}
               nodesDraggable
               nodesFocusable
-              onEdgesChange={onEdgesChange}
+              isValidConnection={isValidConnection}
+              onConnect={handleConnect}
+              onEdgesChange={handleEdgesChange}
               onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
               onNodesChange={handleNodesChange}
               onPaneClick={() => setSelectedNodeId(null)}
@@ -565,6 +786,11 @@ export function WorkflowCanvasPage() {
               <Controls showInteractive={false} />
             </ReactFlow>
           </ReactFlowProvider>
+          {connectionStatus ? (
+            <div className="workflow-canvas-status" role="status">
+              {connectionStatus}
+            </div>
+          ) : null}
         </div>
 
         <aside className="workflow-node-inspector" aria-label="Workflow node inspector">

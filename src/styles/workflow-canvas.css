@@ -419,6 +419,7 @@
 }
 
 .workflow-canvas-shell {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -439,6 +440,17 @@
   stroke-width: 2;
 }
 
+.workflow-canvas-shell .react-flow__edge.selected .react-flow__edge-path,
+.workflow-canvas-shell .react-flow__edge:focus .react-flow__edge-path {
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+}
+
+.workflow-canvas-shell .react-flow__connection-path {
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+}
+
 .workflow-canvas-shell .react-flow__controls,
 .workflow-canvas-shell .react-flow__minimap {
   border: 1px solid var(--color-border);
@@ -451,6 +463,25 @@
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-raised);
   color: var(--color-ink-soft);
+}
+
+.workflow-canvas-status {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 4;
+  max-width: min(22rem, calc(100% - 2rem));
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.35;
+  padding: var(--space-2) var(--space-3);
+  text-overflow: ellipsis;
 }
 
 .workflow-node {
@@ -507,7 +538,7 @@
 
 .workflow-node p {
   display: -webkit-box;
-  min-height: 2.7rem;
+  min-height: 2.3rem;
   margin: 0;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -515,6 +546,59 @@
   color: var(--color-ink-muted);
   font-size: 0.84rem;
   line-height: 1.35;
+}
+
+.workflow-node-ports {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.workflow-node-port-list {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.workflow-node-port-list span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-ink-soft);
+  font-size: 0.68rem;
+  font-weight: 760;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-node-port-list span::before {
+  display: inline-block;
+  width: 0.36rem;
+  height: 0.36rem;
+  margin-right: var(--space-1);
+  border-radius: 999px;
+  background: var(--color-primary);
+  content: "";
+  vertical-align: 0.08rem;
+}
+
+.workflow-node-port-list-output {
+  justify-items: end;
+  text-align: right;
+}
+
+.workflow-node-port-list-output span::before {
+  content: none;
+}
+
+.workflow-node-port-list-output span::after {
+  display: inline-block;
+  width: 0.36rem;
+  height: 0.36rem;
+  margin-left: var(--space-1);
+  border-radius: 999px;
+  background: var(--color-primary);
+  content: "";
+  vertical-align: 0.08rem;
 }
 
 .workflow-node-meta {
