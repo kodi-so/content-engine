@@ -157,6 +157,7 @@ const primaryConfigFieldKeys = new Set([
   "aspectRatio",
   "audioUrl",
   "autoPublish",
+  "brandAssetIds",
   "caption",
   "count",
   "destination",
@@ -173,6 +174,7 @@ const primaryConfigFieldKeys = new Set([
   "name",
   "optimizeFor",
   "platform",
+  "personaAssetIds",
   "postType",
   "prompt",
   "referenceImageUrl",
@@ -197,6 +199,7 @@ const primaryConfigFieldKeys = new Set([
   "timezone",
   "tone",
   "trigger",
+  "uploadedMedia",
   "videoUrl",
   "voice",
   "voiceReferenceUrl",
@@ -649,7 +652,7 @@ function friendlyConfigFieldKeysForNode(type: WorkflowNodeType): string[] {
     case "comment":
       return ["text"];
     case "media":
-      return ["assetIds"];
+      return ["artifactIds", "brandAssetIds", "personaAssetIds", "uploadedMedia"];
     case "llm":
       return ["systemPrompt", "prompt", "responseFormat", "temperature", "maxTokens", "seed"];
     case "ai_agent":
@@ -773,8 +776,12 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
     case "trigger":
       return { ...defaultField, type: "enum", enumValues: ["manual", "schedule", "event"] };
     case "assetIds":
+    case "artifactIds":
+    case "brandAssetIds":
     case "knowledgeBase":
+    case "personaAssetIds":
     case "platforms":
+    case "uploadedMedia":
       return { ...defaultField, type: "json", advanced: true };
     default:
       return defaultField;

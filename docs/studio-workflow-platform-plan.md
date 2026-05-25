@@ -938,7 +938,7 @@ Implementation notes:
 
 #### SW-0502: Media node
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -948,6 +948,20 @@ Deliverables:
 Acceptance criteria:
 
 - Downstream nodes can consume media outputs.
+
+Implementation notes:
+
+- Media node config now uses explicit `artifactIds`, `brandAssetIds`,
+  `personaAssetIds`, and `uploadedMedia` arrays instead of one ambiguous asset
+  list.
+- The canvas inspector exposes those fields in the Media node config section as
+  structured editable JSON values.
+- The graph runner resolves Media node references into typed media items from
+  saved artifacts, reusable brand assets, persona-style brand assets, and
+  uploaded media URL records.
+- Media nodes now emit concrete `media`, `image`, `video`, and `audio` output
+  refs with artifact IDs where available, so downstream nodes can consume media
+  through the normal input resolver.
 
 #### SW-0503: LLM node
 

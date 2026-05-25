@@ -111,7 +111,12 @@ export const WORKFLOW_NODE_CATALOG = [
       port("video", "Video", "video", { multiple: true }),
       port("audio", "Audio", "audio", { multiple: true }),
     ],
-    defaultConfig: { assetIds: [] },
+    defaultConfig: {
+      artifactIds: [],
+      brandAssetIds: [],
+      personaAssetIds: [],
+      uploadedMedia: [],
+    },
     defaultRetention: { mode: "keep", exposeInLibrary: false },
     outputArtifactTypes: ["image", "video", "rendered_asset"],
   },

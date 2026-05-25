@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { internalAction, internalMutation } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { artifactLifecycleValidator, workflowGraphValidator } from "../validators";
 
 type WorkflowGraphForRun = typeof workflowGraphValidator.type;
@@ -16,6 +16,17 @@ type ResolvedInputsForRun = {
     metadata?: Record<string, unknown>;
   }>;
   summary?: Record<string, unknown>;
+};
+type MediaKindForRun = "image" | "video" | "audio" | "media";
+
+type MediaNodeItemForRun = {
+  id: string;
+  source: "artifact" | "brand_asset" | "persona_asset" | "uploaded";
+  kind: MediaKindForRun;
+  title?: string;
+  storageUrl?: string;
+  data?: unknown;
+  metadata?: unknown;
 };
 
 function adjacencyForGraph(graph: WorkflowGraphForRun): Map<string, string[]> {
@@ -91,6 +102,10 @@ function outboundPortsForNode(
   ].sort();
 }
 
+function mediaNodeOutputPorts(): string[] {
+  return ["media", "image", "video", "audio"];
+}
+
 function retentionModeForNode(node: WorkflowGraphNodeForRun): NodeRetentionModeForRun {
   const retention = node.retention;
   if (!retention || typeof retention !== "object" || Array.isArray(retention)) return "inherit";
@@ -129,6 +144,10 @@ function isPostPackageNode(node: WorkflowGraphNodeForRun): boolean {
 
 function isTerminalPackageConsumer(node: WorkflowGraphNodeForRun): boolean {
   return node.type === "export" || node.type === "auto_post";
+}
+
+function isMediaNode(node: WorkflowGraphNodeForRun): boolean {
+  return node.type === "media";
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -236,6 +255,103 @@ function postPackageDataForNode(
       inputSummary: resolvedInputs.summary ?? {},
     },
   };
+}
+
+function mediaOutputRefsForNode(
+  nodeId: string,
+  items: MediaNodeItemForRun[]
+) {
+  return mediaNodeOutputPorts().flatMap((port) => {
+    const matchingItems =
+      port === "media"
+        ? items
+        : items.filter((item) => item.kind === port);
+    if (!matchingItems.length) return [];
+
+    const artifactIds = matchingItems
+      .filter((item) => item.source === "artifact")
+      .map((item) => item.id as Id<"artifacts">);
+
+    return [{
+      nodeId,
+      port,
+      ...(artifactIds.length ? { artifactIds } : {}),
+      value: {
+        kind: port,
+        items: matchingItems,
+        count: matchingItems.length,
+      },
+    }];
+  });
+}
+
+function stringArrayFromConfig(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+}
+
+function mediaKindFromMimeType(mimeType?: string): MediaKindForRun {
+  if (!mimeType) return "media";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "media";
+}
+
+function mediaKindFromArtifact(artifact: {
+  type: string;
+  data?: unknown;
+}): MediaKindForRun {
+  const data = objectValue(artifact.data);
+  const mimeType = typeof data.mimeType === "string" ? data.mimeType : undefined;
+  const mimeKind = mediaKindFromMimeType(mimeType);
+  if (mimeKind !== "media") return mimeKind;
+
+  if (artifact.type === "image" || artifact.type === "thumbnail") return "image";
+  if (artifact.type === "video") return "video";
+  return "media";
+}
+
+function uploadedMediaItemsFromConfig(value: unknown): MediaNodeItemForRun[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item, index): MediaNodeItemForRun[] => {
+    if (typeof item === "string" && item.trim()) {
+      return [{
+        id: `uploaded:${index}`,
+        source: "uploaded",
+        kind: "media",
+        storageUrl: item.trim(),
+      } satisfies MediaNodeItemForRun];
+    }
+
+    const record = objectValue(item);
+    const storageUrl = record.storageUrl ?? record.url;
+    if (typeof storageUrl !== "string" || !storageUrl.trim()) return [];
+    const mimeType = typeof record.mimeType === "string" ? record.mimeType : undefined;
+    const configuredKind = record.kind;
+    const kind =
+      configuredKind === "image" ||
+      configuredKind === "video" ||
+      configuredKind === "audio" ||
+      configuredKind === "media"
+        ? configuredKind
+        : mediaKindFromMimeType(mimeType);
+
+    return [{
+      id: typeof record.id === "string" && record.id.trim()
+        ? record.id.trim()
+        : `uploaded:${index}`,
+      source: "uploaded",
+      kind,
+      title: typeof record.title === "string" ? record.title : undefined,
+      storageUrl: storageUrl.trim(),
+      metadata: record,
+    } satisfies MediaNodeItemForRun];
+  });
 }
 
 export const executeRun = internalAction({
@@ -353,9 +469,47 @@ export const executeRun = internalAction({
             data: {
               nodeType: node.type,
               inputSummary: resolvedInputs.summary,
-              placeholderExecution: true,
+              placeholderExecution: !isMediaNode(node),
             },
           });
+
+          if (isMediaNode(node)) {
+            const mediaItems = await ctx.runQuery(
+              internal.workflows.runner.resolveMediaNodeItems,
+              {
+                runId: context.run._id,
+                nodeId: node.id,
+              }
+            );
+            const outputRefs = mediaOutputRefsForNode(node.id, mediaItems);
+
+            await ctx.runMutation(internal.workflows.runs.transitionNodeState, {
+              runId: context.run._id,
+              nodeId: node.id,
+              status: "succeeded",
+              outputRefs,
+              costUsd: 0,
+            });
+            await ctx.runMutation(internal.workflows.runs.recordEvent, {
+              userId: context.run.userId,
+              workflowRunId: context.run._id,
+              workflowId: context.workflow._id,
+              type: "node_completed",
+              nodeId: node.id,
+              message: `${node.label} exposed ${mediaItems.length} media reference${mediaItems.length === 1 ? "" : "s"}.`,
+              data: {
+                nodeType: node.type,
+                mediaCount: mediaItems.length,
+                outputPorts: outputRefs.map((outputRef) => outputRef.port),
+                placeholderExecution: false,
+              },
+            });
+
+            pendingNodeIds.delete(node.id);
+            completedNodeIds.add(node.id);
+            executedNodeCount += 1;
+            continue;
+          }
 
           const outboundPorts = outboundPortsForNode(graph, node.id);
           const packageArtifactIds = postPackageArtifactIdsFromInputs(resolvedInputs);
@@ -593,6 +747,87 @@ export const createPlaceholderArtifact = internalMutation({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const resolveMediaNodeItems = internalQuery({
+  args: {
+    runId: v.id("workflowRuns"),
+    nodeId: v.string(),
+  },
+  handler: async (ctx, args): Promise<MediaNodeItemForRun[]> => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Workflow run not found");
+
+    const workflow = await ctx.db.get(run.workflowId);
+    if (!workflow) throw new Error("Workflow not found");
+
+    const node = workflow.graph.nodes.find((candidateNode) => candidateNode.id === args.nodeId);
+    if (!node || node.type !== "media") throw new Error("Media node not found");
+
+    const config = objectValue(node.config);
+    const artifactIds = stringArrayFromConfig(config.artifactIds);
+    const brandAssetIds = stringArrayFromConfig(config.brandAssetIds);
+    const personaAssetIds = stringArrayFromConfig(config.personaAssetIds);
+    const items: MediaNodeItemForRun[] = [];
+
+    for (const artifactId of artifactIds) {
+      const artifact = await ctx.db.get(artifactId as Id<"artifacts">);
+      if (!artifact || artifact.userId !== run.userId) continue;
+
+      items.push({
+        id: String(artifact._id),
+        source: "artifact",
+        kind: mediaKindFromArtifact(artifact),
+        title: artifact.title,
+        storageUrl: artifact.storageUrl,
+        data: artifact.data,
+        metadata: {
+          artifactType: artifact.type,
+          reviewStatus: artifact.reviewStatus,
+        },
+      });
+    }
+
+    for (const assetId of brandAssetIds) {
+      const asset = await ctx.db.get(assetId as Id<"brandAssets">);
+      if (!asset || asset.userId !== run.userId) continue;
+
+      items.push({
+        id: String(asset._id),
+        source: "brand_asset",
+        kind: "image",
+        title: asset.name,
+        storageUrl: asset.storageUrl,
+        metadata: {
+          assetType: asset.type,
+          description: asset.description,
+          metadata: asset.metadata,
+        },
+      });
+    }
+
+    for (const personaId of personaAssetIds) {
+      const persona = await ctx.db.get(personaId as Id<"brandAssets">);
+      if (!persona || persona.userId !== run.userId) continue;
+
+      items.push({
+        id: String(persona._id),
+        source: "persona_asset",
+        kind: "image",
+        title: persona.name,
+        storageUrl: persona.storageUrl,
+        metadata: {
+          assetType: persona.type,
+          description: persona.description,
+          metadata: persona.metadata,
+        },
+      });
+    }
+
+    items.push(...uploadedMediaItemsFromConfig(config.uploadedMedia));
+
+    return items;
   },
 });
 
