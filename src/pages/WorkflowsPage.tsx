@@ -1,9 +1,18 @@
 import { useMutation, useQuery } from "convex/react";
-import { LayoutTemplate, Plus, Workflow } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  Check,
+  Copy,
+  LayoutTemplate,
+  Pencil,
+  Plus,
+  Trash2,
+  Workflow,
+  X,
+} from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
-import { Field, FormPanel, Page, Panel, Select } from "../components/ui";
+import { Page, Select } from "../components/ui";
 import { createStarterWorkflowGraph } from "../lib/workflowGraph";
 import {
   createWorkflowGraphFromTemplate,
@@ -13,7 +22,7 @@ import {
   type WorkflowTemplateId,
 } from "../lib/workflowTemplates";
 import { DEFAULT_PUBLISHING_PROVIDER } from "../lib/publishingRouting";
-import type { BrandId, SocialAccountId } from "../types";
+import type { BrandId, WorkflowId } from "../types";
 
 type WorkflowStatusFilter = "all" | "active" | "paused";
 type WorkflowScheduleFilter = "all" | "manual" | "scheduled";
@@ -33,24 +42,78 @@ function formatTemplateValue(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function formatDate(value?: number) {
+  if (!value) return "Never";
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatSchedule(workflow: {
+  trigger: string;
+  nextRunAt?: number;
+}) {
+  if (workflow.nextRunAt) return `Next ${formatDate(workflow.nextRunAt)}`;
+  if (workflow.trigger === "schedule") return "Scheduled";
+  return "Manual";
+}
+
+function workflowOutputSummary(workflow: {
+  graph: {
+    nodes: Array<{
+      type: string;
+      label: string;
+      config: Record<string, unknown>;
+    }>;
+  };
+}) {
+  const compiler = workflow.graph.nodes.find((node) => node.type === "post_compiler");
+  const compilerPostType = compiler?.config.postType;
+  if (typeof compilerPostType === "string" && compilerPostType.trim()) {
+    return formatTemplateValue(compilerPostType);
+  }
+
+  const terminal = workflow.graph.nodes.find((node) =>
+    node.type === "auto_post" || node.type === "export"
+  );
+  if (terminal) return terminal.label;
+
+  return `${workflow.graph.nodes.length} nodes`;
+}
+
 export function WorkflowsPage() {
   const navigate = useNavigate();
   const brands = useQuery(api.accounts.brands.list);
   const accounts = useQuery(api.accounts.socialAccounts.list);
   const workflows = useQuery(api.workflows.definitions.list);
   const createWorkflow = useMutation(api.workflows.definitions.create);
-  const [brandId, setBrandId] = useState("");
-  const [socialAccountId, setSocialAccountId] = useState("");
-  const [name, setName] = useState("");
+  const updateWorkflowMetadata = useMutation(api.workflows.definitions.updateMetadata);
+  const duplicateWorkflow = useMutation(api.workflows.definitions.duplicate);
+  const deleteWorkflow = useMutation(api.workflows.definitions.remove);
   const [brandFilter, setBrandFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [scheduleFilter, setScheduleFilter] = useState<WorkflowScheduleFilter>("all");
-  const [createStatus, setCreateStatus] = useState("");
+  const [actionStatus, setActionStatus] = useState("");
+  const [showTemplates, setShowTemplates] = useState(false);
   const [templateCategoryFilter, setTemplateCategoryFilter] =
     useState<WorkflowTemplateCategoryFilter>("all");
   const [selectedTemplateId, setSelectedTemplateId] =
     useState<WorkflowTemplateId>("persona_image_set");
+  const [renamingWorkflowId, setRenamingWorkflowId] = useState<WorkflowId | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
   const workflowTemplates = useMemo(() => listWorkflowTemplates(), []);
+  const brandsById = useMemo(
+    () => new Map((brands ?? []).map((brand) => [String(brand._id), brand.name])),
+    [brands]
+  );
+  const accountsById = useMemo(
+    () => new Map((accounts ?? []).map((account) => [String(account._id), account.username])),
+    [accounts]
+  );
   const templateCategories = useMemo(
     () => [
       "all",
@@ -73,19 +136,10 @@ export function WorkflowsPage() {
       workflowTemplates[0],
     [filteredTemplates, selectedTemplateId, workflowTemplates]
   );
-
-  useEffect(() => {
-    if (!brandId && brands?.[0]) {
-      setBrandId(brands[0]._id);
-    }
-  }, [brandId, brands]);
-
-  const brandAccounts = useMemo(
-    () =>
-      accounts?.filter((account) => !brandId || account.brandId === brandId) ?? [],
-    [accounts, brandId]
+  const targetBrandId = useMemo(
+    () => (brandFilter !== "all" ? (brandFilter as BrandId) : undefined),
+    [brandFilter]
   );
-
   const filteredWorkflows = useMemo(() => {
     if (!workflows) return undefined;
 
@@ -106,27 +160,12 @@ export function WorkflowsPage() {
     });
   }, [brandFilter, scheduleFilter, statusFilter, workflows]);
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!brands?.length) {
-      setCreateStatus("Create a brand before creating workflows.");
-      return;
-    }
-    if (!brandId) {
-      setCreateStatus("Select a brand before creating a workflow.");
-      return;
-    }
-    if (!name.trim()) {
-      setCreateStatus("Name the workflow before creating it.");
-      return;
-    }
-
-    setCreateStatus("Creating blank workflow");
+  const createBlankWorkflow = async () => {
+    setActionStatus("Creating workflow");
     try {
       const workflowId = await createWorkflow({
-        brandId: brandId as BrandId,
-        socialAccountId: socialAccountId ? (socialAccountId as SocialAccountId) : undefined,
-        name: name.trim(),
+        ...(targetBrandId ? { brandId: targetBrandId as BrandId } : {}),
+        name: "Untitled workflow",
         trigger: "manual",
         approvalPolicy: { mode: "always" },
         publishingPolicy: {
@@ -136,28 +175,21 @@ export function WorkflowsPage() {
         },
         graph: createStarterWorkflowGraph(),
       });
-      setName("");
-      setCreateStatus("");
+      setActionStatus("");
       navigate(`/workflows/${workflowId}`);
     } catch (error) {
-      setCreateStatus(error instanceof Error ? error.message : "Workflow creation failed");
+      setActionStatus(error instanceof Error ? error.message : "Workflow creation failed");
     }
   };
 
-  const handleCreateFromTemplate = async (templateId: WorkflowTemplateId) => {
-    if (!brandId) {
-      setCreateStatus("Select a brand before creating a template workflow.");
-      return;
-    }
-
+  const createFromTemplate = async (templateId: WorkflowTemplateId) => {
     const template = getWorkflowTemplate(templateId);
 
-    setCreateStatus(`Creating ${template.name}`);
+    setActionStatus(`Creating ${template.name}`);
     try {
       const workflowId = await createWorkflow({
-        brandId: brandId as BrandId,
-        socialAccountId: socialAccountId ? (socialAccountId as SocialAccountId) : undefined,
-        name: name.trim() || template.name,
+        ...(targetBrandId ? { brandId: targetBrandId as BrandId } : {}),
+        name: template.name,
         description: template.description,
         trigger: "manual",
         approvalPolicy: { mode: "always" },
@@ -168,151 +200,81 @@ export function WorkflowsPage() {
         },
         graph: createWorkflowGraphFromTemplate(template.id),
       });
-      setName("");
-      setCreateStatus("");
+      setActionStatus("");
       navigate(`/workflows/${workflowId}`);
     } catch (error) {
-      setCreateStatus(error instanceof Error ? error.message : "Template creation failed");
+      setActionStatus(error instanceof Error ? error.message : "Template creation failed");
     }
   };
 
-  const handleCreateSelectedTemplate = async () => {
-    if (!selectedTemplate) return;
-    await handleCreateFromTemplate(selectedTemplate.id);
+  const saveRename = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!renamingWorkflowId) return;
+
+    const name = renameValue.trim();
+    if (!name) return;
+
+    setActionStatus("Renaming workflow");
+    try {
+      await updateWorkflowMetadata({
+        id: renamingWorkflowId,
+        name,
+      });
+      setRenamingWorkflowId(null);
+      setRenameValue("");
+      setActionStatus("");
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : "Rename failed");
+    }
+  };
+
+  const duplicateExistingWorkflow = async (workflowId: WorkflowId) => {
+    setActionStatus("Duplicating workflow");
+    try {
+      await duplicateWorkflow({ id: workflowId });
+      setActionStatus("");
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : "Duplicate failed");
+    }
+  };
+
+  const removeWorkflow = async (workflowId: WorkflowId, workflowName: string) => {
+    if (!window.confirm(`Delete "${workflowName}"?`)) return;
+
+    setActionStatus("Deleting workflow");
+    try {
+      await deleteWorkflow({ id: workflowId });
+      setActionStatus("");
+    } catch (error) {
+      setActionStatus(error instanceof Error ? error.message : "Delete failed");
+    }
   };
 
   return (
-    <Page title="Workflows" description="Repeatable agent pipelines for each brand/account.">
-      <FormPanel title="New Workflow" onSubmit={handleSubmit}>
-        <Select label="Brand" value={brandId} onChange={setBrandId}>
-          <option value="">
-            {brands?.length === 0 ? "No brands yet" : "Select brand"}
-          </option>
-          {brands?.map((brand) => (
-            <option key={brand._id} value={brand._id}>
-              {brand.name}
-            </option>
-          ))}
-        </Select>
-        <Select label="Account" value={socialAccountId} onChange={setSocialAccountId}>
-          <option value="">No account yet</option>
-          {brandAccounts.map((account) => (
-            <option key={account._id} value={account._id}>
-              {account.username}
-            </option>
-          ))}
-        </Select>
-        <Field label="Name" value={name} onChange={setName} placeholder="Daily slideshow test" />
-        <button className="primary-button" type="submit">
-          <Plus size={16} />
-          New blank workflow
-        </button>
-        {createStatus && <p className="muted">{createStatus}</p>}
-      </FormPanel>
-
-      <Panel title="Template Picker">
-        <div className="section-toolbar">
-          <p className="muted">
-            Choose a starter workflow, then open it as an editable canvas.
-          </p>
-          <span className="entity-eyebrow">{workflowTemplates.length} templates</span>
-        </div>
-        <div className="button-row" role="tablist" aria-label="Template categories">
-          {templateCategories.map((category) => (
-            <button
-              className={
-                templateCategoryFilter === category
-                  ? "secondary-button !border-[var(--color-primary)] !bg-[var(--color-primary-soft)] !text-[var(--color-primary-strong)]"
-                  : "secondary-button"
-              }
-              key={category}
-              type="button"
-              onClick={() => setTemplateCategoryFilter(category)}
-            >
-              {templateCategoryLabels[category]}
-            </button>
-          ))}
-        </div>
-        <div className="grid min-w-0 gap-[var(--space-4)] xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
-          <div className="grid content-start gap-[var(--space-2)]">
-            {filteredTemplates.map((template) => {
-              const selected = template.id === selectedTemplate?.id;
-              return (
-                <button
-                  className={[
-                    "grid min-w-0 gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-3)] text-left transition",
-                    selected
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]"
-                      : "border-[var(--color-border)] bg-[var(--color-surface-raised)] hover:border-[var(--color-border-strong)]",
-                  ].join(" ")}
-                  key={template.id}
-                  type="button"
-                  onClick={() => setSelectedTemplateId(template.id)}
-                >
-                  <span className="entity-eyebrow">{formatTemplateValue(template.category)}</span>
-                  <strong className="min-w-0 [overflow-wrap:anywhere]">{template.name}</strong>
-                  <span className="muted text-[0.78rem] leading-[1.25]">
-                    {template.description}
-                  </span>
-                </button>
-              );
-            })}
+    <Page title="Workflows" description="Saved canvases for repeatable content automation.">
+      <section className="workflow-index-panel">
+        <div className="workflow-index-toolbar">
+          <div>
+            <h2>Workflow List</h2>
+            <p>{filteredWorkflows ? `${filteredWorkflows.length} shown` : "Loading workflows"}</p>
           </div>
-
-          {selectedTemplate && (
-            <section className="grid min-w-0 content-start gap-[var(--space-4)] border-t border-[var(--color-border)] pt-[var(--space-4)] xl:border-l xl:border-t-0 xl:pl-[var(--space-4)] xl:pt-0">
-              <div className="grid gap-[var(--space-2)]">
-                <span className="entity-eyebrow">{formatTemplateValue(selectedTemplate.category)}</span>
-                <h3 className="m-0 text-[1.35rem] font-[720] leading-[1.1]">
-                  {selectedTemplate.name}
-                </h3>
-                <p className="muted">{selectedTemplate.purpose}</p>
-              </div>
-              <div className="flex flex-wrap gap-[var(--space-2)]">
-                <span className="rounded-full bg-[var(--color-primary-soft)] px-[var(--space-3)] py-[var(--space-1)] text-[0.76rem] font-[700] text-[var(--color-primary-strong)]">
-                  {formatTemplateValue(selectedTemplate.outputType)}
-                </span>
-                <span className="rounded-full bg-[var(--color-surface-tinted)] px-[var(--space-3)] py-[var(--space-1)] text-[0.76rem] font-[700] text-[var(--color-ink-soft)]">
-                  {selectedTemplate.graph.nodes.length} nodes
-                </span>
-              </div>
-              <div className="grid gap-[var(--space-3)]">
-                <h4 className="m-0 text-[0.95rem] font-[680]">Required inputs</h4>
-                <div className="grid gap-[var(--space-2)]">
-                  {selectedTemplate.requiredInputs.map((input) => (
-                    <div
-                      className="grid gap-[var(--space-1)] border-t border-[var(--color-border)] pt-[var(--space-2)]"
-                      key={input.key}
-                    >
-                      <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
-                        <strong className="text-[0.9rem]">{input.label}</strong>
-                        <span className="entity-eyebrow">{formatTemplateValue(input.kind)}</span>
-                        {!input.required && <span className="muted text-[0.76rem]">Optional</span>}
-                      </div>
-                      <p className="muted text-[0.82rem]">{input.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <button
-                className="primary-button justify-self-start"
-                disabled={!brandId}
-                type="button"
-                onClick={() => void handleCreateSelectedTemplate()}
-              >
-                <LayoutTemplate size={16} />
-                Create from template
-              </button>
-              {!brandId && (
-                <p className="muted">Select a brand above before creating a template workflow.</p>
-              )}
-            </section>
-          )}
+          <div className="workflow-index-actions">
+            <button
+              className="secondary-button"
+              onClick={() => setShowTemplates((current) => !current)}
+              type="button"
+            >
+              <LayoutTemplate size={16} />
+              Templates
+            </button>
+            <button className="primary-button" onClick={() => void createBlankWorkflow()} type="button">
+              <Plus size={16} />
+              New workflow
+            </button>
+          </div>
         </div>
-      </Panel>
 
-      <Panel title="Workflow List">
-        <div className="filter-grid workflow-filter-grid">
+        <div className="workflow-index-filters">
           <Select label="Brand" value={brandFilter} onChange={setBrandFilter}>
             <option value="all">All brands</option>
             {brands?.map((brand) => (
@@ -339,38 +301,182 @@ export function WorkflowsPage() {
             <option value="manual">Manual</option>
             <option value="scheduled">Scheduled</option>
           </Select>
-          <p className="workflow-list-count">
-            {filteredWorkflows ? `${filteredWorkflows.length} shown` : "Loading"}
-          </p>
         </div>
-      </Panel>
 
-      {!filteredWorkflows && <div className="empty-state">Loading...</div>}
-      {filteredWorkflows?.length === 0 && (
-        <div className="empty-state">
-          {workflows?.length === 0 ? "No workflows yet." : "No workflows match these filters."}
+        {actionStatus && <p className="workflow-index-status">{actionStatus}</p>}
+
+        {showTemplates && selectedTemplate ? (
+          <section className="workflow-template-panel" aria-label="Workflow templates">
+            <div className="workflow-template-tabs" role="tablist" aria-label="Template categories">
+              {templateCategories.map((category) => (
+                <button
+                  className={
+                    templateCategoryFilter === category
+                      ? "workflow-template-tab workflow-template-tab-active"
+                      : "workflow-template-tab"
+                  }
+                  key={category}
+                  type="button"
+                  onClick={() => setTemplateCategoryFilter(category)}
+                >
+                  {templateCategoryLabels[category]}
+                </button>
+              ))}
+            </div>
+            <div className="workflow-template-list">
+              {filteredTemplates.map((template) => (
+                <button
+                  className={
+                    template.id === selectedTemplate.id
+                      ? "workflow-template-row workflow-template-row-active"
+                      : "workflow-template-row"
+                  }
+                  key={template.id}
+                  type="button"
+                  onClick={() => setSelectedTemplateId(template.id)}
+                >
+                  <span>{formatTemplateValue(template.category)}</span>
+                  <strong>{template.name}</strong>
+                  <small>{formatTemplateValue(template.outputType)}</small>
+                </button>
+              ))}
+            </div>
+            <div className="workflow-template-detail">
+              <span className="entity-eyebrow">{formatTemplateValue(selectedTemplate.category)}</span>
+              <h3>{selectedTemplate.name}</h3>
+              <p>{selectedTemplate.purpose}</p>
+              <div className="workflow-template-meta">
+                <span>{formatTemplateValue(selectedTemplate.outputType)}</span>
+                <span>{selectedTemplate.graph.nodes.length} nodes</span>
+                <span>{selectedTemplate.requiredInputs.length} inputs</span>
+              </div>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => void createFromTemplate(selectedTemplate.id)}
+              >
+                <LayoutTemplate size={16} />
+                Create from template
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <div className="workflow-table" role="table" aria-label="Workflows">
+          <div className="workflow-table-header" role="row">
+            <span>Name</span>
+            <span>Output</span>
+            <span>Brand</span>
+            <span>Schedule</span>
+            <span>Status</span>
+            <span>Actions</span>
+          </div>
+
+          {!filteredWorkflows && <div className="workflow-table-empty">Loading workflows...</div>}
+          {filteredWorkflows?.length === 0 ? (
+            <div className="workflow-table-empty">
+              <Workflow size={22} />
+              <strong>No workflows yet</strong>
+              <span>Create a blank canvas or start from a template.</span>
+              <button className="primary-button" onClick={() => void createBlankWorkflow()} type="button">
+                <Plus size={16} />
+                New workflow
+              </button>
+            </div>
+          ) : null}
+
+          {filteredWorkflows?.map((workflow) => {
+            const workflowId = workflow._id as WorkflowId;
+            const isRenaming = renamingWorkflowId === workflowId;
+            const brandName = brandsById.get(String(workflow.brandId)) ?? "Workspace";
+            const accountName = workflow.socialAccountId
+              ? accountsById.get(String(workflow.socialAccountId))
+              : undefined;
+
+            return (
+              <div className="workflow-table-row" key={workflow._id} role="row">
+                <div className="workflow-table-name-cell">
+                  {isRenaming ? (
+                    <form className="workflow-rename-form" onSubmit={saveRename}>
+                      <input
+                        aria-label="Workflow name"
+                        autoFocus
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                      />
+                      <button aria-label="Save name" className="icon-button" type="submit">
+                        <Check size={15} />
+                      </button>
+                      <button
+                        aria-label="Cancel rename"
+                        className="icon-button"
+                        onClick={() => {
+                          setRenamingWorkflowId(null);
+                          setRenameValue("");
+                        }}
+                        type="button"
+                      >
+                        <X size={15} />
+                      </button>
+                    </form>
+                  ) : (
+                    <Link className="workflow-row-title" to={`/workflows/${workflow._id}`}>
+                      <strong>{workflow.name}</strong>
+                      <span>
+                        {workflow.description ||
+                          `${workflow.graph.nodes.length} nodes, ${workflow.graph.edges.length} edges`}
+                      </span>
+                    </Link>
+                  )}
+                </div>
+                <span>{workflowOutputSummary(workflow)}</span>
+                <span>{accountName ? `${brandName} / ${accountName}` : brandName}</span>
+                <span>{formatSchedule(workflow)}</span>
+                <span>
+                  <mark className={workflow.isActive ? "workflow-status-active" : "workflow-status-paused"}>
+                    {workflow.isActive ? "Active" : "Paused"}
+                  </mark>
+                </span>
+                <div className="workflow-row-actions">
+                  <Link className="icon-button" title="Open canvas" to={`/workflows/${workflow._id}`}>
+                    <Workflow size={15} />
+                  </Link>
+                  <button
+                    aria-label={`Rename ${workflow.name}`}
+                    className="icon-button"
+                    onClick={() => {
+                      setRenamingWorkflowId(workflowId);
+                      setRenameValue(workflow.name);
+                    }}
+                    title="Rename"
+                    type="button"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    aria-label={`Duplicate ${workflow.name}`}
+                    className="icon-button"
+                    onClick={() => void duplicateExistingWorkflow(workflowId)}
+                    title="Duplicate"
+                    type="button"
+                  >
+                    <Copy size={15} />
+                  </button>
+                  <button
+                    aria-label={`Delete ${workflow.name}`}
+                    className="icon-button workflow-delete-button"
+                    onClick={() => void removeWorkflow(workflowId, workflow.name)}
+                    title="Delete"
+                    type="button"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
-      <div className="entity-grid">
-        {filteredWorkflows?.map((workflow) => (
-          <Link className="entity-card workflow-card-link" key={workflow._id} to={`/workflows/${workflow._id}`}>
-            <div className="entity-eyebrow">{workflow.isActive ? "Active" : "Paused"}</div>
-            <h3>{workflow.name}</h3>
-            <p>
-              {workflow.description ||
-                `${workflow.trigger} trigger with ${workflow.publishingPolicy.provider} publishing`}
-            </p>
-            <span>{workflow.isActive ? "Active" : "Paused"}</span>
-            {workflow.nextRunAt ? (
-              <span>Next {new Date(workflow.nextRunAt).toLocaleString()}</span>
-            ) : null}
-            <span className="workflow-card-action">
-              <Workflow size={15} />
-              Open canvas
-            </span>
-          </Link>
-        ))}
-      </div>
+      </section>
     </Page>
   );
 }

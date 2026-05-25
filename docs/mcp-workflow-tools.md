@@ -14,6 +14,8 @@ not create an MCP-only workflow representation.
 - Every workflow read/write is scoped to the authenticated user.
 - Brand and social account ownership are checked when creating or updating
   workflow metadata.
+- Workflow creation can omit `brandId`; the backend creates or reuses the
+  authenticated user's neutral `Workspace` brand as implementation context.
 - Graph-writing tools validate the graph before saving.
 - Graph edits never trigger provider calls, artifact creation, publishing, or
   credit spend.

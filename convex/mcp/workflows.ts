@@ -25,6 +25,7 @@ import { createWorkflowRun } from "../workflows/runCreation";
 import { nextScheduledRunAt } from "../workflows/scheduling";
 
 type WorkflowDoc = Doc<"workflows">;
+type BrandDoc = Doc<"brands">;
 type WorkflowGraphDoc = typeof workflowGraphValidator.type;
 type WorkflowNodeDoc = WorkflowGraphDoc["nodes"][number];
 type WorkflowEdgeDoc = WorkflowGraphDoc["edges"][number];
@@ -117,6 +118,41 @@ async function assertOwnedBrand(ctx: MutationCtx, brandId: Id<"brands">, userId:
   return brand;
 }
 
+async function getOrCreateDefaultBrand(
+  ctx: MutationCtx,
+  userId: string
+): Promise<BrandDoc> {
+  const userBrands = await ctx.db
+    .query("brands")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const existingWorkspace = userBrands.find((brand) => brand.name === "Workspace");
+  if (existingWorkspace) return existingWorkspace;
+
+  const now = Date.now();
+  const brandId = await ctx.db.insert("brands", {
+    userId,
+    name: "Workspace",
+    description: "Default context for workflows that are not tied to a specific brand yet.",
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const brand = await ctx.db.get(brandId);
+  if (!brand) throw new Error("Default brand could not be created");
+  return brand;
+}
+
+async function resolveWorkflowBrand(
+  ctx: MutationCtx,
+  userId: string,
+  brandId?: Id<"brands">
+) {
+  return brandId
+    ? await assertOwnedBrand(ctx, brandId, userId)
+    : await getOrCreateDefaultBrand(ctx, userId);
+}
+
 async function assertOwnedSocialAccount(
   ctx: MutationCtx,
   args: {
@@ -140,7 +176,7 @@ async function createWorkflow(
   ctx: MutationCtx,
   args: {
     userId: string;
-    brandId: Id<"brands">;
+    brandId?: Id<"brands">;
     socialAccountId?: Id<"socialAccounts">;
     name: string;
     description?: string;
@@ -151,10 +187,10 @@ async function createWorkflow(
     graph: WorkflowGraphDoc;
   }
 ) {
-  await assertOwnedBrand(ctx, args.brandId, args.userId);
+  const brand = await resolveWorkflowBrand(ctx, args.userId, args.brandId);
   await assertOwnedSocialAccount(ctx, {
     socialAccountId: args.socialAccountId,
-    brandId: args.brandId,
+    brandId: brand._id,
     userId: args.userId,
   });
   assertValidGraph(args.graph);
@@ -165,7 +201,7 @@ async function createWorkflow(
   const now = Date.now();
   return await ctx.db.insert("workflows", {
     userId: args.userId,
-    brandId: args.brandId,
+    brandId: brand._id,
     socialAccountId: args.socialAccountId,
     name,
     description: args.description?.trim() || undefined,
@@ -232,7 +268,7 @@ export const validateGraph = query({
 
 export const createBlank = mutation({
   args: {
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
@@ -261,7 +297,7 @@ export const createBlank = mutation({
 export const createFromTemplate = mutation({
   args: {
     templateId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.optional(v.string()),
     description: v.optional(v.string()),

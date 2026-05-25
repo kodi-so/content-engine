@@ -560,6 +560,19 @@ Acceptance criteria:
 - Blank workflow creation opens canvas.
 - Existing workflows remain visible.
 
+Implementation notes:
+
+- Reworked the Workflows page into a compact row-based list with name, derived
+  output, optional brand/account context, schedule, status, and row actions.
+- Removed the upfront workflow creation form. Blank workflows now create an
+  `Untitled workflow` and navigate directly to the canvas.
+- Kept templates available as a secondary panel behind a `Templates` button so
+  the saved workflow list remains the default first view.
+- Added inline rename, duplicate, and delete actions from the list.
+- Workflow creation no longer requires choosing a brand up front. If no brand
+  is explicitly selected, the backend creates or reuses a neutral `Workspace`
+  brand as implementation context.
+
 #### SW-0203: Build canvas node palette
 
 Status: `Done`
@@ -1504,8 +1517,9 @@ Acceptance criteria:
 
 Implementation notes:
 
-- Replaced the inline template buttons with a dedicated Template Picker panel
-  on the Workflows page.
+- Added a dedicated Template Picker panel on the Workflows page, then moved it
+  behind a secondary `Templates` action so the workflow list remains the first
+  thing users see.
 - Added category filtering, template selection, purpose text, output type, node
   count, and required input details.
 - Template creation now uses the selected template detail view and opens the
