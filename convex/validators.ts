@@ -123,6 +123,32 @@ export const workflowRunOutputRefValidator = v.object({
   value: v.optional(v.any()),
 });
 
+export const nodeInputBindingValidator = v.union(
+  v.object({
+    type: v.literal("literal"),
+    value: v.any(),
+  }),
+  v.object({
+    type: v.literal("node_output"),
+    sourceNodeId: v.string(),
+    sourcePort: v.string(),
+    outputKey: v.optional(v.string()),
+  }),
+  v.object({
+    type: v.literal("artifact"),
+    artifactId: v.string(),
+  }),
+  v.object({
+    type: v.literal("media_asset"),
+    assetId: v.string(),
+  }),
+  v.object({
+    type: v.literal("persona"),
+    personaId: v.string(),
+    assetKey: v.optional(v.string()),
+  })
+);
+
 export const contentRequestStatusValidator = v.union(
   v.literal("queued"),
   v.literal("planning"),
@@ -163,7 +189,7 @@ export const workflowGraphValidator = v.object({
       provider: v.optional(v.string()),
       model: v.optional(v.string()),
       config: v.record(v.string(), v.any()),
-      inputBindings: v.optional(v.record(v.string(), v.any())),
+      inputBindings: v.optional(v.record(v.string(), nodeInputBindingValidator)),
       retention: v.optional(v.any()),
     })
   ),

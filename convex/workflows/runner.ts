@@ -66,6 +66,19 @@ function readyNodesForPass(
   });
 }
 
+function outboundPortsForNode(
+  graph: WorkflowGraphForRun,
+  nodeId: string
+): string[] {
+  return [
+    ...new Set(
+      graph.edges
+        .filter((edge) => edge.sourceNodeId === nodeId)
+        .map((edge) => edge.sourcePort)
+    ),
+  ].sort();
+}
+
 export const executeRun = internalAction({
   args: { runId: v.id("workflowRuns") },
   handler: async (ctx, args) => {
@@ -151,6 +164,14 @@ export const executeRun = internalAction({
 
       for (const node of readyNodes) {
         try {
+          const resolvedInputs = await ctx.runQuery(
+            internal.workflows.inputResolver.resolveForNode,
+            {
+              runId: context.run._id,
+              nodeId: node.id,
+            }
+          );
+
           await ctx.runMutation(internal.workflows.runs.transitionRun, {
             runId: context.run._id,
             status: "running",
@@ -170,14 +191,28 @@ export const executeRun = internalAction({
             message: `${node.label} started.`,
             data: {
               nodeType: node.type,
+              inputSummary: resolvedInputs.summary,
               placeholderExecution: true,
             },
           });
+
+          const outputRefs = outboundPortsForNode(graph, node.id).map((port) => ({
+            nodeId: node.id,
+            port,
+            value: {
+              placeholderExecution: true,
+              nodeId: node.id,
+              nodeType: node.type,
+              label: node.label,
+              inputSummary: resolvedInputs.summary,
+            },
+          }));
 
           await ctx.runMutation(internal.workflows.runs.transitionNodeState, {
             runId: context.run._id,
             nodeId: node.id,
             status: "succeeded",
+            ...(outputRefs.length ? { outputRefs } : {}),
             costUsd: 0,
           });
           await ctx.runMutation(internal.workflows.runs.recordEvent, {
@@ -189,6 +224,7 @@ export const executeRun = internalAction({
             message: `${node.label} completed with placeholder execution.`,
             data: {
               nodeType: node.type,
+              outputPorts: outputRefs.map((outputRef) => outputRef.port),
               placeholderExecution: true,
             },
           });

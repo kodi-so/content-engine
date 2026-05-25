@@ -816,7 +816,7 @@ Implementation notes:
 
 #### SW-0403: Add input binding resolver
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -827,6 +827,19 @@ Acceptance criteria:
 
 - "Prompt from input node" and "image from input node" are represented as
   bindings, not ad hoc booleans.
+
+Implementation notes:
+
+- Added a typed `nodeInputBindingValidator` for literal values, node outputs,
+  artifacts, media assets, and persona assets.
+- Added a backend input resolver that combines node config, incoming graph
+  edges, explicit `inputBindings`, upstream node output refs, artifacts, brand
+  media assets, and persona-style brand assets into one resolved input map.
+- The graph executor now resolves inputs before each placeholder node execution
+  and records input summaries in node events.
+- Placeholder node execution now emits output refs for outbound ports so
+  downstream nodes can resolve upstream inputs through the same path the real
+  Phase 5 node bodies will use.
 
 #### SW-0404: Add artifact retention policies
 
