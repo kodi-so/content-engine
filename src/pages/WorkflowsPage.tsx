@@ -9,6 +9,7 @@ import {
   createWorkflowGraphFromTemplate,
   getWorkflowTemplate,
   listWorkflowTemplates,
+  type WorkflowTemplateCategory,
   type WorkflowTemplateId,
 } from "../lib/workflowTemplates";
 import type { BrandId, ContentFormat, SocialAccountId } from "../types";
@@ -16,6 +17,21 @@ import type { BrandId, ContentFormat, SocialAccountId } from "../types";
 type WorkflowStatusFilter = "all" | "active" | "paused";
 type WorkflowScheduleFilter = "all" | "manual" | "scheduled";
 type WorkflowFormatFilter = "all" | ContentFormat;
+type WorkflowTemplateCategoryFilter = "all" | WorkflowTemplateCategory;
+
+const templateCategoryLabels: Record<WorkflowTemplateCategoryFilter, string> = {
+  all: "All",
+  app_demo: "App demo",
+  persona: "Persona",
+  slideshow: "Slideshow",
+  transformation: "Transformation",
+  ugc: "UGC",
+  video: "Video",
+};
+
+function formatTemplateValue(value: string) {
+  return value.replace(/_/g, " ");
+}
 
 export function WorkflowsPage() {
   const navigate = useNavigate();
@@ -32,7 +48,33 @@ export function WorkflowsPage() {
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [scheduleFilter, setScheduleFilter] = useState<WorkflowScheduleFilter>("all");
   const [createStatus, setCreateStatus] = useState("");
+  const [templateCategoryFilter, setTemplateCategoryFilter] =
+    useState<WorkflowTemplateCategoryFilter>("all");
+  const [selectedTemplateId, setSelectedTemplateId] =
+    useState<WorkflowTemplateId>("persona_image_set");
   const workflowTemplates = useMemo(() => listWorkflowTemplates(), []);
+  const templateCategories = useMemo(
+    () => [
+      "all",
+      ...Array.from(new Set(workflowTemplates.map((template) => template.category))).sort(),
+    ] as WorkflowTemplateCategoryFilter[],
+    [workflowTemplates]
+  );
+  const filteredTemplates = useMemo(
+    () =>
+      workflowTemplates.filter(
+        (template) =>
+          templateCategoryFilter === "all" || template.category === templateCategoryFilter
+      ),
+    [templateCategoryFilter, workflowTemplates]
+  );
+  const selectedTemplate = useMemo(
+    () =>
+      filteredTemplates.find((template) => template.id === selectedTemplateId) ??
+      filteredTemplates[0] ??
+      workflowTemplates[0],
+    [filteredTemplates, selectedTemplateId, workflowTemplates]
+  );
 
   const brandAccounts = useMemo(
     () =>
@@ -122,6 +164,11 @@ export function WorkflowsPage() {
     }
   };
 
+  const handleCreateSelectedTemplate = async () => {
+    if (!selectedTemplate) return;
+    await handleCreateFromTemplate(selectedTemplate.id);
+  };
+
   return (
     <Page title="Workflows" description="Repeatable agent pipelines for each brand/account.">
       <FormPanel title="New Workflow" onSubmit={handleSubmit}>
@@ -160,20 +207,112 @@ export function WorkflowsPage() {
           <Plus size={16} />
           New blank workflow
         </button>
-        {workflowTemplates.map((template) => (
-          <button
-            className="secondary-button"
-            disabled={!brandId}
-            key={template.id}
-            type="button"
-            onClick={() => void handleCreateFromTemplate(template.id)}
-          >
-            <LayoutTemplate size={16} />
-            {template.name}
-          </button>
-        ))}
         {createStatus && <p className="muted">{createStatus}</p>}
       </FormPanel>
+
+      <Panel title="Template Picker">
+        <div className="section-toolbar">
+          <p className="muted">
+            Choose a starter workflow, then open it as an editable canvas.
+          </p>
+          <span className="entity-eyebrow">{workflowTemplates.length} templates</span>
+        </div>
+        <div className="button-row" role="tablist" aria-label="Template categories">
+          {templateCategories.map((category) => (
+            <button
+              className={
+                templateCategoryFilter === category
+                  ? "secondary-button !border-[var(--color-primary)] !bg-[var(--color-primary-soft)] !text-[var(--color-primary-strong)]"
+                  : "secondary-button"
+              }
+              key={category}
+              type="button"
+              onClick={() => setTemplateCategoryFilter(category)}
+            >
+              {templateCategoryLabels[category]}
+            </button>
+          ))}
+        </div>
+        <div className="grid min-w-0 gap-[var(--space-4)] xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
+          <div className="grid content-start gap-[var(--space-2)]">
+            {filteredTemplates.map((template) => {
+              const selected = template.id === selectedTemplate?.id;
+              return (
+                <button
+                  className={[
+                    "grid min-w-0 gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-3)] text-left transition",
+                    selected
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]"
+                      : "border-[var(--color-border)] bg-[var(--color-surface-raised)] hover:border-[var(--color-border-strong)]",
+                  ].join(" ")}
+                  key={template.id}
+                  type="button"
+                  onClick={() => setSelectedTemplateId(template.id)}
+                >
+                  <span className="entity-eyebrow">{formatTemplateValue(template.category)}</span>
+                  <strong className="min-w-0 [overflow-wrap:anywhere]">{template.name}</strong>
+                  <span className="muted text-[0.78rem] leading-[1.25]">
+                    {template.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedTemplate && (
+            <section className="grid min-w-0 content-start gap-[var(--space-4)] border-t border-[var(--color-border)] pt-[var(--space-4)] xl:border-l xl:border-t-0 xl:pl-[var(--space-4)] xl:pt-0">
+              <div className="grid gap-[var(--space-2)]">
+                <span className="entity-eyebrow">{formatTemplateValue(selectedTemplate.category)}</span>
+                <h3 className="m-0 text-[1.35rem] font-[720] leading-[1.1]">
+                  {selectedTemplate.name}
+                </h3>
+                <p className="muted">{selectedTemplate.purpose}</p>
+              </div>
+              <div className="flex flex-wrap gap-[var(--space-2)]">
+                <span className="rounded-full bg-[var(--color-primary-soft)] px-[var(--space-3)] py-[var(--space-1)] text-[0.76rem] font-[700] text-[var(--color-primary-strong)]">
+                  {formatTemplateValue(selectedTemplate.outputType)}
+                </span>
+                <span className="rounded-full bg-[var(--color-accent-soft)] px-[var(--space-3)] py-[var(--space-1)] text-[0.76rem] font-[700] text-[var(--color-ink-soft)]">
+                  {formatTemplateValue(selectedTemplate.contentFormat)}
+                </span>
+                <span className="rounded-full bg-[var(--color-surface-tinted)] px-[var(--space-3)] py-[var(--space-1)] text-[0.76rem] font-[700] text-[var(--color-ink-soft)]">
+                  {selectedTemplate.graph.nodes.length} nodes
+                </span>
+              </div>
+              <div className="grid gap-[var(--space-3)]">
+                <h4 className="m-0 text-[0.95rem] font-[680]">Required inputs</h4>
+                <div className="grid gap-[var(--space-2)]">
+                  {selectedTemplate.requiredInputs.map((input) => (
+                    <div
+                      className="grid gap-[var(--space-1)] border-t border-[var(--color-border)] pt-[var(--space-2)]"
+                      key={input.key}
+                    >
+                      <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
+                        <strong className="text-[0.9rem]">{input.label}</strong>
+                        <span className="entity-eyebrow">{formatTemplateValue(input.kind)}</span>
+                        {!input.required && <span className="muted text-[0.76rem]">Optional</span>}
+                      </div>
+                      <p className="muted text-[0.82rem]">{input.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                className="primary-button justify-self-start"
+                disabled={!brandId}
+                type="button"
+                onClick={() => void handleCreateSelectedTemplate()}
+              >
+                <LayoutTemplate size={16} />
+                Create from template
+              </button>
+              {!brandId && (
+                <p className="muted">Select a brand above before creating a template workflow.</p>
+              )}
+            </section>
+          )}
+        </div>
+      </Panel>
 
       <Panel title="Workflow List">
         <div className="filter-grid workflow-filter-grid">

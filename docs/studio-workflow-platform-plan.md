@@ -1447,7 +1447,7 @@ Implementation notes:
 
 #### SW-0702: Add template picker
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1457,6 +1457,15 @@ Deliverables:
 Acceptance criteria:
 
 - Template opens as editable canvas.
+
+Implementation notes:
+
+- Replaced the inline template buttons with a dedicated Template Picker panel
+  on the Workflows page.
+- Added category filtering, template selection, purpose text, output type,
+  content format, node count, and required input details.
+- Template creation now uses the selected template detail view and opens the
+  cloned workflow in the canvas.
 
 #### SW-0703: Convert Create into prompt-to-workflow draft
 
