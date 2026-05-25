@@ -39,6 +39,11 @@ single security posture.
 | `content-engine://workflows/node-catalog` | `application/json` | Node catalog entries with labels, descriptions, ports, provider requirements, defaults, retention, and output artifact types. |
 | `content-engine://workflows/templates` | `application/json` | Built-in workflow templates with required inputs and starter graphs. |
 | `content-engine://prompts/agent-recipes` | `application/json` | AI Agent presets plus guidance for writing reusable prompt/script/analysis nodes. |
+| `content-engine://knowledge/prompting/ai-ugc` | `application/json` | Persona-led UGC ad and organic UGC prompting guidance. |
+| `content-engine://knowledge/prompting/transformation` | `application/json` | Before/after identity preservation and transformation workflow guidance. |
+| `content-engine://knowledge/prompting/slideshow` | `application/json` | Native slideshow planning, slide sequence, copy density, and renderer guidance. |
+| `content-engine://knowledge/prompting/video` | `application/json` | Short-form video prompting, clip generation, audio, lipsync, and AI Video Editor guidance. |
+| `content-engine://knowledge/node-selection` | `application/json` | Heuristics for choosing nodes, ports, and graph shapes. |
 
 ## User-Scoped Resources
 
@@ -59,7 +64,7 @@ Recommended external-agent flow:
 
 1. Read `content-engine://architecture/guide`.
 2. Read graph schema and node catalog.
-3. Read templates and agent recipes.
+3. Read templates, agent recipes, and relevant prompt knowledge resources.
 4. Read user-scoped brand, persona, creative asset, and model catalog resources.
 5. Create or edit a workflow through MCP tools using ids from the resource
    summaries.

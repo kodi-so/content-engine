@@ -318,6 +318,8 @@ Initial MCP resources:
 - Node catalog.
 - Built-in workflow templates.
 - AI Agent prompt recipes.
+- Prompt knowledge resources for AI UGC, transformation content, slideshows,
+  videos, and node selection.
 - BulkAPIs model catalog snapshot.
 - Brand/persona/asset summaries.
 
@@ -325,6 +327,8 @@ Resource contract:
 
 - The canonical resource list is documented in
   [MCP Resources](./mcp-resources.md).
+- Prompt knowledge resources are documented in
+  [MCP Prompt Knowledge Resources](./mcp-prompt-knowledge.md).
 - Resource URIs use the `content-engine://...` custom scheme and should be read
   through the Content Engine MCP server, not fetched directly.
 - The backend resource registry lives in `convex/mcp/resources.ts`.
@@ -1657,7 +1661,7 @@ Implementation notes:
 
 #### SW-0805: Add prompt engineering knowledge base resources
 
-Status: `Not Started`
+Status: `Done`
 
 Deliverables:
 
@@ -1668,6 +1672,16 @@ Acceptance criteria:
 
 - Workflow-building agents can reuse product expertise without hardcoding it in
   every prompt.
+
+Implementation notes:
+
+- Added structured MCP resources for AI UGC prompting, transformation content
+  prompting, slideshow prompting, video prompting, and workflow node selection
+  heuristics.
+- Updated `convex/mcp/resources.ts` so these resources are listed and readable
+  through the same resource registry as the existing schema/template resources.
+- Added `docs/mcp-prompt-knowledge.md` and updated `docs/mcp-resources.md` to
+  document the knowledge resource URIs and expected agent usage.
 
 ### Phase 9: Scheduling, Publishing, And Feedback
 
