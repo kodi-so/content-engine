@@ -1,16 +1,35 @@
 import type { Doc, Id } from "../convex/_generated/dataModel";
 
 export type BrandId = Id<"brands">;
-export type BrandAssetId = Id<"brandAssets">;
+export type CreativeAssetId = Id<"creativeAssets">;
+export type PersonaId = Id<"personas">;
 export type SocialAccountId = Id<"socialAccounts">;
 export type WorkflowId = Id<"workflows">;
 export type WorkflowRunId = Id<"workflowRuns">;
 export type DistributionPlanId = Id<"distributionPlans">;
 export type ContentRequestId = Id<"contentRequests">;
 
-export type PublishingProvider = "postiz" | "post_bridge" | "reel_farm" | "manual";
+export type PublishingProvider = "postiz" | "post_bridge" | "manual";
 export type Platform = "tiktok" | "instagram" | "youtube" | "x" | "linkedin";
-export type ContentFormat = "slideshow" | "hook_demo_video" | "ai_ugc_video";
+export type ContentFormat =
+  | "slideshow"
+  | "hook_demo_video"
+  | "ai_ugc_video"
+  | "talking_avatar"
+  | "short_educational_video"
+  | "static_image"
+  | "thread"
+  | "caption_set";
+export type CreativeAssetKind =
+  | "product"
+  | "style_reference"
+  | "mascot"
+  | "persona"
+  | "voice"
+  | "logo"
+  | "character"
+  | "person"
+  | "other";
 
 export type ArtifactDoc = Doc<"artifacts">;
 export type DistributionPlanDoc = Doc<"distributionPlans">;
@@ -18,7 +37,16 @@ export type WorkflowDoc = Doc<"workflows">;
 export type WorkflowRunDoc = Doc<"workflowRuns">;
 export type ContentRequestDoc = Doc<"contentRequests">;
 export type SlideshowDoc = Doc<"slideshows">;
-export type BrandAssetDoc = Doc<"brandAssets">;
+export type CreativeAssetDoc = Doc<"creativeAssets">;
+export type PersonaDoc = Doc<"personas">;
+export type PersonaType =
+  | "ai_influencer"
+  | "ugc_actor"
+  | "transformation_identity"
+  | "mascot"
+  | "spokesperson"
+  | "customer_avatar"
+  | "other";
 
 export type SlideshowRenderingMode = "background_plus_overlay" | "full_graphic_generation";
 

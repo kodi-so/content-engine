@@ -1,8 +1,12 @@
 import { cronJobs } from "convex/server";
+import { internal } from "../_generated/api";
 
 const crons = cronJobs();
 
-// Workflow scheduling and provider sync jobs will be added once the runner and
-// publishing adapters are implemented.
+crons.interval(
+  "run due scheduled workflows",
+  { minutes: 5 },
+  internal.workflows.scheduling.runDueWorkflows
+);
 
 export default crons;

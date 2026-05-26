@@ -7,7 +7,7 @@ export function SettingsPage() {
         <Panel title="Publishing Providers">
           <ChecklistItem done label="Postiz selected as first adapter" />
           <ChecklistItem label="Post Bridge spike pending" />
-          <ChecklistItem label="ReelFarm optional provider pending" />
+          <ChecklistItem done label="BulkAPIs excluded from posting" />
         </Panel>
         <Panel title="Model Providers">
           <ChecklistItem done label="Gemini remains available through adapter" />

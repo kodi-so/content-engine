@@ -6,19 +6,28 @@ import {
   artifactTypeValidator,
   contentRequestStatusValidator,
   contentFormatValidator,
+  creativeAssetKindValidator,
+  creativeAssetMediaTypeValidator,
   distributionStatusValidator,
   metricsValidator,
   modelProviderValidator,
+  personaTypeValidator,
   platformValidator,
+  providerModelCapabilitiesValidator,
+  providerModelCategoryValidator,
+  providerModelSchemaSnapshotValidator,
   publishingPolicyValidator,
   publishingProviderValidator,
   reviewStatusValidator,
   scheduleConfigValidator,
   slideshowStatusValidator,
   socialAccountStatusValidator,
+  workflowGraphValidator,
   workflowRunEventTypeValidator,
+  workflowRunNodeStatusValidator,
+  workflowRunOutputRefValidator,
+  workflowRunProviderJobValidator,
   workflowRunStatusValidator,
-  workflowStepValidator,
   workflowTriggerValidator,
 } from "./validators";
 
@@ -42,26 +51,42 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_active", ["userId", "isActive"]),
 
-  brandAssets: defineTable({
+  creativeAssets: defineTable({
     userId: v.string(),
     brandId: v.id("brands"),
     name: v.string(),
-    type: v.union(
-      v.literal("character"),
-      v.literal("person"),
-      v.literal("logo"),
-      v.literal("style_reference"),
-      v.literal("product"),
-      v.literal("other")
-    ),
+    assetKind: creativeAssetKindValidator,
+    mediaType: creativeAssetMediaTypeValidator,
     storageUrl: v.string(),
     description: v.optional(v.string()),
+    usageNotes: v.optional(v.string()),
     metadata: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_brand", ["brandId"]),
+    .index("by_brand", ["brandId"])
+    .index("by_brand_kind", ["brandId", "assetKind"]),
+
+  personas: defineTable({
+    userId: v.string(),
+    brandId: v.id("brands"),
+    name: v.string(),
+    personaType: personaTypeValidator,
+    description: v.optional(v.string()),
+    identityPrompt: v.string(),
+    visualConstraints: v.optional(v.array(v.string())),
+    sourceAssetIds: v.array(v.id("creativeAssets")),
+    generatedAssetIds: v.array(v.id("creativeAssets")),
+    voiceAssetIds: v.array(v.id("creativeAssets")),
+    usageNotes: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandId"])
+    .index("by_brand_type", ["brandId", "personaType"]),
 
   providerConnections: defineTable({
     userId: v.string(),
@@ -79,6 +104,25 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_provider", ["userId", "provider"]),
+
+  providerModels: defineTable({
+    provider: modelProviderValidator,
+    modelId: v.string(),
+    displayName: v.string(),
+    description: v.optional(v.string()),
+    category: providerModelCategoryValidator,
+    capabilities: providerModelCapabilitiesValidator,
+    pricing: v.optional(v.any()),
+    schemaSnapshot: providerModelSchemaSnapshotValidator,
+    isActive: v.boolean(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_provider", ["provider"])
+    .index("by_provider_category", ["provider", "category"])
+    .index("by_provider_model", ["provider", "modelId"]),
 
   socialAccounts: defineTable({
     userId: v.string(),
@@ -104,31 +148,15 @@ export default defineSchema({
 
   workflows: defineTable({
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
-    contentFormat: contentFormatValidator,
     trigger: workflowTriggerValidator,
     scheduleConfig: v.optional(scheduleConfigValidator),
     approvalPolicy: approvalPolicyValidator,
     publishingPolicy: publishingPolicyValidator,
-    activeVersionId: v.optional(v.id("workflowVersions")),
-    isActive: v.boolean(),
-    nextRunAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_brand", ["brandId"])
-    .index("by_active_next_run", ["isActive", "nextRunAt"]),
-
-  workflowVersions: defineTable({
-    userId: v.string(),
-    workflowId: v.id("workflows"),
-    version: v.number(),
-    strategy: v.optional(v.any()),
-    steps: v.array(workflowStepValidator),
+    graph: workflowGraphValidator,
     modelDefaults: v.optional(
       v.object({
         textProvider: v.optional(modelProviderValidator),
@@ -138,11 +166,14 @@ export default defineSchema({
         preferredVideoModel: v.optional(v.string()),
       })
     ),
+    isActive: v.boolean(),
+    nextRunAt: v.optional(v.number()),
     createdAt: v.number(),
-    createdBy: v.optional(v.string()),
+    updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_workflow", ["workflowId"]),
+    .index("by_brand", ["brandId"])
+    .index("by_active_next_run", ["isActive", "nextRunAt"]),
 
   contentRequests: defineTable({
     userId: v.string(),
@@ -160,7 +191,7 @@ export default defineSchema({
     referenceAssets: v.optional(
       v.array(
         v.object({
-          assetId: v.id("brandAssets"),
+          assetId: v.id("creativeAssets"),
           instruction: v.optional(v.string()),
         })
       )
@@ -184,18 +215,17 @@ export default defineSchema({
   workflowRuns: defineTable({
     userId: v.string(),
     workflowId: v.id("workflows"),
-    workflowVersionId: v.id("workflowVersions"),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     trigger: workflowTriggerValidator,
     status: workflowRunStatusValidator,
-    currentStepId: v.optional(v.string()),
+    currentNodeId: v.optional(v.string()),
     generatedTopic: v.optional(v.string()),
     generatedHook: v.optional(v.string()),
     summary: v.optional(v.string()),
     costUsd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
-    errorStepId: v.optional(v.string()),
+    errorNodeId: v.optional(v.string()),
     scheduledFor: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
@@ -212,12 +242,36 @@ export default defineSchema({
     workflowRunId: v.id("workflowRuns"),
     workflowId: v.id("workflows"),
     type: workflowRunEventTypeValidator,
-    stepId: v.optional(v.string()),
+    nodeId: v.optional(v.string()),
     message: v.string(),
     data: v.optional(v.any()),
     createdAt: v.number(),
   })
     .index("by_run", ["workflowRunId"])
+    .index("by_workflow", ["workflowId"]),
+
+  workflowRunNodeStates: defineTable({
+    userId: v.string(),
+    workflowRunId: v.id("workflowRuns"),
+    workflowId: v.id("workflows"),
+    nodeId: v.string(),
+    nodeType: v.string(),
+    label: v.string(),
+    status: workflowRunNodeStatusValidator,
+    dependencyNodeIds: v.array(v.string()),
+    blockedByNodeIds: v.optional(v.array(v.string())),
+    providerJobs: v.optional(v.array(workflowRunProviderJobValidator)),
+    outputRefs: v.optional(v.array(workflowRunOutputRefValidator)),
+    costUsd: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["workflowRunId"])
+    .index("by_run_node", ["workflowRunId", "nodeId"])
+    .index("by_run_status", ["workflowRunId", "status"])
     .index("by_workflow", ["workflowId"]),
 
   artifacts: defineTable({
@@ -247,7 +301,7 @@ export default defineSchema({
 
   slideshows: defineTable({
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
@@ -266,7 +320,7 @@ export default defineSchema({
 
   distributionPlans: defineTable({
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     artifactIds: v.array(v.id("artifacts")),

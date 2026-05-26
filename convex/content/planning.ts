@@ -4,7 +4,6 @@ import type {
   ContrastStrategy,
   CreativeBrief,
   FullGraphicPlannerSlide,
-  ImagePromptWriterOutput,
   LayoutStrategy,
   OverlayPlannerSlide,
   SlideTemplate,
@@ -29,6 +28,10 @@ export type PlannerReference = {
 };
 
 export type RequestedRenderingMode = SlideshowRenderingMode;
+export type BrandPromptContext = Pick<
+  Doc<"brands">,
+  "name" | "audience" | "voice" | "visualStyle" | "constraints"
+>;
 
 export const IMAGE_PROMPT_WRITER_SYSTEM_PROMPT =
   "You are a specialist image prompt writer for short-form social visuals. You write natural, concrete image generation prompts that faithfully expand the user's creative brief without turning it into a rigid template.";
@@ -36,7 +39,7 @@ export const IMAGE_PROMPT_WRITER_SYSTEM_PROMPT =
 type PromptArgs = {
   prompt: string;
   revisionPrompt?: string;
-  brand: Doc<"brands">;
+  brand: BrandPromptContext;
   socialAccount?: Doc<"socialAccounts"> | null;
   references: PlannerReference[];
 };

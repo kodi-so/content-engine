@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.59.3",
+    "@xyflow/react": "^12.10.2",
     "convex": "^1.28.0",
     "lucide-react": "^0.462.0",
     "react": "^18.3.1",

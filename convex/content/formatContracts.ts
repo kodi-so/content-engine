@@ -1,7 +1,8 @@
 import type { Doc } from "../_generated/dataModel";
+import type { contentFormatValidator } from "../validators";
 
 export type ArtifactType = Doc<"artifacts">["type"];
-export type ContentFormat = Doc<"workflows">["contentFormat"];
+export type ContentFormat = typeof contentFormatValidator.type;
 
 export const slideshowSpecSchema = {
   type: "object",

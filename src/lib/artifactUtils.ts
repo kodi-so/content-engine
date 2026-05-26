@@ -71,15 +71,80 @@ export function artifactSummary(artifact: ArtifactDoc): string {
 
   if (artifact.type === "rendered_asset" && artifact.data && typeof artifact.data === "object") {
     const data = artifact.data as {
+      format?: string;
       slideIndex?: number;
+      slideCount?: number;
       width?: number;
       height?: number;
+      dimensions?: { width?: number; height?: number };
       mimeType?: string;
     };
+    if (data.format === "native_slideshow") {
+      return [
+        "Native slideshow",
+        data.slideCount ? `${data.slideCount} slides` : undefined,
+        data.dimensions?.width && data.dimensions.height
+          ? `${data.dimensions.width}x${data.dimensions.height}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
     return [
       typeof data.slideIndex === "number" ? `Publish-ready slide ${data.slideIndex}` : "Publish-ready asset",
       data.width && data.height ? `${data.width}x${data.height}` : undefined,
       data.mimeType,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  if (artifact.type === "publish_payload" && artifact.data && typeof artifact.data === "object") {
+    const data = artifact.data as {
+      caption?: string;
+      mediaArtifactIds?: string[];
+      mediaItems?: unknown[];
+      mediaSummary?: {
+        total?: number;
+        slideshowCount?: number;
+        videoCount?: number;
+        imageCount?: number;
+      };
+      exportStatus?: {
+        destination?: string;
+        status?: string;
+      };
+      publishingStatus?: {
+        provider?: string;
+        status?: string;
+        autoPublish?: boolean;
+      };
+      primaryPlatformPreset?: {
+        label?: string;
+        platform?: string;
+        surface?: string;
+      };
+      platformPackages?: unknown[];
+      name?: string;
+      postType?: string;
+    };
+    const mediaCount = data.mediaSummary?.total ?? data.mediaItems?.length ?? data.mediaArtifactIds?.length;
+    return [
+      data.name ?? "Post package",
+      data.postType,
+      data.primaryPlatformPreset?.label ??
+        (data.primaryPlatformPreset?.platform && data.primaryPlatformPreset.surface
+          ? `${data.primaryPlatformPreset.platform} ${data.primaryPlatformPreset.surface}`
+          : undefined),
+      data.platformPackages?.length ? `${data.platformPackages.length} platform packages` : undefined,
+      mediaCount ? `${mediaCount} media refs` : undefined,
+      data.exportStatus?.destination
+        ? `${data.exportStatus.destination}: ${data.exportStatus.status ?? "export"}`
+        : undefined,
+      data.publishingStatus?.provider
+        ? `${data.publishingStatus.provider}: ${data.publishingStatus.status ?? "publish"}`
+        : undefined,
+      data.caption ? "caption ready" : undefined,
     ]
       .filter(Boolean)
       .join(" · ");

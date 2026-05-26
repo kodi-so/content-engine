@@ -4,15 +4,14 @@ import type { Id } from "../_generated/dataModel";
 import { storeGeneratedAsset } from "../content/assetStorage";
 import { getModelProvider } from "../providers";
 import type { GeneratedAsset, ModelProvider } from "../providers/model";
+import {
+  creativeAssetKindValidator,
+  creativeAssetMediaTypeValidator,
+} from "../validators";
 
-const brandAssetType = v.union(
-  v.literal("character"),
-  v.literal("person"),
-  v.literal("logo"),
-  v.literal("style_reference"),
-  v.literal("product"),
-  v.literal("other")
-);
+const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif", "avif"]);
+const videoExtensions = new Set(["mp4", "mov", "webm", "m4v"]);
+const audioExtensions = new Set(["mp3", "wav", "m4a", "aac", "ogg", "flac"]);
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
@@ -22,6 +21,22 @@ function currentUserId(identity: { subject: string } | null) {
 function storageIdFromUrl(url: string): Id<"_storage"> | undefined {
   const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
   return match?.[1] as Id<"_storage"> | undefined;
+}
+
+function inferMediaType(args: { storageUrl: string; mimeType?: string }):
+  | "image"
+  | "video"
+  | "audio"
+  | "file" {
+  if (args.mimeType?.startsWith("image/")) return "image";
+  if (args.mimeType?.startsWith("video/")) return "video";
+  if (args.mimeType?.startsWith("audio/")) return "audio";
+
+  const extension = args.storageUrl.split("?")[0]?.split(".").pop()?.toLowerCase();
+  if (extension && imageExtensions.has(extension)) return "image";
+  if (extension && videoExtensions.has(extension)) return "video";
+  if (extension && audioExtensions.has(extension)) return "audio";
+  return "image";
 }
 
 async function waitForImageResult(
@@ -105,14 +120,14 @@ export const list = query({
       const brand = await ctx.db.get(args.brandId);
       if (!brand || brand.userId !== userId) return [];
       return await ctx.db
-        .query("brandAssets")
+        .query("creativeAssets")
         .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
         .order("desc")
         .collect();
     }
 
     return await ctx.db
-      .query("brandAssets")
+      .query("creativeAssets")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .collect();
@@ -123,10 +138,13 @@ export const create = mutation({
   args: {
     brandId: v.id("brands"),
     name: v.string(),
-    type: v.optional(brandAssetType),
+    assetKind: v.optional(creativeAssetKindValidator),
+    mediaType: v.optional(creativeAssetMediaTypeValidator),
     storageUrl: v.string(),
     description: v.optional(v.string()),
     instruction: v.optional(v.string()),
+    usageNotes: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
@@ -136,19 +154,25 @@ export const create = mutation({
     const name = args.name.trim();
     const storageUrl = args.storageUrl.trim();
     if (!name) throw new Error("Asset name is required");
-    if (!storageUrl) throw new Error("Asset image is required");
+    if (!storageUrl) throw new Error("Asset media is required");
 
     const now = Date.now();
-    return await ctx.db.insert("brandAssets", {
+    return await ctx.db.insert("creativeAssets", {
       userId,
       brandId: args.brandId,
       name,
-      type: args.type ?? "other",
+      assetKind: args.assetKind ?? "other",
+      mediaType: args.mediaType ?? inferMediaType({
+        storageUrl,
+        mimeType: args.mimeType,
+      }),
       storageUrl,
       description: args.description?.trim() || undefined,
-      metadata: args.instruction?.trim()
-        ? { instruction: args.instruction.trim() }
-        : undefined,
+      usageNotes: args.usageNotes?.trim() || undefined,
+      metadata: {
+        ...(args.instruction?.trim() ? { instruction: args.instruction.trim() } : {}),
+        ...(args.mimeType?.trim() ? { mimeType: args.mimeType.trim() } : {}),
+      },
       createdAt: now,
       updatedAt: now,
     });
@@ -157,11 +181,13 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
-    id: v.id("brandAssets"),
+    id: v.id("creativeAssets"),
     name: v.optional(v.string()),
-    type: v.optional(brandAssetType),
+    assetKind: v.optional(creativeAssetKindValidator),
+    mediaType: v.optional(creativeAssetMediaTypeValidator),
     description: v.optional(v.string()),
     instruction: v.optional(v.string()),
+    usageNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
@@ -177,8 +203,10 @@ export const update = mutation({
 
     await ctx.db.patch(args.id, {
       name: args.name?.trim() || asset.name,
-      type: args.type ?? asset.type,
+      assetKind: args.assetKind ?? asset.assetKind,
+      mediaType: args.mediaType ?? asset.mediaType,
       description: args.description === undefined ? asset.description : args.description.trim() || undefined,
+      usageNotes: args.usageNotes === undefined ? asset.usageNotes : args.usageNotes.trim() || undefined,
       metadata,
       updatedAt: Date.now(),
     });
@@ -186,7 +214,7 @@ export const update = mutation({
 });
 
 export const remove = mutation({
-  args: { id: v.id("brandAssets") },
+  args: { id: v.id("creativeAssets") },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
     const asset = await ctx.db.get(args.id);

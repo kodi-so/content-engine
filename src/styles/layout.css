@@ -5,6 +5,10 @@
   overflow: hidden;
 }
 
+.app-shell-canvas {
+  grid-template-columns: 4.75rem minmax(0, 1fr);
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -153,6 +157,49 @@
   min-width: 0;
   overflow-y: auto;
   padding: clamp(1.25rem, 2.5vw, 2.75rem);
+}
+
+.app-shell-canvas .sidebar {
+  padding: var(--space-4) var(--space-2);
+}
+
+.app-shell-canvas .brand-mark {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding: 0 0 var(--space-4);
+}
+
+.app-shell-canvas .brand-mark span:last-child,
+.app-shell-canvas .nav-link span,
+.app-shell-canvas .user-meta > div:not(.avatar),
+.app-shell-canvas .quiet-button {
+  display: none;
+}
+
+.app-shell-canvas .nav-link {
+  min-height: 2.8rem;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  border-radius: var(--radius-md);
+  padding-inline: 0;
+}
+
+.app-shell-canvas .user-panel {
+  justify-items: center;
+  padding-top: var(--space-3);
+}
+
+.app-shell-canvas .user-meta {
+  grid-template-columns: 1fr;
+}
+
+.app-shell-canvas .workspace {
+  overflow: hidden;
+  padding: 0;
+}
+
+.app-shell-canvas .workspace > section {
+  width: 100%;
 }
 
 .workspace > section {

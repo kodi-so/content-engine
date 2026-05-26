@@ -101,7 +101,7 @@ export const create = mutation({
 export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     artifactIds: v.array(v.id("artifacts")),

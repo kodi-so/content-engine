@@ -67,6 +67,10 @@ function appendRevisionRequest(
   };
 }
 
+function isLibraryArtifact(artifact: Doc<"artifacts">): boolean {
+  return artifact.lifecycle === "saved" || artifact.lifecycle === undefined;
+}
+
 async function reconcileApprovalForArtifact(
   ctx: MutationCtx,
   artifact: Doc<"artifacts">
@@ -164,6 +168,7 @@ export const list = query({
     brandId: v.optional(v.id("brands")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowRunId: v.optional(v.id("workflowRuns")),
+    includeDebug: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -179,26 +184,29 @@ export const list = query({
     }
 
     if (args.contentRequestId) {
-      return await ctx.db
+      const artifacts = await ctx.db
         .query("artifacts")
         .withIndex("by_content_request", (q) =>
           q.eq("contentRequestId", args.contentRequestId!)
         )
         .collect();
+      return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
     }
 
     if (args.brandId) {
-      return await ctx.db
+      const artifacts = await ctx.db
         .query("artifacts")
         .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
         .collect();
+      return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
     }
 
-    return await ctx.db
+    const artifacts = await ctx.db
       .query("artifacts")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .order("desc")
       .collect();
+    return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
   },
 });
 
@@ -240,9 +248,6 @@ export const getRegenerationContext = internalQuery({
     const workflow = artifact.workflowId
       ? await ctx.db.get(artifact.workflowId)
       : null;
-    const workflowVersion = workflow?.activeVersionId
-      ? await ctx.db.get(workflow.activeVersionId)
-      : null;
 
     return {
       artifact,
@@ -251,7 +256,6 @@ export const getRegenerationContext = internalQuery({
           Boolean(parentArtifact && parentArtifact.userId === args.userId)
       ),
       workflow,
-      workflowVersion,
     };
   },
 });

@@ -1,8 +1,10 @@
+import "./bulkapis";
 import "./gemini";
 import "./fal";
 import "./openrouter";
 import "./manual";
 import "./postiz";
+import "./postBridge";
 
 export {
   getModelProvider,

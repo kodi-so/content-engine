@@ -3,7 +3,6 @@ import { unsupportedProviderOperation } from "./errors";
 export type PublishingProviderName =
   | "postiz"
   | "post_bridge"
-  | "reel_farm"
   | "manual";
 
 export type PublishingOperationStatus =

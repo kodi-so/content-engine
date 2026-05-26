@@ -3,6 +3,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../../convex/_generated/api";
 import { EntityGrid, Field, FormPanel, Page, Select } from "../components/ui";
+import { PUBLISHING_PROVIDER_ROUTES } from "../lib/publishingRouting";
 import type { BrandId, Platform, PublishingProvider } from "../types";
 
 export function AccountsPage() {
@@ -60,10 +61,11 @@ export function AccountsPage() {
           value={provider}
           onChange={(value) => setProvider(value as PublishingProvider)}
         >
-          <option value="postiz">Postiz</option>
-          <option value="post_bridge">Post Bridge</option>
-          <option value="reel_farm">ReelFarm</option>
-          <option value="manual">Manual</option>
+          {PUBLISHING_PROVIDER_ROUTES.map((route) => (
+            <option key={route.provider} value={route.provider}>
+              {route.label}
+            </option>
+          ))}
         </Select>
         <Select
           label="Platform"

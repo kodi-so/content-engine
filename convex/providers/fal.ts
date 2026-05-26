@@ -8,14 +8,20 @@ import {
 import {
   registerModelProvider,
   type AsyncJobStatus,
+  type GenerateAudioInput,
+  type GenerateAudioResult,
   type GenerateImageInput,
   type GenerateImageResult,
+  type GenerateLipsyncInput,
+  type GenerateLipsyncResult,
   type GenerateStructuredInput,
   type GenerateStructuredResult,
   type GenerateTextInput,
   type GenerateTextResult,
   type GenerateVideoInput,
   type GenerateVideoResult,
+  type GenerateVideoRenderInput,
+  type GenerateVideoRenderResult,
   type GeneratedAsset,
   type GetJobStatusInput,
   type GetJobStatusResult,
@@ -499,6 +505,24 @@ async function unsupportedFalStructured<T>(
   throw unsupportedProviderOperation("model", FAL_PROVIDER, "generate_structured");
 }
 
+async function unsupportedFalAudio(
+  _input: GenerateAudioInput
+): Promise<GenerateAudioResult> {
+  throw unsupportedProviderOperation("model", FAL_PROVIDER, "generate_audio");
+}
+
+async function unsupportedFalLipsync(
+  _input: GenerateLipsyncInput
+): Promise<GenerateLipsyncResult> {
+  throw unsupportedProviderOperation("model", FAL_PROVIDER, "generate_lipsync");
+}
+
+async function unsupportedFalVideoRender(
+  _input: GenerateVideoRenderInput
+): Promise<GenerateVideoRenderResult> {
+  throw unsupportedProviderOperation("model", FAL_PROVIDER, "generate_video_render");
+}
+
 export const falProvider: ModelProvider = {
   provider: FAL_PROVIDER,
   displayName: "fal.ai",
@@ -507,12 +531,18 @@ export const falProvider: ModelProvider = {
     structured: false,
     image: true,
     video: true,
+    audio: false,
+    lipsync: false,
+    videoRender: false,
     asyncJobs: true,
   },
   generateText: unsupportedFalText,
   generateStructured: unsupportedFalStructured,
   generateImage: generateFalImage,
   generateVideo: generateFalVideo,
+  generateAudio: unsupportedFalAudio,
+  generateLipsync: unsupportedFalLipsync,
+  generateVideoRender: unsupportedFalVideoRender,
   getJobStatus: getFalJobStatus,
 };
 

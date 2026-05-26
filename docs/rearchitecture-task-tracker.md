@@ -229,7 +229,9 @@ Acceptance criteria:
 
 - `workflows` table exists.
 - `workflowVersions` or equivalent versioning exists.
-- Workflow stores brand/account/content format/schedule/approval/publishing policies.
+- Workflow stores brand/account context, schedule, approval, publishing
+  policies, and a graph. Output type is derived from terminal nodes and
+  artifacts rather than a workflow-level content format.
 - Active/inactive state is supported.
 - Update behavior preserves old run explainability.
 
@@ -515,7 +517,7 @@ Goal: Make the library show artifact/workflow-backed content.
 Acceptance criteria:
 
 - Library can show slideshow workflow outputs.
-- Content can be filtered by brand/account/format/status.
+- Content can be filtered by brand/account/artifact type/review status.
 - Review queue defaults to final review artifacts instead of raw pipeline internals.
 - Rendered slideshow artifacts are grouped by run into a swipeable review bundle.
 - Pipeline debug artifacts can be inspected when troubleshooting generation runs.

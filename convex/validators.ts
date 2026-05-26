@@ -3,16 +3,48 @@ import { v } from "convex/values";
 export const publishingProviderValidator = v.union(
   v.literal("postiz"),
   v.literal("post_bridge"),
-  v.literal("reel_farm"),
   v.literal("manual")
 );
 
 export const modelProviderValidator = v.union(
+  v.literal("bulkapis"),
   v.literal("gemini"),
   v.literal("fal"),
   v.literal("openrouter"),
   v.literal("manual")
 );
+
+export const providerModelCategoryValidator = v.union(
+  v.literal("chat"),
+  v.literal("image"),
+  v.literal("video"),
+  v.literal("video_render"),
+  v.literal("audio"),
+  v.literal("lipsync"),
+  v.literal("unknown")
+);
+
+export const providerModelCapabilitiesValidator = v.object({
+  text: v.boolean(),
+  structured: v.boolean(),
+  image: v.boolean(),
+  video: v.boolean(),
+  audio: v.boolean(),
+  music: v.boolean(),
+  lipsync: v.boolean(),
+  videoRender: v.boolean(),
+  speechToText: v.boolean(),
+  asyncJobs: v.boolean(),
+  vision: v.boolean(),
+});
+
+export const providerModelSchemaSnapshotValidator = v.object({
+  inputSchema: v.optional(v.any()),
+  resultSchema: v.optional(v.any()),
+  raw: v.optional(v.any()),
+  source: v.optional(v.string()),
+  sourceSyncedAt: v.optional(v.number()),
+});
 
 export const platformValidator = v.union(
   v.literal("tiktok"),
@@ -23,6 +55,35 @@ export const platformValidator = v.union(
   v.literal("facebook"),
   v.literal("threads"),
   v.literal("pinterest")
+);
+
+export const creativeAssetKindValidator = v.union(
+  v.literal("product"),
+  v.literal("style_reference"),
+  v.literal("mascot"),
+  v.literal("persona"),
+  v.literal("voice"),
+  v.literal("logo"),
+  v.literal("character"),
+  v.literal("person"),
+  v.literal("other")
+);
+
+export const creativeAssetMediaTypeValidator = v.union(
+  v.literal("image"),
+  v.literal("video"),
+  v.literal("audio"),
+  v.literal("file")
+);
+
+export const personaTypeValidator = v.union(
+  v.literal("ai_influencer"),
+  v.literal("ugc_actor"),
+  v.literal("transformation_identity"),
+  v.literal("mascot"),
+  v.literal("spokesperson"),
+  v.literal("customer_avatar"),
+  v.literal("other")
 );
 
 export const socialAccountStatusValidator = v.union(
@@ -60,6 +121,70 @@ export const workflowRunStatusValidator = v.union(
   v.literal("canceled")
 );
 
+export const workflowRunModeValidator = v.union(
+  v.literal("test"),
+  v.literal("production")
+);
+
+export const workflowArtifactRetentionModeValidator = v.union(
+  v.literal("keep_all"),
+  v.literal("final_only"),
+  v.literal("keep_on_failure")
+);
+
+export const workflowRunNodeStatusValidator = v.union(
+  v.literal("idle"),
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("blocked"),
+  v.literal("skipped")
+);
+
+export const workflowRunProviderJobValidator = v.object({
+  provider: v.string(),
+  model: v.optional(v.string()),
+  externalJobId: v.string(),
+  status: v.optional(v.string()),
+  submittedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  raw: v.optional(v.any()),
+});
+
+export const workflowRunOutputRefValidator = v.object({
+  nodeId: v.string(),
+  port: v.string(),
+  artifactIds: v.optional(v.array(v.id("artifacts"))),
+  value: v.optional(v.any()),
+});
+
+export const nodeInputBindingValidator = v.union(
+  v.object({
+    type: v.literal("literal"),
+    value: v.any(),
+  }),
+  v.object({
+    type: v.literal("node_output"),
+    sourceNodeId: v.string(),
+    sourcePort: v.string(),
+    outputKey: v.optional(v.string()),
+  }),
+  v.object({
+    type: v.literal("artifact"),
+    artifactId: v.string(),
+  }),
+  v.object({
+    type: v.literal("media_asset"),
+    assetId: v.string(),
+  }),
+  v.object({
+    type: v.literal("persona"),
+    personaId: v.string(),
+    assetKey: v.optional(v.string()),
+  })
+);
+
 export const contentRequestStatusValidator = v.union(
   v.literal("queued"),
   v.literal("planning"),
@@ -72,8 +197,8 @@ export const contentRequestStatusValidator = v.union(
 
 export const workflowRunEventTypeValidator = v.union(
   v.literal("run_created"),
-  v.literal("step_started"),
-  v.literal("step_completed"),
+  v.literal("node_started"),
+  v.literal("node_completed"),
   v.literal("tool_call"),
   v.literal("model_call"),
   v.literal("artifact_created"),
@@ -85,6 +210,52 @@ export const workflowRunEventTypeValidator = v.union(
   v.literal("metric_synced"),
   v.literal("error")
 );
+
+export const workflowGraphValidator = v.object({
+  schemaVersion: v.literal(1),
+  nodes: v.array(
+    v.object({
+      id: v.string(),
+      type: v.string(),
+      label: v.string(),
+      position: v.object({
+        x: v.number(),
+        y: v.number(),
+      }),
+      provider: v.optional(v.string()),
+      model: v.optional(v.string()),
+      config: v.record(v.string(), v.any()),
+      inputBindings: v.optional(v.record(v.string(), nodeInputBindingValidator)),
+      retention: v.optional(v.any()),
+    })
+  ),
+  edges: v.array(
+    v.object({
+      id: v.string(),
+      sourceNodeId: v.string(),
+      sourcePort: v.string(),
+      targetNodeId: v.string(),
+      targetPort: v.string(),
+    })
+  ),
+  canvas: v.optional(
+    v.object({
+      viewport: v.optional(
+        v.object({
+          x: v.number(),
+          y: v.number(),
+          zoom: v.number(),
+        })
+      ),
+    })
+  ),
+  runSettings: v.optional(
+    v.object({
+      mode: v.optional(workflowRunModeValidator),
+      artifactRetention: v.optional(workflowArtifactRetentionModeValidator),
+    })
+  ),
+});
 
 export const artifactTypeValidator = v.union(
   v.literal("prompt"),
@@ -111,6 +282,7 @@ export const reviewStatusValidator = v.union(
 );
 
 export const artifactLifecycleValidator = v.union(
+  v.literal("debug"),
   v.literal("preview"),
   v.literal("saved"),
   v.literal("discarded")
@@ -132,30 +304,6 @@ export const distributionStatusValidator = v.union(
   v.literal("failed"),
   v.literal("canceled")
 );
-
-export const workflowStepTypeValidator = v.union(
-  v.literal("generate_text"),
-  v.literal("generate_structured"),
-  v.literal("create_image_prompts"),
-  v.literal("generate_image"),
-  v.literal("generate_video"),
-  v.literal("resolve_model_job"),
-  v.literal("create_slideshow"),
-  v.literal("render_asset"),
-  v.literal("create_caption"),
-  v.literal("create_distribution_plan"),
-  v.literal("request_approval"),
-  v.literal("publish")
-);
-
-export const workflowStepValidator = v.object({
-  id: v.string(),
-  name: v.string(),
-  type: workflowStepTypeValidator,
-  config: v.optional(v.any()),
-  inputRefs: v.optional(v.array(v.string())),
-  outputRef: v.optional(v.string()),
-});
 
 export const scheduleConfigValidator = v.object({
   timezone: v.string(),

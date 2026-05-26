@@ -8,8 +8,9 @@
  * @module
  */
 
-import type * as accounts_brandAssets from "../accounts/brandAssets.js";
 import type * as accounts_brands from "../accounts/brands.js";
+import type * as accounts_creativeAssets from "../accounts/creativeAssets.js";
+import type * as accounts_personas from "../accounts/personas.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as artifacts_records from "../artifacts/records.js";
 import type * as artifacts_regeneration from "../artifacts/regeneration.js";
@@ -23,13 +24,21 @@ import type * as content_slideshowDimensions from "../content/slideshowDimension
 import type * as content_slideshows from "../content/slideshows.js";
 import type * as content_types from "../content/types.js";
 import type * as lib_text from "../lib/text.js";
+import type * as mcp_resources from "../mcp/resources.js";
+import type * as mcp_runArtifacts from "../mcp/runArtifacts.js";
+import type * as mcp_workflows from "../mcp/workflows.js";
+import type * as providers_bulkapis from "../providers/bulkapis.js";
+import type * as providers_bulkapisConfig from "../providers/bulkapisConfig.js";
+import type * as providers_bulkapisModelCatalog from "../providers/bulkapisModelCatalog.js";
 import type * as providers_errors from "../providers/errors.js";
 import type * as providers_fal from "../providers/fal.js";
 import type * as providers_gemini from "../providers/gemini.js";
 import type * as providers_index from "../providers/index.js";
 import type * as providers_manual from "../providers/manual.js";
 import type * as providers_model from "../providers/model.js";
+import type * as providers_modelCatalog from "../providers/modelCatalog.js";
 import type * as providers_openrouter from "../providers/openrouter.js";
+import type * as providers_postBridge from "../providers/postBridge.js";
 import type * as providers_postiz from "../providers/postiz.js";
 import type * as providers_publishing from "../providers/publishing.js";
 import type * as publishing_approval from "../publishing/approval.js";
@@ -40,13 +49,14 @@ import type * as storage_files from "../storage/files.js";
 import type * as system_crons from "../system/crons.js";
 import type * as system_http from "../system/http.js";
 import type * as validators from "../validators.js";
+import type * as workflows_agentPresets from "../workflows/agentPresets.js";
 import type * as workflows_definitions from "../workflows/definitions.js";
-import type * as workflows_distributionStep from "../workflows/distributionStep.js";
-import type * as workflows_execution from "../workflows/execution.js";
-import type * as workflows_modelSteps from "../workflows/modelSteps.js";
+import type * as workflows_inputResolver from "../workflows/inputResolver.js";
+import type * as workflows_postCompilerPresets from "../workflows/postCompilerPresets.js";
+import type * as workflows_runCreation from "../workflows/runCreation.js";
 import type * as workflows_runner from "../workflows/runner.js";
 import type * as workflows_runs from "../workflows/runs.js";
-import type * as workflows_slideshowSteps from "../workflows/slideshowSteps.js";
+import type * as workflows_scheduling from "../workflows/scheduling.js";
 
 import type {
   ApiFromModules,
@@ -55,8 +65,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  "accounts/brandAssets": typeof accounts_brandAssets;
   "accounts/brands": typeof accounts_brands;
+  "accounts/creativeAssets": typeof accounts_creativeAssets;
+  "accounts/personas": typeof accounts_personas;
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "artifacts/records": typeof artifacts_records;
   "artifacts/regeneration": typeof artifacts_regeneration;
@@ -70,13 +81,21 @@ declare const fullApi: ApiFromModules<{
   "content/slideshows": typeof content_slideshows;
   "content/types": typeof content_types;
   "lib/text": typeof lib_text;
+  "mcp/resources": typeof mcp_resources;
+  "mcp/runArtifacts": typeof mcp_runArtifacts;
+  "mcp/workflows": typeof mcp_workflows;
+  "providers/bulkapis": typeof providers_bulkapis;
+  "providers/bulkapisConfig": typeof providers_bulkapisConfig;
+  "providers/bulkapisModelCatalog": typeof providers_bulkapisModelCatalog;
   "providers/errors": typeof providers_errors;
   "providers/fal": typeof providers_fal;
   "providers/gemini": typeof providers_gemini;
   "providers/index": typeof providers_index;
   "providers/manual": typeof providers_manual;
   "providers/model": typeof providers_model;
+  "providers/modelCatalog": typeof providers_modelCatalog;
   "providers/openrouter": typeof providers_openrouter;
+  "providers/postBridge": typeof providers_postBridge;
   "providers/postiz": typeof providers_postiz;
   "providers/publishing": typeof providers_publishing;
   "publishing/approval": typeof publishing_approval;
@@ -87,13 +106,14 @@ declare const fullApi: ApiFromModules<{
   "system/crons": typeof system_crons;
   "system/http": typeof system_http;
   validators: typeof validators;
+  "workflows/agentPresets": typeof workflows_agentPresets;
   "workflows/definitions": typeof workflows_definitions;
-  "workflows/distributionStep": typeof workflows_distributionStep;
-  "workflows/execution": typeof workflows_execution;
-  "workflows/modelSteps": typeof workflows_modelSteps;
+  "workflows/inputResolver": typeof workflows_inputResolver;
+  "workflows/postCompilerPresets": typeof workflows_postCompilerPresets;
+  "workflows/runCreation": typeof workflows_runCreation;
   "workflows/runner": typeof workflows_runner;
   "workflows/runs": typeof workflows_runs;
-  "workflows/slideshowSteps": typeof workflows_slideshowSteps;
+  "workflows/scheduling": typeof workflows_scheduling;
 }>;
 
 /**

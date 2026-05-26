@@ -35,12 +35,14 @@ import {
   type SlideshowTextBlock,
 } from "./types";
 import { getSlideDimensions } from "./slideshowDimensions";
+import { buildCanonicalSlideshowSpec } from "./slideshowAdapter";
 import { getModelProvider } from "../providers/index";
 import type {
   GenerateImageResult,
   GeneratedAsset,
   ModelInvocationMetadata,
   ModelProvider,
+  ModelProviderName,
   ReferenceAsset,
 } from "../providers/model";
 import { contentRequestStatusValidator } from "../validators";
@@ -101,7 +103,7 @@ function promptForSlide(slide: SlideshowPlan["slides"][number]) {
 
 function referenceAssetIdsForSlide(
   slide: Pick<SlideshowPlan["slides"][number], "useReferenceImage">,
-  assets: Array<{ _id: Id<"brandAssets"> }>
+  assets: Array<{ _id: Id<"creativeAssets"> }>
 ) {
   return slide.useReferenceImage ? assets.map((asset) => String(asset._id)) : [];
 }
@@ -140,30 +142,30 @@ function requestedRenderingModeValidator() {
   );
 }
 
-function referenceInstructionFromMetadata(asset: Doc<"brandAssets">): string | undefined {
+function referenceInstructionFromMetadata(asset: Doc<"creativeAssets">): string | undefined {
   if (!asset.metadata || typeof asset.metadata !== "object") return undefined;
   const instruction = (asset.metadata as Record<string, unknown>).instruction;
   return typeof instruction === "string" && instruction.trim() ? instruction.trim() : undefined;
 }
 
 function plannerReferenceFromAsset(
-  asset: Doc<"brandAssets">,
+  asset: Doc<"creativeAssets">,
   instruction?: string
 ): PlannerReference {
   return {
     assetId: String(asset._id),
     name: asset.name,
-    type: asset.type,
+    type: asset.assetKind,
     description: asset.description,
     instruction: instruction?.trim() || referenceInstructionFromMetadata(asset),
   };
 }
 
 async function referenceImagesFromAssets(
-  assets: Doc<"brandAssets">[]
+  assets: Doc<"creativeAssets">[]
 ): Promise<ReferenceAsset[]> {
   return assets
-    .filter((asset) => asset.storageUrl.trim())
+    .filter((asset) => asset.mediaType === "image" && asset.storageUrl.trim())
     .map((asset) => ({
       url: asset.storageUrl,
       mimeType: "image/png",
@@ -179,7 +181,7 @@ async function createRequestArtifact(
     title?: string;
     storageUrl?: string;
     data?: unknown;
-    provider?: "gemini" | "fal" | "openrouter" | "manual";
+    provider?: ModelProviderName;
     model?: string;
     prompt?: string;
     parentArtifactIds?: Id<"artifacts">[];
@@ -234,41 +236,6 @@ async function waitForImageResult(
   }
 
   throw new Error(`Image job ${args.jobId} timed out after 5 minutes with status ${lastStatus}${lastError ? `: ${lastError}` : ""}`);
-}
-
-function buildCanonicalSlideshowSpec(args: {
-  plan: SlideshowPlan;
-  dimensions: { width: number; height: number };
-  imageBySlideIndex: Map<number, { artifactId: Id<"artifacts">; url?: string }>;
-}): CanonicalSlideshowSpec {
-  const now = Date.now();
-  return {
-    format: "slideshow",
-    renderingMode: args.plan.renderingMode,
-    title: args.plan.title,
-    aspectRatio: args.plan.aspectRatio,
-    dimensions: args.dimensions,
-    exportSettings: {
-      previewMimeType: "image/png",
-      publishMimeType: "image/png",
-      width: args.dimensions.width,
-      height: args.dimensions.height,
-    },
-    visualSystem: args.plan.visualSystem,
-    creativeBrief: args.plan.creativeBrief,
-    strategy: args.plan.strategy,
-    slides: args.plan.slides.map((slide): CanonicalSlideshowSlide => {
-      const image = args.imageBySlideIndex.get(slide.index);
-      return {
-        ...slide,
-        status: "active",
-        dimensions: args.dimensions,
-        backgroundImageUrl: image?.url,
-        sourceImageArtifactId: image?.artifactId ? String(image.artifactId) : undefined,
-        updatedAt: now,
-      };
-    }),
-  };
 }
 
 function normalizeCanonicalSpec(value: unknown): CanonicalSlideshowSpec {
@@ -445,7 +412,7 @@ export const createSlideshow = mutation({
     referenceAssets: v.optional(
       v.array(
         v.object({
-          assetId: v.id("brandAssets"),
+          assetId: v.id("creativeAssets"),
           instruction: v.optional(v.string()),
         })
       )

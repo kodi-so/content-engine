@@ -1,5 +1,12 @@
 import { getSlideDimensions } from "./slideshowDimensions";
-import type { OverlaySlideshowSlide, SlideshowSlide, SlideshowTextBlock } from "./types";
+import type {
+  CanonicalSlideshowSlide,
+  CanonicalSlideshowSpec,
+  OverlaySlideshowSlide,
+  SlideshowPlan,
+  SlideshowSlide,
+  SlideshowTextBlock,
+} from "./types";
 
 type SlideRole = SlideshowSlide["role"];
 type SlideLayout = OverlaySlideshowSlide["layout"];
@@ -149,4 +156,39 @@ export function getSlideDimensionsFromData(data: Record<string, unknown>): {
   }
 
   return getSlideDimensions(typeof data.aspectRatio === "string" ? data.aspectRatio : "9:16");
+}
+
+export function buildCanonicalSlideshowSpec(args: {
+  plan: SlideshowPlan;
+  dimensions: { width: number; height: number };
+  imageBySlideIndex: ReadonlyMap<number, { artifactId?: string; url?: string }>;
+}): CanonicalSlideshowSpec {
+  const now = Date.now();
+  return {
+    format: "slideshow",
+    renderingMode: args.plan.renderingMode,
+    title: args.plan.title,
+    aspectRatio: args.plan.aspectRatio,
+    dimensions: args.dimensions,
+    exportSettings: {
+      previewMimeType: "image/png",
+      publishMimeType: "image/png",
+      width: args.dimensions.width,
+      height: args.dimensions.height,
+    },
+    visualSystem: args.plan.visualSystem,
+    creativeBrief: args.plan.creativeBrief,
+    strategy: args.plan.strategy,
+    slides: args.plan.slides.map((slide): CanonicalSlideshowSlide => {
+      const image = args.imageBySlideIndex.get(slide.index);
+      return {
+        ...slide,
+        status: "active",
+        dimensions: args.dimensions,
+        backgroundImageUrl: image?.url,
+        sourceImageArtifactId: image?.artifactId,
+        updatedAt: now,
+      };
+    }),
+  };
 }
