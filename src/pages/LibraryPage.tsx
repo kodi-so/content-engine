@@ -9,22 +9,11 @@ import {
   findPromotablePlanTarget,
   isPrimaryReviewArtifact,
 } from "../lib/artifactUtils";
+import { blobToDataUrl } from "../lib/browser/dataUrl";
 import { DEFAULT_PUBLISHING_PROVIDER } from "../lib/publishingRouting";
 import { renderSlideshowToBlobs } from "../lib/slideshowCanvas";
 import type { ArtifactDoc, DistributionPlanDoc, DistributionPlanId, SlideshowDoc } from "../types";
 import type { Id } from "../../convex/_generated/dataModel";
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("Could not read rendered slide"));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read rendered slide"));
-    reader.readAsDataURL(blob);
-  });
-}
 
 export function LibraryPage() {
   const artifacts = useQuery(api.artifacts.records.list, {});

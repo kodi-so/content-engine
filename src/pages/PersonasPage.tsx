@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "
 import { api } from "../../convex/_generated/api";
 import type { BrandId, CreativeAssetDoc, CreativeAssetId, PersonaDoc, PersonaId, PersonaType } from "../types";
 import { Field, Page, Select, TextArea } from "../components/ui";
+import { fileToDataUrl } from "../lib/browser/dataUrl";
 
 type AssetRole = "source" | "generated" | "voice";
 
@@ -46,18 +47,6 @@ const emptyPersonaForm: PersonaFormState = {
   voiceAssetIds: [],
   usageNotes: "",
 };
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("Could not read file"));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read file"));
-    reader.readAsDataURL(file);
-  });
-}
 
 function formFromPersona(persona: PersonaDoc): PersonaFormState {
   return {
@@ -273,7 +262,7 @@ export function PersonasPage() {
     setStatus("Uploading creative asset");
     try {
       const storageUrl = await uploadBase64Image({
-        base64Data: await readFileAsDataUrl(uploadFile),
+        base64Data: await fileToDataUrl(uploadFile),
         filename: uploadFile.name,
       });
       const assetId = await createCreativeAsset({

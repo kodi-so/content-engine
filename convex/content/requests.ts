@@ -6,389 +6,63 @@ import {
   internalQuery,
   mutation,
   query,
-  type ActionCtx,
-  type MutationCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { storeGeneratedAsset } from "./assetStorage";
 import {
-  buildFullGraphicPlannerPrompt,
   IMAGE_PROMPT_WRITER_SYSTEM_PROMPT,
-  buildOverlayPlannerPrompt,
   buildSingleImagePromptWriterPrompt,
   normalizePlan,
-  type PlannerReference,
   type RequestedRenderingMode,
 } from "./planning";
 import {
-  type CanonicalSlideshowSlide,
-  type CanonicalSlideshowSpec,
-  fullGraphicSlideshowPlanSchema,
   type ImagePromptWriterOutput,
-  overlaySlideshowPlanSchema,
-  singleFullGraphicImagePromptWriterSchema,
   type SingleImagePromptWriterOutput,
-  singleOverlayImagePromptWriterSchema,
   type SlideshowPlannerOutput,
   type SlideshowPlan,
-  type SlideshowTextBlock,
 } from "./types";
 import { getSlideDimensions } from "./slideshowDimensions";
 import { buildCanonicalSlideshowSpec } from "./slideshowAdapter";
 import { getModelProvider } from "../providers/index";
 import type {
   GenerateImageResult,
-  GeneratedAsset,
-  ModelInvocationMetadata,
   ModelProvider,
-  ModelProviderName,
-  ReferenceAsset,
 } from "../providers/model";
 import { contentRequestStatusValidator } from "../validators";
+import { waitForGeneratedImage } from "../workflows/runtime/generationWaiters";
+import {
+  createRequestArtifact,
+  imageModelForRenderingMode,
+  planPromptForMode,
+  planSchemaForMode,
+  plannerReferenceFromAsset,
+  promptForSlide,
+  providerImagePrompt,
+  referenceInstructionFromMetadata,
+  referenceAssetIdsForSlide,
+  referenceImagesFromAssets,
+  requestedRenderingModeValidator,
+  singleImagePromptSchemaForMode,
+  sumCost,
+} from "./requestExecutionHelpers";
+import {
+  deleteArtifactsForRequest,
+  deleteSlideshowsForRequest,
+  normalizeCanonicalSpec,
+} from "./slideshowRequestEditing";
+import {
+  applyRegeneratedSlideImageForRequest,
+  deleteSlideForRequest,
+  moveSlideForRequest,
+  regenerateSlideImageForRequest,
+  updateSlideImagePromptForRequest,
+  updateSlideTextForRequest,
+} from "./slideshowRequestMutations";
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
   return identity.subject;
-}
-
-function sumCost(current: number, metadata?: ModelInvocationMetadata) {
-  return current + (metadata?.costUsd ?? 0);
-}
-
-const DEFAULT_OVERLAY_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
-const DEFAULT_FULL_GRAPHIC_IMAGE_MODEL = "fal-ai/gemini-3-pro-image-preview";
-
-function imageModelForRenderingMode(renderingMode: SlideshowPlan["renderingMode"]): string {
-  if (renderingMode === "full_graphic_generation") {
-    return process.env.CONTENT_ENGINE_FULL_GRAPHIC_IMAGE_MODEL?.trim() ||
-      DEFAULT_FULL_GRAPHIC_IMAGE_MODEL;
-  }
-
-  return process.env.CONTENT_ENGINE_IMAGE_MODEL?.trim() || DEFAULT_OVERLAY_IMAGE_MODEL;
-}
-
-function providerImagePrompt(
-  slidePrompt: string,
-  aspectRatio: SlideshowPlan["aspectRatio"],
-  renderingMode: SlideshowPlan["renderingMode"]
-) {
-  const trimmed = normalizeImagePromptFormatting(slidePrompt);
-  if (renderingMode === "full_graphic_generation") {
-    return [
-      trimmed,
-      `Vertical ${aspectRatio} finished social slideshow graphic.`,
-    ].join("\n\n");
-  }
-  return [
-    trimmed,
-    `Vertical ${aspectRatio} full-bleed image.`,
-  ].filter(Boolean).join("\n\n");
-}
-
-function normalizeImagePromptFormatting(value: string) {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function promptForSlide(slide: SlideshowPlan["slides"][number]) {
-  return slide.renderingMode === "full_graphic_generation"
-    ? slide.finalImagePrompt
-    : slide.backgroundPrompt;
-}
-
-function referenceAssetIdsForSlide(
-  slide: Pick<SlideshowPlan["slides"][number], "useReferenceImage">,
-  assets: Array<{ _id: Id<"creativeAssets"> }>
-) {
-  return slide.useReferenceImage ? assets.map((asset) => String(asset._id)) : [];
-}
-
-function planPromptForMode(args: {
-  prompt: string;
-  revisionPrompt?: string;
-  brand: Doc<"brands">;
-  socialAccount?: Doc<"socialAccounts"> | null;
-  requestedRenderingMode: RequestedRenderingMode;
-  references: PlannerReference[];
-}) {
-  return args.requestedRenderingMode === "full_graphic_generation"
-    ? buildFullGraphicPlannerPrompt(args)
-    : buildOverlayPlannerPrompt(args);
-}
-
-function planSchemaForMode(renderingMode: RequestedRenderingMode) {
-  return renderingMode === "full_graphic_generation"
-    ? fullGraphicSlideshowPlanSchema
-    : overlaySlideshowPlanSchema;
-}
-
-function singleImagePromptSchemaForMode(renderingMode: RequestedRenderingMode) {
-  return renderingMode === "full_graphic_generation"
-    ? singleFullGraphicImagePromptWriterSchema
-    : singleOverlayImagePromptWriterSchema;
-}
-
-function requestedRenderingModeValidator() {
-  return v.optional(
-    v.union(
-      v.literal("background_plus_overlay"),
-      v.literal("full_graphic_generation")
-    )
-  );
-}
-
-function referenceInstructionFromMetadata(asset: Doc<"creativeAssets">): string | undefined {
-  if (!asset.metadata || typeof asset.metadata !== "object") return undefined;
-  const instruction = (asset.metadata as Record<string, unknown>).instruction;
-  return typeof instruction === "string" && instruction.trim() ? instruction.trim() : undefined;
-}
-
-function plannerReferenceFromAsset(
-  asset: Doc<"creativeAssets">,
-  instruction?: string
-): PlannerReference {
-  return {
-    assetId: String(asset._id),
-    name: asset.name,
-    type: asset.assetKind,
-    description: asset.description,
-    instruction: instruction?.trim() || referenceInstructionFromMetadata(asset),
-  };
-}
-
-async function referenceImagesFromAssets(
-  assets: Doc<"creativeAssets">[]
-): Promise<ReferenceAsset[]> {
-  return assets
-    .filter((asset) => asset.mediaType === "image" && asset.storageUrl.trim())
-    .map((asset) => ({
-      url: asset.storageUrl,
-      mimeType: "image/png",
-      description: asset.description || asset.name,
-    }));
-}
-
-async function createRequestArtifact(
-  ctx: ActionCtx,
-  args: {
-    request: Doc<"contentRequests">;
-    type: Doc<"artifacts">["type"];
-    title?: string;
-    storageUrl?: string;
-    data?: unknown;
-    provider?: ModelProviderName;
-    model?: string;
-    prompt?: string;
-    parentArtifactIds?: Id<"artifacts">[];
-  }
-): Promise<Id<"artifacts">> {
-  return await ctx.runMutation(internal.artifacts.records.createFromRunner, {
-    userId: args.request.userId,
-    brandId: args.request.brandId,
-    contentRequestId: args.request._id,
-    parentArtifactIds: args.parentArtifactIds,
-    type: args.type,
-    title: args.title,
-    storageUrl: args.storageUrl,
-    data: args.data,
-    provider: args.provider,
-    model: args.model,
-    prompt: args.prompt,
-    lifecycle: "preview",
-    reviewStatus: "pending",
-  });
-}
-
-async function waitForImageResult(
-  provider: ModelProvider,
-  args: {
-    jobId?: string;
-    model: string;
-    metadata?: Record<string, unknown>;
-  }
-): Promise<GeneratedAsset> {
-  if (!args.jobId) throw new Error("Image generation did not return a job id");
-
-  let lastStatus = "unknown";
-  let lastError = "";
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const result = await provider.getJobStatus({
-      jobId: args.jobId,
-      model: args.model,
-      metadata: args.metadata,
-    });
-    lastStatus = result.status;
-    lastError = result.errorMessage ?? "";
-    if (result.status === "succeeded") {
-      const asset = result.assets?.[0];
-      if (asset) return asset;
-      throw new Error(`Image job ${args.jobId} succeeded but returned no assets`);
-    }
-    if (result.status === "failed" || result.status === "canceled") {
-      throw new Error(`Image job ${args.jobId} ${result.status}${result.errorMessage ? `: ${result.errorMessage}` : ""}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-  }
-
-  throw new Error(`Image job ${args.jobId} timed out after 5 minutes with status ${lastStatus}${lastError ? `: ${lastError}` : ""}`);
-}
-
-function normalizeCanonicalSpec(value: unknown): CanonicalSlideshowSpec {
-  if (!value || typeof value !== "object") {
-    throw new Error("Slideshow spec is missing");
-  }
-  return value as CanonicalSlideshowSpec;
-}
-
-function getArtifactData(artifact: Doc<"artifacts">): Record<string, unknown> {
-  return artifact.data && typeof artifact.data === "object" && !Array.isArray(artifact.data)
-    ? artifact.data as Record<string, unknown>
-    : {};
-}
-
-function activeSlides(spec: CanonicalSlideshowSpec) {
-  return spec.slides
-    .filter((slide) => slide.status !== "deleted")
-    .sort((first, second) => first.index - second.index);
-}
-
-function renderingModeForSlide(
-  spec: CanonicalSlideshowSpec,
-  slide: CanonicalSlideshowSlide
-): RequestedRenderingMode {
-  return (slide.renderingMode ?? spec.renderingMode ?? "background_plus_overlay") as RequestedRenderingMode;
-}
-
-function reindexActiveSlides(spec: CanonicalSlideshowSpec): CanonicalSlideshowSpec {
-  const activeIds = new Set(activeSlides(spec).map((slide) => slide.slideId));
-  let index = 1;
-  return {
-    ...spec,
-    slides: spec.slides.map((slide) => {
-      if (!activeIds.has(slide.slideId)) return slide;
-      const nextSlide = { ...slide, index, updatedAt: Date.now() };
-      index += 1;
-      return nextSlide;
-    }),
-  };
-}
-
-async function getOwnedSlideshow(
-  ctx: MutationCtx,
-  args: { slideshowId: Id<"slideshows">; userId: string }
-) {
-  const slideshow = await ctx.db.get(args.slideshowId);
-  if (!slideshow || slideshow.userId !== args.userId) {
-    throw new Error("Slideshow not found");
-  }
-  return slideshow;
-}
-
-function clampNumber(value: unknown, fallback: number, min: number, max: number) {
-  const number = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(Math.max(number, min), max);
-}
-
-function normalizeHexColor(value: unknown, fallback: string) {
-  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
-    ? value.toUpperCase()
-    : fallback;
-}
-
-function normalizeEditableTextBlocks(value: unknown): SlideshowTextBlock[] {
-  if (!Array.isArray(value)) throw new Error("Text blocks are required");
-
-  const blocks = value.map((item, index): SlideshowTextBlock | null => {
-    if (!item || typeof item !== "object") return null;
-    const block = item as Record<string, unknown>;
-    const text = typeof block.text === "string"
-      ? block.text.trim()
-      : Array.isArray(block.items)
-        ? block.items.filter((line) => typeof line === "string" && line.trim()).join("\n")
-        : "";
-    if (!text) return null;
-
-    const role = index === 0 ? "headline" : "body";
-    const emphasis = index === 0 ? "primary" : "secondary";
-    const backgroundStyle = block.backgroundStyle === "solid" ? "solid" : "none";
-
-    return {
-      id: typeof block.id === "string" && block.id.trim()
-        ? block.id.trim().slice(0, 64)
-        : `text-${index + 1}`,
-      role,
-      text: text.slice(0, 280),
-      items: [],
-      emphasis,
-      x: clampNumber(block.x, 10, 0, 96),
-      y: clampNumber(block.y, index === 0 ? 42 : 56, 0, 96),
-      width: clampNumber(block.width, 80, 12, 100),
-      align: block.align === "left" || block.align === "right" ? block.align : "center",
-      fontSize: clampNumber(block.fontSize, index === 0 ? 72 : 44, 20, 150),
-      fontWeight: clampNumber(block.fontWeight, role === "body" ? 700 : 800, 400, 900),
-      color: normalizeHexColor(block.color, "#FFFFFF"),
-      strokeColor: normalizeHexColor(block.strokeColor, "#000000"),
-      strokeWidth: clampNumber(block.strokeWidth, 16, 0, 48),
-      backgroundStyle,
-      backgroundColor: backgroundStyle === "solid" ? normalizeHexColor(block.backgroundColor, "#FFFFFF") : "#000000",
-      backgroundOpacity: backgroundStyle === "solid" ? 1 : 0,
-    };
-  }).filter((block): block is SlideshowTextBlock => Boolean(block));
-
-  if (!blocks.length) throw new Error("At least one text block is required");
-  return blocks.slice(0, 12);
-}
-
-async function cleanupArtifactStorage(ctx: MutationCtx, artifact: Doc<"artifacts">) {
-  const data = getArtifactData(artifact);
-  const storageIds = [data.storageId, data.publishStorageId].filter(
-    (value): value is Id<"_storage"> => typeof value === "string"
-  );
-
-  for (const storageId of storageIds) {
-    try {
-      await ctx.storage.delete(storageId);
-    } catch {
-      // Storage cleanup is best-effort; rows are still the durable state.
-    }
-  }
-}
-
-async function deleteArtifactsForRequest(
-  ctx: MutationCtx,
-  args: { requestId: Id<"contentRequests">; userId: string }
-) {
-  const artifacts = await ctx.db
-    .query("artifacts")
-    .withIndex("by_content_request", (q) => q.eq("contentRequestId", args.requestId))
-    .collect();
-
-  for (const artifact of artifacts) {
-    if (artifact.userId !== args.userId) continue;
-    await cleanupArtifactStorage(ctx, artifact);
-    await ctx.db.delete(artifact._id);
-  }
-}
-
-async function deleteSlideshowsForRequest(
-  ctx: MutationCtx,
-  args: { requestId: Id<"contentRequests">; userId: string }
-) {
-  const slideshows = await ctx.db
-    .query("slideshows")
-    .withIndex("by_content_request", (q) => q.eq("contentRequestId", args.requestId))
-    .collect();
-
-  for (const slideshow of slideshows) {
-    if (slideshow.userId === args.userId) {
-      await ctx.db.delete(slideshow._id);
-    }
-  }
 }
 
 export const list = query({
@@ -641,34 +315,7 @@ export const deleteSlide = mutation({
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
-    const slideshow = await getOwnedSlideshow(ctx, { slideshowId: args.slideshowId, userId });
-    const spec = normalizeCanonicalSpec(slideshow.spec);
-    if (activeSlides(spec).length <= 1) throw new Error("A slideshow needs at least one slide");
-    const deletedSlide = spec.slides.find(
-      (slide) => slide.slideId === args.slideId && slide.status !== "deleted"
-    );
-
-    const nextSpec = reindexActiveSlides({
-      ...spec,
-      slides: spec.slides.map((slide) =>
-        slide.slideId === args.slideId
-          ? { ...slide, status: "deleted", updatedAt: Date.now() }
-          : slide
-      ),
-    });
-
-    await ctx.db.patch(slideshow._id, {
-      spec: nextSpec,
-      updatedAt: Date.now(),
-    });
-
-    if (deletedSlide?.sourceImageArtifactId) {
-      const artifact = await ctx.db.get(deletedSlide.sourceImageArtifactId as Id<"artifacts">);
-      if (artifact && artifact.userId === userId) {
-        await cleanupArtifactStorage(ctx, artifact);
-        await ctx.db.delete(artifact._id);
-      }
-    }
+    await deleteSlideForRequest(ctx, { ...args, userId });
   },
 });
 
@@ -680,33 +327,7 @@ export const moveSlide = mutation({
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
-    const slideshow = await getOwnedSlideshow(ctx, { slideshowId: args.slideshowId, userId });
-    const spec = normalizeCanonicalSpec(slideshow.spec);
-    const slides = activeSlides(spec);
-    const currentIndex = slides.findIndex((slide) => slide.slideId === args.slideId);
-    const targetIndex = args.direction === "left" ? currentIndex - 1 : currentIndex + 1;
-    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= slides.length) return;
-
-    const current = slides[currentIndex];
-    const target = slides[targetIndex];
-    const now = Date.now();
-    const nextSpec = reindexActiveSlides({
-      ...spec,
-      slides: spec.slides.map((slide) => {
-        if (slide.slideId === current.slideId) {
-          return { ...slide, index: target.index, updatedAt: now };
-        }
-        if (slide.slideId === target.slideId) {
-          return { ...slide, index: current.index, updatedAt: now };
-        }
-        return slide;
-      }),
-    });
-
-    await ctx.db.patch(slideshow._id, {
-      spec: nextSpec,
-      updatedAt: now,
-    });
+    await moveSlideForRequest(ctx, { ...args, userId });
   },
 });
 
@@ -718,25 +339,7 @@ export const updateSlideText = mutation({
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
-    const slideshow = await getOwnedSlideshow(ctx, { slideshowId: args.slideshowId, userId });
-
-    const spec = normalizeCanonicalSpec(slideshow.spec);
-    const textBlocks = normalizeEditableTextBlocks(args.textBlocks);
-    const nextSpec = {
-      ...spec,
-      slides: spec.slides.map((slide) =>
-        slide.slideId === args.slideId &&
-        slide.status !== "deleted" &&
-        slide.renderingMode === "background_plus_overlay"
-          ? { ...slide, textBlocks, updatedAt: Date.now() }
-          : slide
-      ),
-    };
-
-    await ctx.db.patch(slideshow._id, {
-      spec: nextSpec,
-      updatedAt: Date.now(),
-    });
+    await updateSlideTextForRequest(ctx, { ...args, userId });
   },
 });
 
@@ -748,31 +351,7 @@ export const updateSlideImagePrompt = mutation({
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
-    const slideshow = await getOwnedSlideshow(ctx, { slideshowId: args.slideshowId, userId });
-    const prompt = normalizeImagePromptFormatting(args.prompt);
-    if (!prompt) throw new Error("Image prompt is required");
-
-    const spec = normalizeCanonicalSpec(slideshow.spec);
-    const now = Date.now();
-    const nextSpec = {
-      ...spec,
-      slides: spec.slides.map((slide) => {
-        if (slide.slideId !== args.slideId || slide.status === "deleted") return slide;
-        const renderingMode = renderingModeForSlide(spec, slide);
-        return {
-          ...slide,
-          ...(renderingMode === "full_graphic_generation"
-            ? { finalImagePrompt: prompt }
-            : { backgroundPrompt: prompt }),
-          updatedAt: now,
-        };
-      }),
-    };
-
-    await ctx.db.patch(slideshow._id, {
-      spec: nextSpec,
-      updatedAt: now,
-    });
+    await updateSlideImagePromptForRequest(ctx, { ...args, userId });
   },
 });
 
@@ -787,46 +366,7 @@ export const applyRegeneratedSlideImage = internalMutation({
     sourceImageArtifactId: v.string(),
   },
   handler: async (ctx, args) => {
-    const slideshow = await getOwnedSlideshow(ctx, { slideshowId: args.slideshowId, userId: args.userId });
-    const spec = normalizeCanonicalSpec(slideshow.spec);
-    const now = Date.now();
-    const replacedSlide = spec.slides.find(
-      (slide) => slide.slideId === args.slideId && slide.status !== "deleted"
-    );
-    const replacedArtifactId = replacedSlide?.sourceImageArtifactId;
-    const nextSpec = {
-      ...spec,
-      slides: spec.slides.map((slide) => {
-        if (slide.slideId !== args.slideId || slide.status === "deleted") return slide;
-        const renderingMode = renderingModeForSlide(spec, slide);
-        return {
-          ...slide,
-          ...(renderingMode === "full_graphic_generation"
-            ? { finalImagePrompt: args.prompt }
-            : { backgroundPrompt: args.prompt }),
-          useReferenceImage: args.useReferenceImage === true ? true : undefined,
-          backgroundImageUrl: args.storageUrl,
-          sourceImageArtifactId: args.sourceImageArtifactId,
-          updatedAt: now,
-        };
-      }),
-    };
-
-    await ctx.db.patch(slideshow._id, {
-      spec: nextSpec,
-      updatedAt: now,
-    });
-
-    if (
-      replacedArtifactId &&
-      replacedArtifactId !== args.sourceImageArtifactId
-    ) {
-      const artifact = await ctx.db.get(replacedArtifactId as Id<"artifacts">);
-      if (artifact && artifact.userId === args.userId) {
-        await cleanupArtifactStorage(ctx, artifact);
-        await ctx.db.delete(artifact._id);
-      }
-    }
+    await applyRegeneratedSlideImageForRequest(ctx, args);
   },
 });
 
@@ -842,94 +382,7 @@ export const regenerateSlideImage = action({
     args
   ): Promise<{ artifactId: Id<"artifacts">; storageUrl: string }> => {
     const userId = currentUserId(await ctx.auth.getUserIdentity());
-    const prompt = normalizeImagePromptFormatting(args.prompt);
-    if (!prompt) throw new Error("Image prompt is required");
-
-    const context = await ctx.runQuery(internal.content.requests.getSlideRegenerationContext, {
-      slideshowId: args.slideshowId,
-      slideId: args.slideId,
-      userId,
-    });
-    if (!context) throw new Error("Slide not found");
-
-    const renderingMode = renderingModeForSlide(context.spec, context.slide);
-    const aspectRatio = context.spec.aspectRatio ?? "9:16";
-    const useReferenceImage = args.useReferenceImage ?? (context.slide.useReferenceImage === true);
-    const referenceAssetsForSlide = useReferenceImage ? context.referenceAssets : [];
-    const referenceImages = await referenceImagesFromAssets(referenceAssetsForSlide);
-    const referenceAssetIds = referenceImages.length > 0
-      ? referenceAssetIdsForSlide({ useReferenceImage }, referenceAssetsForSlide)
-      : [];
-    const imageProviderName = referenceImages.length > 0
-      ? process.env.CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER?.trim() || "fal"
-      : process.env.CONTENT_ENGINE_IMAGE_PROVIDER?.trim() || "fal";
-    const imageProvider = getModelProvider(imageProviderName as "gemini" | "fal");
-    const imageModel = imageModelForRenderingMode(renderingMode);
-    const dimensions = context.spec.dimensions ?? getSlideDimensions(aspectRatio);
-    const providerPrompt = providerImagePrompt(prompt, aspectRatio, renderingMode);
-
-    const image = await imageProvider.generateImage({
-      prompt: providerPrompt,
-      model: imageModel,
-      aspectRatio,
-      count: 1,
-      referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
-      metadata: {
-        arguments: {
-          aspect_ratio: aspectRatio,
-          output_format: "png",
-          resolution: "2K",
-        },
-        renderingMode,
-        slideId: args.slideId,
-        referenceAssetIds,
-      },
-    });
-    const asset = image.images[0] ?? await waitForImageResult(imageProvider, {
-      jobId: image.jobId,
-      model: image.metadata.model,
-      metadata: image.metadata,
-    });
-    const stored = await storeGeneratedAsset(ctx, asset);
-    const artifactId: Id<"artifacts"> = await createRequestArtifact(ctx, {
-      request: context.request,
-      type: "image",
-      title: `Slide ${context.slide.index} regenerated image`,
-      storageUrl: stored.storageUrl,
-      data: {
-        format: renderingMode === "full_graphic_generation"
-          ? "slideshow_full_graphic"
-          : "slideshow_background",
-        slideIndex: context.slide.index,
-        storageId: stored.storageId,
-        mimeType: stored.mimeType,
-        fileSize: stored.byteLength,
-        width: dimensions.width,
-        height: dimensions.height,
-        jobId: image.jobId,
-        status: "succeeded",
-        renderingMode,
-        useReferenceImage,
-        sourceSlideshowId: args.slideshowId,
-        sourceSlideId: args.slideId,
-        referenceAssetIds,
-      },
-      provider: image.metadata.provider,
-      model: image.metadata.model,
-      prompt: providerPrompt,
-    });
-
-    await ctx.runMutation(internal.content.requests.applyRegeneratedSlideImage, {
-      slideshowId: args.slideshowId,
-      userId,
-      slideId: args.slideId,
-      prompt,
-      useReferenceImage,
-      storageUrl: stored.storageUrl,
-      sourceImageArtifactId: String(artifactId),
-    });
-
-    return { artifactId, storageUrl: stored.storageUrl };
+    return await regenerateSlideImageForRequest(ctx, { ...args, userId });
   },
 });
 
@@ -1095,7 +548,7 @@ export const execute = internalAction({
 
       const resolvedImages = await Promise.all(pendingImages.map(async (pending) => {
         try {
-          const asset = pending.image.images[0] ?? await waitForImageResult(pending.imageProvider, {
+          const asset = pending.image.images[0] ?? await waitForGeneratedImage(pending.imageProvider, {
             jobId: pending.image.jobId,
             model: pending.image.metadata.model,
             metadata: pending.image.metadata,
