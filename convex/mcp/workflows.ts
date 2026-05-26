@@ -14,13 +14,13 @@ import {
   createStarterWorkflowGraph,
   type WorkflowEdge,
   type WorkflowGraph,
-} from "../../src/lib/workflowGraph";
+} from "../../src/lib/workflow/workflowGraph";
 import {
   createWorkflowGraphFromTemplate,
   listWorkflowTemplates,
   type WorkflowTemplateId,
-} from "../../src/lib/workflowTemplates";
-import { validateWorkflowGraph } from "../../src/lib/workflowGraphValidation";
+} from "../../src/lib/workflow/workflowTemplates";
+import { validateWorkflowGraph } from "../../src/lib/workflow/workflowGraphValidation";
 import { createWorkflowRun } from "../workflows/runCreation";
 import { nextScheduledRunAt } from "../workflows/scheduling";
 

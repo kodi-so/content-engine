@@ -13,14 +13,14 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { Page, Select } from "../components/ui";
-import { createStarterWorkflowGraph } from "../lib/workflowGraph";
+import { createStarterWorkflowGraph } from "../lib/workflow/workflowGraph";
 import {
   createWorkflowGraphFromTemplate,
   getWorkflowTemplate,
   listWorkflowTemplates,
   type WorkflowTemplateCategory,
   type WorkflowTemplateId,
-} from "../lib/workflowTemplates";
+} from "../lib/workflow/workflowTemplates";
 import { DEFAULT_PUBLISHING_PROVIDER } from "../lib/publishingRouting";
 import type { BrandId, WorkflowId } from "../types";
 

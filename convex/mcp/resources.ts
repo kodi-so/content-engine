@@ -3,13 +3,13 @@ import { query, type QueryCtx } from "../_generated/server";
 import {
   WORKFLOW_GRAPH_SCHEMA_VERSION,
   WORKFLOW_NODE_TYPES,
-} from "../../src/lib/workflowGraph";
-import { listWorkflowNodeDefinitions } from "../../src/lib/workflowNodeCatalog";
+} from "../../src/lib/workflow/workflowGraph";
+import { listWorkflowNodeDefinitions } from "../../src/lib/workflow/workflowNodeCatalog";
 import {
   WORKFLOW_AGENT_PRESETS,
   type WorkflowAgentPreset,
-} from "../../src/lib/workflowAgentPresets";
-import { listWorkflowTemplates } from "../../src/lib/workflowTemplates";
+} from "../../src/lib/workflow/workflowAgentPresets";
+import { listWorkflowTemplates } from "../../src/lib/workflow/workflowTemplates";
 
 const JSON_MIME_TYPE = "application/json";
 const MARKDOWN_MIME_TYPE = "text/markdown";

@@ -5,11 +5,11 @@ import { nodeInputBindingValidator, workflowGraphValidator } from "../validators
 import {
   getWorkflowNodeDefinition,
   isWorkflowNodeType,
-} from "../../src/lib/workflowNodeCatalog";
+} from "../../src/lib/workflow/workflowNodeCatalog";
 import {
   automaticTargetPortForSource,
   WORKFLOW_CANVAS_INPUT_HANDLE_ID,
-} from "../../src/lib/workflowPortMapping";
+} from "../../src/lib/workflow/workflowPortMapping";
 
 type WorkflowGraphForResolver = typeof workflowGraphValidator.type;
 type WorkflowGraphNodeForResolver = WorkflowGraphForResolver["nodes"][number];

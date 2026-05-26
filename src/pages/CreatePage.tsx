@@ -9,7 +9,7 @@ import {
   getWorkflowTemplate,
   listWorkflowTemplates,
   type WorkflowTemplateId,
-} from "../lib/workflowTemplates";
+} from "../lib/workflow/workflowTemplates";
 import type { BrandId, SocialAccountId } from "../types";
 
 function formatValue(value: string) {
