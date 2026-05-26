@@ -20,10 +20,7 @@ export const providerModelCategoryValidator = v.union(
   v.literal("video"),
   v.literal("video_render"),
   v.literal("audio"),
-  v.literal("music"),
   v.literal("lipsync"),
-  v.literal("speech_to_text"),
-  v.literal("upscale"),
   v.literal("unknown")
 );
 

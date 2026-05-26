@@ -15,6 +15,7 @@ export type WorkflowAgentPreset = {
 
 const commonAgentConfigKeys = [
   "agentMode",
+  "requestFromInputNode",
   "request",
   "tone",
   "platform",

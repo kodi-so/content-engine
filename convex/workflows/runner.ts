@@ -393,6 +393,81 @@ function generationProviderInputFromConfig(
   return overrides;
 }
 
+type ImageModelUiContractForRun = {
+  prompt: {
+    visible: boolean;
+    required: boolean;
+  };
+  images: {
+    visible: boolean;
+    required: boolean;
+    multiple: boolean;
+    maxCount?: number;
+  };
+};
+
+function imageModelUiContractForRun(model: Doc<"providerModels"> | null): ImageModelUiContractForRun {
+  const metadata = objectValue(model?.metadata);
+  const uiContract = objectValue(metadata.uiContract);
+  const prompt = objectValue(uiContract.prompt);
+  const images = objectValue(uiContract.images);
+  const maxCount = numberFromInputValue(images.maxCount);
+
+  return {
+    prompt: {
+      visible: typeof prompt.visible === "boolean" ? prompt.visible : true,
+      required: typeof prompt.required === "boolean" ? prompt.required : true,
+    },
+    images: {
+      visible: typeof images.visible === "boolean" ? images.visible : true,
+      required: typeof images.required === "boolean" ? images.required : false,
+      multiple: typeof images.multiple === "boolean" ? images.multiple : true,
+      ...(maxCount !== undefined ? { maxCount } : {}),
+    },
+  };
+}
+
+function providerModelInputSchema(model: Doc<"providerModels"> | null): Record<string, unknown> {
+  const schemaSnapshot = objectValue(model?.schemaSnapshot);
+  return objectValue(schemaSnapshot.inputSchema);
+}
+
+function schemaHasField(schema: Record<string, unknown>, key: string): boolean {
+  if (schema[key] !== undefined) return true;
+  const properties = objectValue(schema.properties);
+  return properties[key] !== undefined;
+}
+
+function imageProviderInputFromModelSchema(args: {
+  model: Doc<"providerModels"> | null;
+  referenceImages: ReferenceAsset[];
+  count: number;
+}) {
+  const schema = providerModelInputSchema(args.model);
+  const urls = args.referenceImages
+    .map((referenceImage) => referenceImage.url)
+    .filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+  const input: Record<string, unknown> = {};
+
+  if (urls.length) {
+    if (schemaHasField(schema, "image_url")) input.image_url = urls[0];
+    if (schemaHasField(schema, "image")) input.image = urls[0];
+    if (schemaHasField(schema, "image_urls")) input.image_urls = urls;
+    if (schemaHasField(schema, "image_input")) input.image_input = urls;
+    if (schemaHasField(schema, "input_urls")) input.input_urls = urls;
+    if (schemaHasField(schema, "reference_image_urls")) input.reference_image_urls = urls;
+  }
+
+  if (schemaHasField(schema, "max_images")) {
+    input.max_images = args.count;
+  }
+  if (schemaHasField(schema, "num_images")) {
+    input.num_images = args.count;
+  }
+
+  return input;
+}
+
 function looksLikeUrl(value: string): boolean {
   return value.startsWith("http://") ||
     value.startsWith("https://") ||
@@ -1347,9 +1422,12 @@ function postPackageDataForNode(args: {
     ...objectValue(config.destinationPolicy),
     ...objectValue(inputs.destinationPolicy?.value),
   };
-  const configuredCaption = stringFromValue(config.caption);
+  const captionFromInputNode = config.captionFromInputNode === true;
+  const configuredCaption = captionFromInputNode ? undefined : stringFromValue(config.caption);
   const inputCaption =
-    stringFromValue(inputs.caption?.value) ??
+    (captionFromInputNode && inputs.caption?.source === "config"
+      ? undefined
+      : stringFromValue(inputs.caption?.value)) ??
     stringFromValue(inputs.text?.value) ??
     stringFromValue(inputs.prompt?.value) ??
     stringFromValue(inputs.input?.value);
@@ -1981,7 +2059,10 @@ export const executeRun = internalAction({
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
             const responseFormat = llmResponseFormat(inputs.responseFormat?.value);
-            const prompt = textFromInputValue(inputs.prompt?.value);
+            const promptFromInputNode = config.promptFromInputNode === true;
+            const prompt = promptFromInputNode && inputs.prompt?.source === "config"
+              ? ""
+              : textFromInputValue(inputs.prompt?.value);
             const contextText = textFromInputValue(inputs.context?.value);
             const systemPrompt = textFromInputValue(inputs.systemPrompt?.value);
             const userPrompt = [contextText ? `Context:\n${contextText}` : undefined, prompt]
@@ -2132,7 +2213,10 @@ export const executeRun = internalAction({
             const preset = getWorkflowAgentPreset(inputs.agentMode?.value);
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
-            const request = textFromInputValue(inputs.request?.value);
+            const requestFromInputNode = config.requestFromInputNode === true;
+            const request = requestFromInputNode && inputs.request?.source === "config"
+              ? undefined
+              : textFromInputValue(inputs.request?.value);
             const contextText = textFromInputValue(inputs.context?.value);
             const mediaText = textFromInputValue(inputs.media?.value);
             const model =
@@ -2281,19 +2365,32 @@ export const executeRun = internalAction({
             const inputs = resolvedInputs.inputs ?? {};
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
-            const prompt = textFromInputValue(inputs.prompt?.value);
             const model =
               typeof node.model === "string" && node.model.trim()
                 ? node.model.trim()
                 : textFromInputValue(inputs.model?.value);
+            const providerModel = model
+              ? await ctx.runQuery(internal.providers.modelCatalog.getByProviderModelForRun, {
+                  provider: providerName,
+                  modelId: model,
+                })
+              : null;
+            const imageContract = imageModelUiContractForRun(providerModel);
+            const promptFromInputNode = config.promptFromInputNode === true;
+            const imageFromInputNode = config.imageFromInputNode === true;
+            const prompt =
+              imageContract.prompt.visible === false ||
+              (promptFromInputNode && inputs.prompt?.source === "config")
+                ? ""
+                : textFromInputValue(inputs.prompt?.value);
             const aspectRatio = textFromInputValue(inputs.aspectRatio?.value);
             const count = Math.max(1, Math.floor(numberFromInputValue(inputs.count?.value) ?? 1));
-            const referenceImages = referenceAssetsFromInputs(resolvedInputs, [
-              "reference_image",
-              "image",
-              "media",
-              "referenceImageUrl",
-            ]);
+            const referenceImages = referenceAssetsFromInputs(
+              resolvedInputs,
+              imageFromInputNode
+                ? ["reference_image", "image", "media"]
+                : ["localReferenceImages", "reference_image", "image", "media"]
+            );
             const sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
               "reference_image",
               "image",
@@ -2304,18 +2401,36 @@ export const executeRun = internalAction({
               "prompt",
               "aspectRatio",
               "count",
-              "referenceImageUrl",
+              "promptFromInputNode",
+              "imageFromInputNode",
+              "localReferenceImages",
             ]);
 
-            if (!prompt) {
-              throw new Error(`${node.label} needs a prompt input.`);
+            if (imageContract.prompt.required && !prompt) {
+              throw new Error(
+                promptFromInputNode
+                  ? `${node.label} needs a prompt from an upstream node.`
+                  : `${node.label} needs a prompt.`
+              );
+            }
+            if (imageContract.images.required && !referenceImages.length) {
+              throw new Error(
+                imageFromInputNode
+                  ? `${node.label} needs an image from an upstream node.`
+                  : `${node.label} needs a reference image.`
+              );
+            }
+            if (imageContract.images.maxCount && referenceImages.length > imageContract.images.maxCount) {
+              throw new Error(
+                `${node.label} allows up to ${imageContract.images.maxCount} reference image${imageContract.images.maxCount === 1 ? "" : "s"}.`
+              );
             }
             if (!provider.capabilities.image) {
               throw new Error(`${provider.displayName} does not support image generation.`);
             }
 
             const imageResult = await provider.generateImage({
-              prompt,
+              prompt: prompt ?? "",
               model,
               aspectRatio,
               count,
@@ -2326,7 +2441,18 @@ export const executeRun = internalAction({
                 nodeId: node.id,
                 nodeType: node.type,
                 referenceImageCount: referenceImages.length,
-                ...(Object.keys(providerInput).length ? { bulkapisInput: providerInput } : {}),
+                ...(Object.keys(providerInput).length || providerModel
+                  ? {
+                      bulkapisInput: {
+                        ...imageProviderInputFromModelSchema({
+                          model: providerModel,
+                          referenceImages,
+                          count,
+                        }),
+                        ...providerInput,
+                      },
+                    }
+                  : {}),
               },
             });
             const providerJob = imageResult.jobId
@@ -2505,7 +2631,11 @@ export const executeRun = internalAction({
             const inputs = resolvedInputs.inputs ?? {};
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
-            const prompt = textFromInputValue(inputs.prompt?.value);
+            const promptFromInputNode = config.promptFromInputNode === true;
+            const imageFromInputNode = config.imageFromInputNode === true;
+            const prompt = promptFromInputNode && inputs.prompt?.source === "config"
+              ? ""
+              : textFromInputValue(inputs.prompt?.value);
             const model =
               typeof node.model === "string" && node.model.trim()
                 ? node.model.trim()
@@ -2521,6 +2651,7 @@ export const executeRun = internalAction({
               "endFrameUrl",
             ]);
             const imageAssets = referenceAssetsFromInputs(resolvedInputs, [
+              ...(imageFromInputNode ? [] : ["localReferenceImages"]),
               "image",
               "imageUrl",
               "reference_image",
@@ -2532,6 +2663,7 @@ export const executeRun = internalAction({
               ...imageAssets,
             ]);
             const referenceVideos = referenceVideoAssetsFromInputs(resolvedInputs, [
+              ...(imageFromInputNode ? [] : ["localReferenceVideos"]),
               "reference_video",
               "referenceVideoUrl",
               "video",
@@ -2539,6 +2671,8 @@ export const executeRun = internalAction({
               "media",
             ]);
             const sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
+              "localReferenceImages",
+              "localReferenceVideos",
               "image",
               "start_frame",
               "end_frame",
@@ -2549,6 +2683,10 @@ export const executeRun = internalAction({
             ]);
             const providerInput = generationProviderInputFromConfig(config, [
               "prompt",
+              "promptFromInputNode",
+              "imageFromInputNode",
+              "localReferenceImages",
+              "localReferenceVideos",
               "aspectRatio",
               "durationSeconds",
               "imageUrl",
@@ -2757,8 +2895,12 @@ export const executeRun = internalAction({
             const inputs = resolvedInputs.inputs ?? {};
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
+            const textFromInputNode = config.textFromInputNode === true;
+            const voiceFromInputNode = config.voiceFromInputNode === true;
             const text =
-              textFromInputValue(inputs.text?.value) ??
+              (textFromInputNode && inputs.text?.source === "config"
+                ? undefined
+                : textFromInputValue(inputs.text?.value)) ??
               textFromInputValue(inputs.prompt?.value) ??
               textFromInputValue(inputs.input?.value);
             const mode = textFromInputValue(inputs.mode?.value);
@@ -2767,6 +2909,7 @@ export const executeRun = internalAction({
                 ? node.model.trim()
                 : textFromInputValue(inputs.model?.value);
             const voiceReferenceAudios = referenceAudioAssetsFromInputs(resolvedInputs, [
+              ...(voiceFromInputNode ? [] : ["localReferenceAudios"]),
               "voice_reference",
               "audio",
               "voiceReferenceUrl",
@@ -2774,6 +2917,7 @@ export const executeRun = internalAction({
               "media",
             ]);
             const sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
+              "localReferenceAudios",
               "voice_reference",
               "audio",
               "media",
@@ -2781,8 +2925,11 @@ export const executeRun = internalAction({
             ]);
             const providerInput = generationProviderInputFromConfig(config, [
               "text",
+              "textFromInputNode",
               "mode",
               "voice",
+              "voiceFromInputNode",
+              "localReferenceAudios",
               "voiceReferenceUrl",
               "audioUrl",
             ]);
@@ -3008,27 +3155,35 @@ export const executeRun = internalAction({
             const inputs = resolvedInputs.inputs ?? {};
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
+            const imageFromInputNode = config.imageFromInputNode === true;
+            const audioFromInputNode = config.audioFromInputNode === true;
             const model =
               typeof node.model === "string" && node.model.trim()
                 ? node.model.trim()
                 : textFromInputValue(inputs.model?.value);
             const resolution = textFromInputValue(inputs.resolution?.value);
             const imageReferences = referenceAssetsFromInputs(resolvedInputs, [
+              ...(imageFromInputNode ? [] : ["localReferenceImages"]),
               "image",
               "imageUrl",
               "media",
             ]);
             const videoReferences = referenceVideoAssetsFromInputs(resolvedInputs, [
+              ...(imageFromInputNode ? [] : ["localReferenceVideos"]),
               "video",
               "videoUrl",
               "media",
             ]);
             const audioReferences = referenceAudioAssetsFromInputs(resolvedInputs, [
+              ...(audioFromInputNode ? [] : ["localReferenceAudios"]),
               "audio",
               "audioUrl",
               "media",
             ]);
             const sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
+              "localReferenceImages",
+              "localReferenceVideos",
+              "localReferenceAudios",
               "image",
               "video",
               "audio",
@@ -3036,6 +3191,11 @@ export const executeRun = internalAction({
               "input",
             ]);
             const providerInput = generationProviderInputFromConfig(config, [
+              "imageFromInputNode",
+              "audioFromInputNode",
+              "localReferenceImages",
+              "localReferenceVideos",
+              "localReferenceAudios",
               "imageUrl",
               "videoUrl",
               "audioUrl",
@@ -3230,7 +3390,11 @@ export const executeRun = internalAction({
             const inputs = resolvedInputs.inputs ?? {};
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
-            const prompt = textFromInputValue(inputs.prompt?.value);
+            const promptFromInputNode = config.promptFromInputNode === true;
+            const mediaFromInputNode = config.mediaFromInputNode === true;
+            const prompt = promptFromInputNode && inputs.prompt?.source === "config"
+              ? ""
+              : textFromInputValue(inputs.prompt?.value);
             const systemPrompt = textFromInputValue(inputs.systemPrompt?.value);
             const knowledgeBase = textFromInputValue(inputs.knowledgeBase?.value);
             const model =
@@ -3243,6 +3407,7 @@ export const executeRun = internalAction({
             const height = numberFromInputValue(inputs.height?.value);
             const fps = numberFromInputValue(inputs.fps?.value);
             const mediaAssets = allMediaReferenceAssetsFromInputs(resolvedInputs, [
+              ...(mediaFromInputNode ? [] : ["uploadedMedia"]),
               "media",
               "video",
               "image",
@@ -3252,6 +3417,7 @@ export const executeRun = internalAction({
               "audioUrl",
             ]);
             const sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
+              "uploadedMedia",
               "media",
               "video",
               "image",
@@ -3260,6 +3426,9 @@ export const executeRun = internalAction({
             ]);
             const providerInput = generationProviderInputFromConfig(config, [
               "prompt",
+              "promptFromInputNode",
+              "mediaFromInputNode",
+              "uploadedMedia",
               "systemPrompt",
               "knowledgeBase",
               "aspectRatio",
@@ -3453,10 +3622,14 @@ export const executeRun = internalAction({
           }
 
           if (isNativeSlideshowPlannerNode(node)) {
+            const config = objectValue(node.config);
             const inputs = resolvedInputs.inputs ?? {};
             const providerName = modelProviderNameForNode(node);
             const provider = getModelProvider(providerName);
-            const basePrompt = textFromInputValue(inputs.prompt?.value);
+            const promptFromInputNode = config.promptFromInputNode === true;
+            const basePrompt = promptFromInputNode && inputs.prompt?.source === "config"
+              ? undefined
+              : textFromInputValue(inputs.prompt?.value);
             const revisionPrompt = textFromInputValue(inputs.revisionPrompt?.value);
             const requestedRenderingMode = requestedRenderingModeFromValue(
               inputs.renderingMode?.value ?? inputs.renderMode?.value
@@ -3991,9 +4164,12 @@ export const executeRun = internalAction({
               throw new Error(`${node.label} needs a post package input.`);
             }
 
+            const captionFromInputNode = config.captionFromInputNode === true;
             const caption =
-              stringFromValue(inputs.caption?.value) ??
-              stringFromValue(config.caption) ??
+              (captionFromInputNode && inputs.caption?.source === "config"
+                ? undefined
+                : stringFromValue(inputs.caption?.value)) ??
+              (captionFromInputNode ? undefined : stringFromValue(config.caption)) ??
               captionFromPackageArtifact(packageArtifact);
             const distributionArtifactIds = packageMediaArtifactIdsFromData(packageArtifact);
             const timezone =
@@ -4390,7 +4566,7 @@ export const executeRun = internalAction({
 export const createPlaceholderArtifact = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     workflowId: v.id("workflows"),
     workflowRunId: v.id("workflowRuns"),
     nodeId: v.string(),
@@ -4531,7 +4707,7 @@ export const resolveMediaNodeItems = internalQuery({
 export const createPostPackageArtifact = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     workflowId: v.id("workflows"),
     workflowRunId: v.id("workflowRuns"),
     nodeId: v.string(),

@@ -75,7 +75,7 @@ export const listForContentRequest = internalQuery({
 export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),

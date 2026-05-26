@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, query } from "../_generated/server";
+import { internalMutation, internalQuery, query } from "../_generated/server";
 import {
   modelProviderValidator,
   providerModelCapabilitiesValidator,
@@ -51,6 +51,33 @@ export const getByProviderModel = query({
         q.eq("provider", args.provider).eq("modelId", args.modelId)
       )
       .unique();
+  },
+});
+
+export const getByProviderModelForRun = internalQuery({
+  args: {
+    provider: modelProviderValidator,
+    modelId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("providerModels")
+      .withIndex("by_provider_model", (q) =>
+        q.eq("provider", args.provider).eq("modelId", args.modelId)
+      )
+      .unique();
+  },
+});
+
+export const listForProviderSync = internalQuery({
+  args: {
+    provider: modelProviderValidator,
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("providerModels")
+      .withIndex("by_provider", (q) => q.eq("provider", args.provider))
+      .collect();
   },
 });
 

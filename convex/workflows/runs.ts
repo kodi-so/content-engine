@@ -160,7 +160,20 @@ export const getExecutionContext = internalQuery({
     if (!run) return null;
 
     const workflow = await ctx.db.get(run.workflowId);
-    const brand = await ctx.db.get(run.brandId);
+    const brand = run.brandId
+      ? await ctx.db.get(run.brandId)
+      : {
+          userId: run.userId,
+          name: "Unbranded workflow",
+          description: "No brand has been attached to this workflow.",
+          audience: undefined,
+          voice: undefined,
+          visualStyle: undefined,
+          constraints: undefined,
+          isActive: true,
+          createdAt: run.createdAt,
+          updatedAt: run.updatedAt,
+        };
     const socialAccount = run.socialAccountId
       ? await ctx.db.get(run.socialAccountId)
       : null;

@@ -27,6 +27,12 @@ import type { BrandId, WorkflowId } from "../types";
 type WorkflowStatusFilter = "all" | "active" | "paused";
 type WorkflowScheduleFilter = "all" | "manual" | "scheduled";
 type WorkflowTemplateCategoryFilter = "all" | WorkflowTemplateCategory;
+type WorkflowCreateDraft = {
+  isOpen: boolean;
+  templateId?: WorkflowTemplateId;
+  name: string;
+  brandId: string;
+};
 
 const templateCategoryLabels: Record<WorkflowTemplateCategoryFilter, string> = {
   all: "All",
@@ -104,6 +110,11 @@ export function WorkflowsPage() {
     useState<WorkflowTemplateId>("persona_image_set");
   const [renamingWorkflowId, setRenamingWorkflowId] = useState<WorkflowId | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [createDraft, setCreateDraft] = useState<WorkflowCreateDraft>({
+    isOpen: false,
+    name: "",
+    brandId: "",
+  });
 
   const workflowTemplates = useMemo(() => listWorkflowTemplates(), []);
   const brandsById = useMemo(
@@ -136,15 +147,18 @@ export function WorkflowsPage() {
       workflowTemplates[0],
     [filteredTemplates, selectedTemplateId, workflowTemplates]
   );
-  const targetBrandId = useMemo(
-    () => (brandFilter !== "all" ? (brandFilter as BrandId) : undefined),
-    [brandFilter]
-  );
   const filteredWorkflows = useMemo(() => {
     if (!workflows) return undefined;
 
     return workflows.filter((workflow) => {
-      if (brandFilter !== "all" && workflow.brandId !== brandFilter) return false;
+      if (brandFilter === "unbranded" && workflow.brandId) return false;
+      if (
+        brandFilter !== "all" &&
+        brandFilter !== "unbranded" &&
+        workflow.brandId !== brandFilter
+      ) {
+        return false;
+      }
       if (statusFilter === "active" && !workflow.isActive) return false;
       if (statusFilter === "paused" && workflow.isActive) return false;
       if (scheduleFilter === "manual" && workflow.trigger !== "manual") return false;
@@ -160,50 +174,57 @@ export function WorkflowsPage() {
     });
   }, [brandFilter, scheduleFilter, statusFilter, workflows]);
 
-  const createBlankWorkflow = async () => {
-    setActionStatus("Creating workflow");
+  const openCreateWorkflowModal = (templateId?: WorkflowTemplateId) => {
+    const template = templateId ? getWorkflowTemplate(templateId) : undefined;
+    setCreateDraft({
+      isOpen: true,
+      templateId,
+      name: template?.name ?? "",
+      brandId: brandFilter !== "all" && brandFilter !== "unbranded" ? brandFilter : "",
+    });
+  };
+
+  const closeCreateWorkflowModal = () => {
+    setCreateDraft({
+      isOpen: false,
+      name: "",
+      brandId: "",
+    });
+  };
+
+  const createWorkflowFromDraft = async (event: FormEvent) => {
+    event.preventDefault();
+
+    const name = createDraft.name.trim();
+    if (!name) return;
+
+    const template = createDraft.templateId
+      ? getWorkflowTemplate(createDraft.templateId)
+      : undefined;
+    const brandId = createDraft.brandId ? (createDraft.brandId as BrandId) : undefined;
+
+    setActionStatus(template ? `Creating ${template.name}` : "Creating workflow");
     try {
       const workflowId = await createWorkflow({
-        ...(targetBrandId ? { brandId: targetBrandId as BrandId } : {}),
-        name: "Untitled workflow",
+        ...(brandId ? { brandId } : {}),
+        name,
+        ...(template ? { description: template.description } : {}),
         trigger: "manual",
         approvalPolicy: { mode: "always" },
         publishingPolicy: {
-          provider: DEFAULT_PUBLISHING_PROVIDER,
+          provider: template?.defaultPublishingProvider ?? DEFAULT_PUBLISHING_PROVIDER,
           autoPublish: false,
           defaultPlatforms: ["tiktok"],
         },
-        graph: createStarterWorkflowGraph(),
+        graph: template
+          ? createWorkflowGraphFromTemplate(template.id)
+          : createStarterWorkflowGraph(),
       });
+      closeCreateWorkflowModal();
       setActionStatus("");
       navigate(`/workflows/${workflowId}`);
     } catch (error) {
       setActionStatus(error instanceof Error ? error.message : "Workflow creation failed");
-    }
-  };
-
-  const createFromTemplate = async (templateId: WorkflowTemplateId) => {
-    const template = getWorkflowTemplate(templateId);
-
-    setActionStatus(`Creating ${template.name}`);
-    try {
-      const workflowId = await createWorkflow({
-        ...(targetBrandId ? { brandId: targetBrandId as BrandId } : {}),
-        name: template.name,
-        description: template.description,
-        trigger: "manual",
-        approvalPolicy: { mode: "always" },
-        publishingPolicy: {
-          provider: template.defaultPublishingProvider,
-          autoPublish: false,
-          defaultPlatforms: ["tiktok"],
-        },
-        graph: createWorkflowGraphFromTemplate(template.id),
-      });
-      setActionStatus("");
-      navigate(`/workflows/${workflowId}`);
-    } catch (error) {
-      setActionStatus(error instanceof Error ? error.message : "Template creation failed");
     }
   };
 
@@ -267,7 +288,7 @@ export function WorkflowsPage() {
               <LayoutTemplate size={16} />
               Templates
             </button>
-            <button className="primary-button" onClick={() => void createBlankWorkflow()} type="button">
+            <button className="primary-button" onClick={() => openCreateWorkflowModal()} type="button">
               <Plus size={16} />
               New workflow
             </button>
@@ -277,6 +298,7 @@ export function WorkflowsPage() {
         <div className="workflow-index-filters">
           <Select label="Brand" value={brandFilter} onChange={setBrandFilter}>
             <option value="all">All brands</option>
+            <option value="unbranded">No brand</option>
             {brands?.map((brand) => (
               <option key={brand._id} value={brand._id}>
                 {brand.name}
@@ -304,6 +326,77 @@ export function WorkflowsPage() {
         </div>
 
         {actionStatus && <p className="workflow-index-status">{actionStatus}</p>}
+
+        {createDraft.isOpen ? (
+          <div
+            aria-labelledby="workflow-create-title"
+            aria-modal="true"
+            className="workflow-modal-backdrop"
+            role="dialog"
+          >
+            <form className="workflow-create-modal" onSubmit={createWorkflowFromDraft}>
+              <div className="workflow-create-modal-header">
+                <div>
+                  <h3 id="workflow-create-title">
+                    {createDraft.templateId ? "Create Template Workflow" : "Create Workflow"}
+                  </h3>
+                  <p>Name it now. Attach a brand only if this workflow needs one.</p>
+                </div>
+                <button
+                  aria-label="Close create workflow dialog"
+                  className="icon-button"
+                  onClick={closeCreateWorkflowModal}
+                  type="button"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <label className="field">
+                <span>Workflow name</span>
+                <input
+                  autoFocus
+                  placeholder="Daily TikTok slideshow"
+                  value={createDraft.name}
+                  onChange={(event) =>
+                    setCreateDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <Select
+                label="Brand"
+                value={createDraft.brandId}
+                onChange={(brandId) =>
+                  setCreateDraft((current) => ({
+                    ...current,
+                    brandId,
+                  }))
+                }
+              >
+                <option value="">No brand</option>
+                {brands?.map((brand) => (
+                  <option key={brand._id} value={brand._id}>
+                    {brand.name}
+                  </option>
+                ))}
+              </Select>
+
+              <div className="workflow-create-modal-actions">
+                <button className="secondary-button" onClick={closeCreateWorkflowModal} type="button">
+                  Cancel
+                </button>
+                <button className="primary-button" disabled={!createDraft.name.trim()} type="submit">
+                  <Plus size={16} />
+                  Create workflow
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
 
         {showTemplates && selectedTemplate ? (
           <section className="workflow-template-panel" aria-label="Workflow templates">
@@ -353,7 +446,7 @@ export function WorkflowsPage() {
               <button
                 className="primary-button"
                 type="button"
-                onClick={() => void createFromTemplate(selectedTemplate.id)}
+                onClick={() => openCreateWorkflowModal(selectedTemplate.id)}
               >
                 <LayoutTemplate size={16} />
                 Create from template
@@ -378,7 +471,7 @@ export function WorkflowsPage() {
               <Workflow size={22} />
               <strong>No workflows yet</strong>
               <span>Create a blank canvas or start from a template.</span>
-              <button className="primary-button" onClick={() => void createBlankWorkflow()} type="button">
+              <button className="primary-button" onClick={() => openCreateWorkflowModal()} type="button">
                 <Plus size={16} />
                 New workflow
               </button>
@@ -388,7 +481,9 @@ export function WorkflowsPage() {
           {filteredWorkflows?.map((workflow) => {
             const workflowId = workflow._id as WorkflowId;
             const isRenaming = renamingWorkflowId === workflowId;
-            const brandName = brandsById.get(String(workflow.brandId)) ?? "Workspace";
+            const brandName = workflow.brandId
+              ? brandsById.get(String(workflow.brandId)) ?? "Unknown brand"
+              : "No brand";
             const accountName = workflow.socialAccountId
               ? accountsById.get(String(workflow.socialAccountId))
               : undefined;

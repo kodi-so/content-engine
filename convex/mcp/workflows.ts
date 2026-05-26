@@ -25,7 +25,6 @@ import { createWorkflowRun } from "../workflows/runCreation";
 import { nextScheduledRunAt } from "../workflows/scheduling";
 
 type WorkflowDoc = Doc<"workflows">;
-type BrandDoc = Doc<"brands">;
 type WorkflowGraphDoc = typeof workflowGraphValidator.type;
 type WorkflowNodeDoc = WorkflowGraphDoc["nodes"][number];
 type WorkflowEdgeDoc = WorkflowGraphDoc["edges"][number];
@@ -68,8 +67,11 @@ function asWorkflowGraphDoc(graph: WorkflowGraph): WorkflowGraphDoc {
   return graph as unknown as WorkflowGraphDoc;
 }
 
-function validationFailureMessage(graph: WorkflowGraphDoc) {
-  const result = validateWorkflowGraph(asWorkflowGraph(graph));
+function validationFailureMessage(
+  graph: WorkflowGraphDoc,
+  mode: "draft" | "executable" = "executable"
+) {
+  const result = validateWorkflowGraph(asWorkflowGraph(graph), mode);
   if (result.valid) return null;
 
   return [
@@ -78,8 +80,11 @@ function validationFailureMessage(graph: WorkflowGraphDoc) {
   ].join("\n");
 }
 
-function assertValidGraph(graph: WorkflowGraphDoc) {
-  const message = validationFailureMessage(graph);
+function assertValidGraph(
+  graph: WorkflowGraphDoc,
+  mode: "draft" | "executable" = "executable"
+) {
+  const message = validationFailureMessage(graph, mode);
   if (message) throw new Error(message);
 }
 
@@ -118,46 +123,19 @@ async function assertOwnedBrand(ctx: MutationCtx, brandId: Id<"brands">, userId:
   return brand;
 }
 
-async function getOrCreateDefaultBrand(
-  ctx: MutationCtx,
-  userId: string
-): Promise<BrandDoc> {
-  const userBrands = await ctx.db
-    .query("brands")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-  const existingWorkspace = userBrands.find((brand) => brand.name === "Workspace");
-  if (existingWorkspace) return existingWorkspace;
-
-  const now = Date.now();
-  const brandId = await ctx.db.insert("brands", {
-    userId,
-    name: "Workspace",
-    description: "Default context for workflows that are not tied to a specific brand yet.",
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const brand = await ctx.db.get(brandId);
-  if (!brand) throw new Error("Default brand could not be created");
-  return brand;
-}
-
 async function resolveWorkflowBrand(
   ctx: MutationCtx,
   userId: string,
   brandId?: Id<"brands">
 ) {
-  return brandId
-    ? await assertOwnedBrand(ctx, brandId, userId)
-    : await getOrCreateDefaultBrand(ctx, userId);
+  return brandId ? await assertOwnedBrand(ctx, brandId, userId) : undefined;
 }
 
 async function assertOwnedSocialAccount(
   ctx: MutationCtx,
   args: {
     socialAccountId?: Id<"socialAccounts">;
-    brandId: Id<"brands">;
+    brandId?: Id<"brands">;
     userId: string;
   }
 ) {
@@ -167,7 +145,7 @@ async function assertOwnedSocialAccount(
   if (!account || account.userId !== args.userId) {
     throw new Error("Social account not found");
   }
-  if (account.brandId && account.brandId !== args.brandId) {
+  if (args.brandId && account.brandId && account.brandId !== args.brandId) {
     throw new Error("Social account does not belong to the workflow brand");
   }
 }
@@ -190,10 +168,10 @@ async function createWorkflow(
   const brand = await resolveWorkflowBrand(ctx, args.userId, args.brandId);
   await assertOwnedSocialAccount(ctx, {
     socialAccountId: args.socialAccountId,
-    brandId: brand._id,
+    brandId: brand?._id,
     userId: args.userId,
   });
-  assertValidGraph(args.graph);
+  assertValidGraph(args.graph, "draft");
 
   const name = args.name.trim();
   if (!name) throw new Error("Workflow name is required");
@@ -201,7 +179,7 @@ async function createWorkflow(
   const now = Date.now();
   return await ctx.db.insert("workflows", {
     userId: args.userId,
-    brandId: brand._id,
+    brandId: brand?._id,
     socialAccountId: args.socialAccountId,
     name,
     description: args.description?.trim() || undefined,
@@ -225,7 +203,7 @@ async function patchWorkflowGraph(
   workflow: WorkflowDoc,
   graph: WorkflowGraphDoc
 ) {
-  assertValidGraph(graph);
+  assertValidGraph(graph, "draft");
   await ctx.db.patch(workflow._id, {
     graph,
     nextRunAt: workflow.isActive

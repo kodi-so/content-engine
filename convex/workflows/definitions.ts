@@ -10,39 +10,12 @@ import {
 } from "../validators";
 import { nextScheduledRunAt } from "./scheduling";
 
-type BrandDoc = Doc<"brands">;
-
-async function getOrCreateDefaultBrand(
-  ctx: MutationCtx,
-  userId: string
-): Promise<BrandDoc> {
-  const userBrands = await ctx.db
-    .query("brands")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-  const existingWorkspace = userBrands.find((brand) => brand.name === "Workspace");
-  if (existingWorkspace) return existingWorkspace;
-
-  const now = Date.now();
-  const brandId = await ctx.db.insert("brands", {
-    userId,
-    name: "Workspace",
-    description: "Default context for workflows that are not tied to a specific brand yet.",
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const brand = await ctx.db.get(brandId);
-  if (!brand) throw new Error("Default brand could not be created");
-  return brand;
-}
-
 async function resolveWorkflowBrand(
   ctx: MutationCtx,
   userId: string,
   brandId?: Id<"brands">
 ) {
-  if (!brandId) return await getOrCreateDefaultBrand(ctx, userId);
+  if (!brandId) return undefined;
 
   const brand = await ctx.db.get(brandId);
   if (!brand || brand.userId !== userId) {
@@ -100,7 +73,7 @@ export const create = mutation({
       if (!account || account.userId !== identity.subject) {
         throw new Error("Social account not found");
       }
-      if (account.brandId && account.brandId !== brand._id) {
+      if (brand && account.brandId && account.brandId !== brand._id) {
         throw new Error("Social account does not belong to the workflow brand");
       }
     }
@@ -108,7 +81,7 @@ export const create = mutation({
     const now = Date.now();
     const workflowId = await ctx.db.insert("workflows", {
       userId: identity.subject,
-      brandId: brand._id,
+      brandId: brand?._id,
       socialAccountId: args.socialAccountId,
       name: args.name,
       description: args.description,
@@ -216,9 +189,11 @@ export const createFromRun = mutation({
       throw new Error("Source workflow not found");
     }
 
-    const brand = await ctx.db.get(workflow.brandId);
-    if (!brand || brand.userId !== identity.subject) {
-      throw new Error("Brand not found");
+    if (workflow.brandId) {
+      const brand = await ctx.db.get(workflow.brandId);
+      if (!brand || brand.userId !== identity.subject) {
+        throw new Error("Brand not found");
+      }
     }
 
     if (workflow.socialAccountId) {

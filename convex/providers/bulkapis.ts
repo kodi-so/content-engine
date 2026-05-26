@@ -79,6 +79,10 @@ function providerInputOverrides(input: { metadata?: Record<string, unknown> }): 
     : {};
 }
 
+function hasAnyKey(record: Record<string, unknown>, keys: string[]): boolean {
+  return keys.some((key) => record[key] !== undefined);
+}
+
 function mapBulkApisStatusCode(statusCode: number): ProviderErrorCode {
   if (statusCode === 400 || statusCode === 422) return "validation";
   if (statusCode === 401) return "authentication";
@@ -389,14 +393,24 @@ async function generateBulkApisImage(
 ): Promise<GenerateImageResult> {
   const model = input.model ?? DEFAULT_BULKAPIS_IMAGE_MODEL;
   const urls = referenceUrls(input);
+  const overrides = providerInputOverrides(input);
+  const hasImageInputOverride = hasAnyKey(overrides, [
+    "image",
+    "image_input",
+    "image_url",
+    "image_urls",
+    "input_urls",
+    "reference_image_urls",
+  ]);
+  const hasCountOverride = hasAnyKey(overrides, ["max_images", "num_images"]);
 
   try {
     const response = await submitBulkApisGeneration("generate_image", model, {
       prompt: input.prompt,
       aspect_ratio: input.aspectRatio,
-      num_images: input.count,
-      image_urls: urls.length ? urls : undefined,
-      ...providerInputOverrides(input),
+      num_images: hasCountOverride ? undefined : input.count,
+      image_urls: !hasImageInputOverride && urls.length ? urls : undefined,
+      ...overrides,
     });
     const images = normalizeBulkApisAssets(response.result).filter((asset) =>
       asset.mimeType.startsWith("image/")

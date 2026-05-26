@@ -346,7 +346,7 @@ export const createDistributionPlan = mutation({
       if (!account || account.userId !== userId) {
         throw new Error("Social account not found");
       }
-      if (account.brandId && account.brandId !== run.brandId) {
+      if (run.brandId && account.brandId && account.brandId !== run.brandId) {
         throw new Error("Social account does not belong to the run brand");
       }
     }

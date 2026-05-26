@@ -2,6 +2,14 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
 import { nodeInputBindingValidator, workflowGraphValidator } from "../validators";
+import {
+  getWorkflowNodeDefinition,
+  isWorkflowNodeType,
+} from "../../src/lib/workflowNodeCatalog";
+import {
+  automaticTargetPortForSource,
+  WORKFLOW_CANVAS_INPUT_HANDLE_ID,
+} from "../../src/lib/workflowPortMapping";
 
 type WorkflowGraphForResolver = typeof workflowGraphValidator.type;
 type WorkflowGraphNodeForResolver = WorkflowGraphForResolver["nodes"][number];
@@ -129,20 +137,39 @@ function upstreamOutputRefsForNode(
 
   for (const edge of graph.edges) {
     if (edge.targetNodeId !== node.id) continue;
+    if (edge.sourcePort === "run") continue;
+
+    let targetPortId = edge.targetPort;
+    if (edge.targetPort === WORKFLOW_CANVAS_INPUT_HANDLE_ID) {
+      const sourceNode = graph.nodes.find((candidateNode) => candidateNode.id === edge.sourceNodeId);
+      if (!sourceNode || !isWorkflowNodeType(sourceNode.type) || !isWorkflowNodeType(node.type)) {
+        continue;
+      }
+
+      const sourceDefinition = getWorkflowNodeDefinition(sourceNode.type);
+      const sourcePort = sourceDefinition.outputPorts.find((port) => port.id === edge.sourcePort);
+      if (!sourcePort) continue;
+
+      const targetDefinition = getWorkflowNodeDefinition(node.type);
+      const targetPort = automaticTargetPortForSource(targetDefinition, sourcePort);
+      if (!targetPort) continue;
+      targetPortId = targetPort.id;
+    }
+
     const sourceNodeState = nodeStatesById.get(edge.sourceNodeId);
     const matchingOutputRefs = (sourceNodeState?.outputRefs ?? []).filter(
       (outputRef) => outputRef.port === edge.sourcePort
     );
 
     for (const outputRef of matchingOutputRefs) {
-      addPortInput(inputs, edge.targetPort, {
+      addPortInput(inputs, targetPortId, {
         source: "node_output",
         value: outputRef.value,
         artifactIds: outputRef.artifactIds?.map((artifactId) => String(artifactId)),
         metadata: {
           sourceNodeId: edge.sourceNodeId,
           sourcePort: edge.sourcePort,
-          targetPort: edge.targetPort,
+          targetPort: targetPortId,
         },
       });
     }

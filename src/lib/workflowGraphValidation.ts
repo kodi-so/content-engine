@@ -10,6 +10,7 @@ import {
   isTerminalWorkflowNodeType,
   isWorkflowNodeType,
 } from "./workflowNodeCatalog";
+import { WORKFLOW_CANVAS_INPUT_HANDLE_ID } from "./workflowPortMapping";
 
 export type WorkflowGraphValidationErrorCode =
   | "unsupported_schema_version"
@@ -39,6 +40,8 @@ export type WorkflowGraphValidationResult = {
   valid: boolean;
   errors: WorkflowGraphValidationError[];
 };
+
+export type WorkflowGraphValidationMode = "draft" | "executable";
 
 function validationError(
   code: WorkflowGraphValidationErrorCode,
@@ -175,7 +178,10 @@ function validateEdge(
 
   if (targetNode && isWorkflowNodeType(targetNode.type)) {
     const targetDefinition = getWorkflowNodeDefinition(targetNode.type);
-    if (!targetDefinition.inputPorts.some((port) => port.id === edge.targetPort)) {
+    if (
+      edge.targetPort !== WORKFLOW_CANVAS_INPUT_HANDLE_ID &&
+      !targetDefinition.inputPorts.some((port) => port.id === edge.targetPort)
+    ) {
       errors.push(validationError(
         "unknown_edge_port",
         `Workflow edge target port "${edge.targetPort}" does not exist on ${targetDefinition.label}.`,
@@ -226,7 +232,8 @@ function findCycle(graph: WorkflowGraph): string[] | null {
 }
 
 export function validateWorkflowGraph(
-  graph: WorkflowGraph
+  graph: WorkflowGraph,
+  mode: WorkflowGraphValidationMode = "executable"
 ): WorkflowGraphValidationResult {
   const errors: WorkflowGraphValidationError[] = [];
 
@@ -270,9 +277,12 @@ export function validateWorkflowGraph(
     ));
   }
 
-  if (!graph.nodes.some((node) =>
-    isWorkflowNodeType(node.type) && isTerminalWorkflowNodeType(node.type)
-  )) {
+  if (
+    mode === "executable" &&
+    !graph.nodes.some((node) =>
+      isWorkflowNodeType(node.type) && isTerminalWorkflowNodeType(node.type)
+    )
+  ) {
     errors.push(validationError(
       "missing_terminal_node",
       "Workflow graph must include an export or auto-post terminal node.",

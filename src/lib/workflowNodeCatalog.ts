@@ -143,7 +143,12 @@ export const WORKFLOW_NODE_CATALOG = [
       port("json", "JSON", "json"),
       port("prompt", "Prompt", "prompt"),
     ],
-    defaultConfig: { systemPrompt: "", prompt: "", responseFormat: "text" },
+    defaultConfig: {
+      systemPrompt: "",
+      promptFromInputNode: false,
+      prompt: "",
+      responseFormat: "text",
+    },
     defaultRetention: { mode: "discard" },
     outputArtifactTypes: ["text_draft", "caption", "script", "prompt"],
   },
@@ -171,6 +176,7 @@ export const WORKFLOW_NODE_CATALOG = [
     ],
     defaultConfig: {
       agentMode: getWorkflowAgentPreset("prompt_variation").id,
+      requestFromInputNode: false,
       request: "",
       tone: "natural",
       platform: "tiktok",
@@ -189,11 +195,18 @@ export const WORKFLOW_NODE_CATALOG = [
     providerRequirement: "required",
     defaultProvider: "bulkapis",
     inputPorts: [
-      port("prompt", "Prompt", "prompt", { required: true }),
+      port("prompt", "Prompt", "prompt"),
       port("reference_image", "Reference Image", "image", { multiple: true }),
     ],
     outputPorts: [port("image", "Image", "image", { multiple: true })],
-    defaultConfig: { prompt: "", aspectRatio: "9:16", count: 1 },
+    defaultConfig: {
+      promptFromInputNode: false,
+      prompt: "",
+      imageFromInputNode: false,
+      localReferenceImages: [],
+      aspectRatio: "9:16",
+      count: 1,
+    },
     defaultRetention: { mode: "keep_on_failure" },
     outputArtifactTypes: ["image"],
   },
@@ -215,7 +228,15 @@ export const WORKFLOW_NODE_CATALOG = [
       port("reference_video", "Reference Video", "video"),
     ],
     outputPorts: [port("video", "Video", "video")],
-    defaultConfig: { prompt: "", aspectRatio: "9:16", durationSeconds: 5 },
+    defaultConfig: {
+      promptFromInputNode: false,
+      prompt: "",
+      imageFromInputNode: false,
+      localReferenceImages: [],
+      localReferenceVideos: [],
+      aspectRatio: "9:16",
+      durationSeconds: 5,
+    },
     defaultRetention: { mode: "keep_on_failure" },
     outputArtifactTypes: ["video"],
   },
@@ -234,7 +255,13 @@ export const WORKFLOW_NODE_CATALOG = [
       port("voice_reference", "Voice Reference", "audio"),
     ],
     outputPorts: [port("audio", "Audio", "audio")],
-    defaultConfig: { text: "", mode: "tts" },
+    defaultConfig: {
+      textFromInputNode: false,
+      text: "",
+      voiceFromInputNode: false,
+      localReferenceAudios: [],
+      mode: "tts",
+    },
     defaultRetention: { mode: "keep_on_failure" },
     outputArtifactTypes: ["rendered_asset"],
   },
@@ -254,7 +281,13 @@ export const WORKFLOW_NODE_CATALOG = [
       port("audio", "Audio", "audio", { required: true }),
     ],
     outputPorts: [port("video", "Video", "video")],
-    defaultConfig: {},
+    defaultConfig: {
+      imageFromInputNode: false,
+      audioFromInputNode: false,
+      localReferenceImages: [],
+      localReferenceVideos: [],
+      localReferenceAudios: [],
+    },
     defaultRetention: { mode: "keep_on_failure" },
     outputArtifactTypes: ["video"],
   },
@@ -269,12 +302,17 @@ export const WORKFLOW_NODE_CATALOG = [
     providerRequirement: "optional",
     defaultProvider: "bulkapis",
     inputPorts: [
-      port("prompt", "Prompt", "prompt", { required: true }),
+      port("prompt", "Prompt", "prompt"),
       port("brand_context", "Brand Context", "json"),
       port("media", "Media", "media", { multiple: true }),
     ],
     outputPorts: [port("slide_spec", "Slide Spec", "slide_spec")],
-    defaultConfig: { slideCount: 5, aspectRatio: "9:16" },
+    defaultConfig: {
+      promptFromInputNode: false,
+      prompt: "",
+      slideCount: 5,
+      aspectRatio: "9:16",
+    },
     defaultRetention: { mode: "discard" },
     outputArtifactTypes: ["slide_spec"],
   },
@@ -317,7 +355,14 @@ export const WORKFLOW_NODE_CATALOG = [
       port("audio", "Audio", "audio", { multiple: true }),
     ],
     outputPorts: [port("video", "Video", "video")],
-    defaultConfig: { prompt: "", aspectRatio: "9:16", renderMode: "video_render" },
+    defaultConfig: {
+      promptFromInputNode: false,
+      prompt: "",
+      mediaFromInputNode: false,
+      uploadedMedia: [],
+      aspectRatio: "9:16",
+      renderMode: "video_render",
+    },
     defaultRetention: { mode: "keep_on_failure" },
     outputArtifactTypes: ["video"],
   },
@@ -341,6 +386,7 @@ export const WORKFLOW_NODE_CATALOG = [
       postType: "video",
       platformPreset: "tiktok_vertical_video",
       optimizeForPlatforms: ["tiktok"],
+      captionFromInputNode: false,
       caption: "",
     },
     defaultRetention: { mode: "keep", exposeInLibrary: true },
@@ -379,6 +425,7 @@ export const WORKFLOW_NODE_CATALOG = [
     defaultConfig: {
       autoPublish: false,
       socialAccountIds: [],
+      captionFromInputNode: false,
       caption: "",
       scheduledAt: "",
       timezone: "",
@@ -390,7 +437,7 @@ export const WORKFLOW_NODE_CATALOG = [
 
 export const WORKFLOW_NODE_CATALOG_BY_TYPE = Object.fromEntries(
   WORKFLOW_NODE_CATALOG.map((definition) => [definition.type, definition])
-) as Record<WorkflowNodeType, WorkflowNodeCatalogEntry>;
+) as unknown as Record<WorkflowNodeType, WorkflowNodeCatalogEntry>;
 
 for (const type of WORKFLOW_NODE_TYPES) {
   if (!WORKFLOW_NODE_CATALOG_BY_TYPE[type]) {

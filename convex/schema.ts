@@ -148,7 +148,7 @@ export default defineSchema({
 
   workflows: defineTable({
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
@@ -215,7 +215,7 @@ export default defineSchema({
   workflowRuns: defineTable({
     userId: v.string(),
     workflowId: v.id("workflows"),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     trigger: workflowTriggerValidator,
     status: workflowRunStatusValidator,
@@ -301,7 +301,7 @@ export default defineSchema({
 
   slideshows: defineTable({
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
@@ -320,7 +320,7 @@ export default defineSchema({
 
   distributionPlans: defineTable({
     userId: v.string(),
-    brandId: v.id("brands"),
+    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     artifactIds: v.array(v.id("artifacts")),
