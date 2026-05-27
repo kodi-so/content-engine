@@ -9,7 +9,6 @@ import {
   WORKFLOW_AGENT_PRESETS,
   type WorkflowAgentPreset,
 } from "../../src/lib/workflow/workflowAgentPresets";
-import { listWorkflowTemplates } from "../../src/lib/workflow/workflowTemplates";
 
 const JSON_MIME_TYPE = "application/json";
 const MARKDOWN_MIME_TYPE = "text/markdown";
@@ -63,15 +62,6 @@ const RESOURCE_DEFINITIONS = [
     mimeType: JSON_MIME_TYPE,
     access: "static",
     annotations: { audience: ["assistant"], priority: 1 },
-  },
-  {
-    uri: "content-engine://workflows/templates",
-    name: "workflow-templates",
-    title: "Built-In Workflow Templates",
-    description: "Starter workflow graphs and required inputs for reusable content automation patterns.",
-    mimeType: JSON_MIME_TYPE,
-    access: "static",
-    annotations: { audience: ["assistant"], priority: 0.95 },
   },
   {
     uri: "content-engine://prompts/agent-recipes",
@@ -216,11 +206,11 @@ function architectureGuide() {
     "",
     "Recommended workflow-building loop:",
     "",
-    "1. Read the architecture guide, workflow graph schema, node catalog, and templates.",
+    "1. Read the architecture guide, workflow graph schema, and node catalog.",
     "2. Read brand, persona, creative asset, and model catalog summaries for the authenticated user.",
-    "3. Choose the closest template or create a blank graph.",
-    "4. Build a graph that starts at the runner, uses typed ports, and ends in export or auto_post.",
-    "5. Validate the graph before saving.",
+    "3. Create a blank workflow draft.",
+    "4. Add and configure nodes from the catalog, then connect typed ports.",
+    "5. Validate the graph before saving larger graph replacements or running.",
     "6. Run explicitly only when the user requests a run or a schedule fires.",
   ].join("\n");
 }
@@ -647,8 +637,6 @@ async function readResourceForUser(ctx: QueryCtx, userId: string, uri: string) {
       return jsonResource(resource, workflowGraphSchema());
     case "content-engine://workflows/node-catalog":
       return jsonResource(resource, listWorkflowNodeDefinitions());
-    case "content-engine://workflows/templates":
-      return jsonResource(resource, listWorkflowTemplates());
     case "content-engine://prompts/agent-recipes":
       return jsonResource(resource, agentRecipes(WORKFLOW_AGENT_PRESETS));
     case "content-engine://knowledge/prompting/ai-ugc":

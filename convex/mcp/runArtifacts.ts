@@ -265,6 +265,42 @@ export const inspectNodeOutput = query({
   },
 });
 
+export const inspectNodeOutputForMcp = internalQuery({
+  args: {
+    userId: v.string(),
+    runId: v.id("workflowRuns"),
+    nodeId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.userId !== args.userId) return null;
+
+    const nodeState = await ctx.db
+      .query("workflowRunNodeStates")
+      .withIndex("by_run_node", (q) =>
+        q.eq("workflowRunId", args.runId).eq("nodeId", args.nodeId)
+      )
+      .unique();
+    if (!nodeState || nodeState.userId !== args.userId) return null;
+
+    const artifactIds = [
+      ...new Set(
+        (nodeState.outputRefs ?? []).flatMap((outputRef) => outputRef.artifactIds ?? [])
+      ),
+    ] as Id<"artifacts">[];
+    const artifacts = await Promise.all(artifactIds.map((artifactId) => ctx.db.get(artifactId)));
+
+    return {
+      nodeState,
+      artifacts: artifacts
+        .filter((artifact): artifact is ArtifactDoc =>
+          Boolean(artifact && artifact.userId === args.userId)
+        )
+        .map(artifactSummary),
+    };
+  },
+});
+
 export const listRunArtifacts = query({
   args: {
     runId: v.id("workflowRuns"),
@@ -282,6 +318,29 @@ export const listRunArtifacts = query({
 
     return artifacts
       .filter((artifact) => artifact.userId === userId)
+      .filter((artifact) => !args.finalOnly || isFinalArtifact(artifact))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map(artifactSummary);
+  },
+});
+
+export const listRunArtifactsForMcp = internalQuery({
+  args: {
+    userId: v.string(),
+    runId: v.id("workflowRuns"),
+    finalOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.userId !== args.userId) return [];
+
+    const artifacts = await ctx.db
+      .query("artifacts")
+      .withIndex("by_workflow_run", (q) => q.eq("workflowRunId", args.runId))
+      .collect();
+
+    return artifacts
+      .filter((artifact) => artifact.userId === args.userId)
       .filter((artifact) => !args.finalOnly || isFinalArtifact(artifact))
       .sort((a, b) => b.createdAt - a.createdAt)
       .map(artifactSummary);

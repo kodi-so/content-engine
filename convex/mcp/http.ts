@@ -68,20 +68,92 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "workflows.createFromTemplate",
-    description: "Create an inactive workflow draft from a built-in template.",
+    name: "workflows.addNode",
+    description: "Add one node to a workflow canvas graph and validate the draft graph.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["templateId"],
+      required: ["workflowId", "node"],
       properties: {
-        templateId: { type: "string" },
-        name: { type: "string" },
-        description: { type: "string" },
-        creativeRequest: { type: "string" },
-        brandId: { type: "string" },
-        socialAccountId: { type: "string" },
-        publishingPolicy: { type: "object" },
+        workflowId: { type: "string" },
+        node: { type: "object" },
+      },
+    },
+  },
+  {
+    name: "workflows.updateNode",
+    description: "Patch one workflow node's label, position, provider, model, config, input bindings, or retention.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workflowId", "nodeId"],
+      properties: {
+        workflowId: { type: "string" },
+        nodeId: { type: "string" },
+        label: { type: "string" },
+        position: { type: "object" },
+        provider: { type: ["string", "null"] },
+        model: { type: ["string", "null"] },
+        config: { type: "object" },
+        inputBindings: { type: ["object", "null"] },
+        retention: { type: ["object", "null"] },
+      },
+    },
+  },
+  {
+    name: "workflows.deleteNode",
+    description: "Delete one workflow node and remove its incident edges.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workflowId", "nodeId"],
+      properties: {
+        workflowId: { type: "string" },
+        nodeId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "workflows.connectNodes",
+    description: "Connect two existing workflow node ports and validate the draft graph.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workflowId", "sourceNodeId", "sourcePort", "targetNodeId", "targetPort"],
+      properties: {
+        workflowId: { type: "string" },
+        edgeId: { type: "string" },
+        sourceNodeId: { type: "string" },
+        sourcePort: { type: "string" },
+        targetNodeId: { type: "string" },
+        targetPort: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "workflows.disconnectEdge",
+    description: "Remove one workflow graph edge by id and validate the draft graph.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workflowId", "edgeId"],
+      properties: {
+        workflowId: { type: "string" },
+        edgeId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "workflows.replaceEdge",
+    description: "Replace one workflow graph edge and validate the draft graph.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workflowId", "edgeId", "edge"],
+      properties: {
+        workflowId: { type: "string" },
+        edgeId: { type: "string" },
+        edge: { type: "object" },
       },
     },
   },
@@ -151,6 +223,32 @@ const TOOL_DEFINITIONS = [
       required: ["runId"],
       properties: {
         runId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "runs.inspectNodeOutput",
+    description: "Inspect one run node state and the artifacts referenced by its output refs.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["runId", "nodeId"],
+      properties: {
+        runId: { type: "string" },
+        nodeId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "artifacts.listRunArtifacts",
+    description: "List artifacts produced by a workflow run.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["runId"],
+      properties: {
+        runId: { type: "string" },
+        finalOnly: { type: "boolean" },
       },
     },
   },
@@ -302,17 +400,59 @@ async function callTool(
         publishingProvider: toolArgs.publishingProvider,
         defaultPlatforms: toolArgs.defaultPlatforms,
       });
-    case "workflows.createFromTemplate":
+    case "workflows.addNode":
       assertScopes(session, ["workflows:read", "workflows:write"]);
-      return await ctx.runMutation(internal.mcp.workflows.createFromTemplateForMcp, {
+      return await ctx.runMutation(internal.mcp.workflows.addNodeForMcp, {
         userId: session.userId,
-        templateId: toolArgs.templateId,
-        brandId: toolArgs.brandId,
-        socialAccountId: toolArgs.socialAccountId,
-        name: toolArgs.name,
-        description: toolArgs.description,
-        creativeRequest: toolArgs.creativeRequest,
-        publishingPolicy: toolArgs.publishingPolicy,
+        workflowId: toolArgs.workflowId,
+        node: toolArgs.node,
+      });
+    case "workflows.updateNode":
+      assertScopes(session, ["workflows:read", "workflows:write"]);
+      return await ctx.runMutation(internal.mcp.workflows.updateNodeForMcp, {
+        userId: session.userId,
+        workflowId: toolArgs.workflowId,
+        nodeId: toolArgs.nodeId,
+        label: toolArgs.label,
+        position: toolArgs.position,
+        provider: toolArgs.provider,
+        model: toolArgs.model,
+        config: toolArgs.config,
+        inputBindings: toolArgs.inputBindings,
+        retention: toolArgs.retention,
+      });
+    case "workflows.deleteNode":
+      assertScopes(session, ["workflows:read", "workflows:write"]);
+      return await ctx.runMutation(internal.mcp.workflows.deleteNodeForMcp, {
+        userId: session.userId,
+        workflowId: toolArgs.workflowId,
+        nodeId: toolArgs.nodeId,
+      });
+    case "workflows.connectNodes":
+      assertScopes(session, ["workflows:read", "workflows:write"]);
+      return await ctx.runMutation(internal.mcp.workflows.connectNodesForMcp, {
+        userId: session.userId,
+        workflowId: toolArgs.workflowId,
+        edgeId: toolArgs.edgeId,
+        sourceNodeId: toolArgs.sourceNodeId,
+        sourcePort: toolArgs.sourcePort,
+        targetNodeId: toolArgs.targetNodeId,
+        targetPort: toolArgs.targetPort,
+      });
+    case "workflows.disconnectEdge":
+      assertScopes(session, ["workflows:read", "workflows:write"]);
+      return await ctx.runMutation(internal.mcp.workflows.disconnectEdgeForMcp, {
+        userId: session.userId,
+        workflowId: toolArgs.workflowId,
+        edgeId: toolArgs.edgeId,
+      });
+    case "workflows.replaceEdge":
+      assertScopes(session, ["workflows:read", "workflows:write"]);
+      return await ctx.runMutation(internal.mcp.workflows.replaceEdgeForMcp, {
+        userId: session.userId,
+        workflowId: toolArgs.workflowId,
+        edgeId: toolArgs.edgeId,
+        edge: toolArgs.edge,
       });
     case "workflows.updateMetadata":
       assertScopes(session, ["workflows:read", "workflows:write"]);
@@ -353,6 +493,20 @@ async function callTool(
       return await ctx.runQuery(internal.mcp.runArtifacts.inspectRunForMcp, {
         userId: session.userId,
         runId: toolArgs.runId,
+      });
+    case "runs.inspectNodeOutput":
+      assertScopes(session, ["runs:read", "artifacts:read"]);
+      return await ctx.runQuery(internal.mcp.runArtifacts.inspectNodeOutputForMcp, {
+        userId: session.userId,
+        runId: toolArgs.runId,
+        nodeId: toolArgs.nodeId,
+      });
+    case "artifacts.listRunArtifacts":
+      assertScopes(session, ["runs:read", "artifacts:read"]);
+      return await ctx.runQuery(internal.mcp.runArtifacts.listRunArtifactsForMcp, {
+        userId: session.userId,
+        runId: toolArgs.runId,
+        finalOnly: toolArgs.finalOnly,
       });
     default:
       throw new Error(`Unknown MCP tool: ${name}`);

@@ -7,7 +7,7 @@ Publishing routes through the publishing provider abstraction:
 
 | Provider | Status | Platforms | Use |
 | --- | --- | --- | --- |
-| Postiz | Ready | TikTok, Instagram, YouTube, X, LinkedIn | Default publishing provider for new workflows, templates, and draft post creation. |
+| Postiz | Ready | TikTok, Instagram, YouTube, X, LinkedIn | Default publishing provider for new workflows and draft post creation. |
 | Post Bridge | Reserved | TikTok, Instagram, YouTube, X, LinkedIn | Registered as a provider placeholder, but unsupported operations fail until the adapter is implemented. |
 | Manual export | Ready | TikTok, Instagram, YouTube, X, LinkedIn | Local/manual publishing records for export-only workflows and testing. |
 

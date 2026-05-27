@@ -131,7 +131,6 @@ Examples:
 - Product architecture guide.
 - Workflow graph schema.
 - Node catalog.
-- Built-in workflow templates.
 - Prompt recipes.
 - Cached provider model catalog.
 - Brand summaries.
@@ -154,7 +153,6 @@ Rules:
 
 Examples:
 
-- Create workflow from template.
 - Create blank workflow.
 - Update workflow metadata.
 - Update graph.

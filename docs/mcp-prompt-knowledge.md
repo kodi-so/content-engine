@@ -21,22 +21,21 @@ nodes, split work into debuggable steps, and avoid generic prompts.
 ## Expected Agent Usage
 
 An external workflow-building agent should read these resources after the graph
-schema, node catalog, templates, and user summaries. The recommended order is:
+schema, node catalog, and user summaries. The recommended order is:
 
 1. Read `content-engine://architecture/guide`.
 2. Read `content-engine://workflows/graph-schema`.
 3. Read `content-engine://workflows/node-catalog`.
-4. Read `content-engine://workflows/templates`.
-5. Read the relevant prompt knowledge resources for the requested content type.
-6. Read brand, persona, creative asset, and model catalog resources.
-7. Create or edit the workflow graph.
+4. Read the relevant prompt knowledge resources for the requested content type.
+5. Read brand, persona, creative asset, and model catalog resources.
+6. Create or edit the workflow graph with node and edge tools.
 
 ## Design Notes
 
 - Prompt resources are JSON, not prose-only docs, so agents can consume them as
   data.
-- Each guide includes preferred workflow shapes, prompt principles, starter
-  templates, and common mistakes.
+- Each guide includes preferred workflow shapes, prompt principles, and common
+  mistakes.
 - Node selection guidance is intentionally product-level. It should help an
   agent decide when to use AI Agent, LLM, media, generation, AI Video Editor,
   post compiler, export, or auto post nodes.

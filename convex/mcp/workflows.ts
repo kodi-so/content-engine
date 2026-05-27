@@ -15,11 +15,6 @@ import {
   type WorkflowEdge,
   type WorkflowGraph,
 } from "../../src/lib/workflow/workflowGraph";
-import {
-  createWorkflowGraphFromTemplate,
-  listWorkflowTemplates,
-  type WorkflowTemplateId,
-} from "../../src/lib/workflow/workflowTemplates";
 import { validateWorkflowGraph } from "../../src/lib/workflow/workflowGraphValidation";
 import { createWorkflowRun } from "../workflows/runCreation";
 import { nextScheduledRunAt } from "../workflows/scheduling";
@@ -329,78 +324,6 @@ export const createBlankForMcp = internalMutation({
   },
 });
 
-export const createFromTemplate = mutation({
-  args: {
-    templateId: v.string(),
-    brandId: v.optional(v.id("brands")),
-    socialAccountId: v.optional(v.id("socialAccounts")),
-    name: v.optional(v.string()),
-    description: v.optional(v.string()),
-    creativeRequest: v.optional(v.string()),
-    publishingPolicy: v.optional(publishingPolicyValidator),
-  },
-  handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
-    const template = listWorkflowTemplates().find((candidate) => candidate.id === args.templateId);
-    if (!template) throw new Error("Workflow template not found");
-
-    const graph = createWorkflowGraphFromTemplate(
-      template.id as WorkflowTemplateId,
-      { creativeRequest: args.creativeRequest }
-    );
-
-    return await createWorkflow(ctx, {
-      userId,
-      brandId: args.brandId,
-      socialAccountId: args.socialAccountId,
-      name: args.name?.trim() || template.name,
-      description: args.description ?? `MCP template draft: ${template.name}`,
-      publishingPolicy: args.publishingPolicy ?? {
-        provider: template.defaultPublishingProvider,
-        autoPublish: false,
-        defaultPlatforms: ["tiktok"],
-      },
-      graph: asWorkflowGraphDoc(graph),
-    });
-  },
-});
-
-export const createFromTemplateForMcp = internalMutation({
-  args: {
-    userId: v.string(),
-    templateId: v.string(),
-    brandId: v.optional(v.id("brands")),
-    socialAccountId: v.optional(v.id("socialAccounts")),
-    name: v.optional(v.string()),
-    description: v.optional(v.string()),
-    creativeRequest: v.optional(v.string()),
-    publishingPolicy: v.optional(publishingPolicyValidator),
-  },
-  handler: async (ctx, args) => {
-    const template = listWorkflowTemplates().find((candidate) => candidate.id === args.templateId);
-    if (!template) throw new Error("Workflow template not found");
-
-    const graph = createWorkflowGraphFromTemplate(
-      template.id as WorkflowTemplateId,
-      { creativeRequest: args.creativeRequest }
-    );
-
-    return await createWorkflow(ctx, {
-      userId: args.userId,
-      brandId: args.brandId,
-      socialAccountId: args.socialAccountId,
-      name: args.name?.trim() || template.name,
-      description: args.description ?? `MCP template draft: ${template.name}`,
-      publishingPolicy: args.publishingPolicy ?? {
-        provider: template.defaultPublishingProvider,
-        autoPublish: false,
-        defaultPlatforms: ["tiktok"],
-      },
-      graph: asWorkflowGraphDoc(graph),
-    });
-  },
-});
-
 export const updateMetadata = mutation({
   args: {
     id: v.id("workflows"),
@@ -537,6 +460,24 @@ export const addNode = mutation({
   },
 });
 
+export const addNodeForMcp = internalMutation({
+  args: {
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    node: workflowNodeValidator,
+  },
+  handler: async (ctx, args) => {
+    const workflow = await getOwnedWorkflow(ctx, args.workflowId, args.userId);
+    const graph = {
+      ...workflow.graph,
+      nodes: [...workflow.graph.nodes, args.node as WorkflowNodeDoc],
+    };
+
+    await patchWorkflowGraph(ctx, workflow, graph);
+    return workflow._id;
+  },
+});
+
 export const updateNode = mutation({
   args: {
     workflowId: v.id("workflows"),
@@ -552,6 +493,62 @@ export const updateNode = mutation({
   handler: async (ctx, args) => {
     const userId = requireUserId(await ctx.auth.getUserIdentity());
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
+    let found = false;
+    const nodes = workflow.graph.nodes.map((node) => {
+      if (node.id !== args.nodeId) return node;
+      found = true;
+      const updatedNode = {
+        ...node,
+        ...(args.label !== undefined ? { label: args.label } : {}),
+        ...(args.position !== undefined ? { position: args.position } : {}),
+        ...(args.config !== undefined ? { config: args.config } : {}),
+      };
+
+      if (args.provider !== undefined) {
+        if (args.provider === null) delete updatedNode.provider;
+        else updatedNode.provider = args.provider;
+      }
+      if (args.model !== undefined) {
+        if (args.model === null) delete updatedNode.model;
+        else updatedNode.model = args.model;
+      }
+      if (args.inputBindings !== undefined) {
+        if (args.inputBindings === null) delete updatedNode.inputBindings;
+        else updatedNode.inputBindings = args.inputBindings;
+      }
+      if (args.retention !== undefined) {
+        if (args.retention === null) delete updatedNode.retention;
+        else updatedNode.retention = args.retention;
+      }
+
+      return updatedNode;
+    });
+
+    if (!found) throw new Error("Workflow node not found");
+
+    await patchWorkflowGraph(ctx, workflow, {
+      ...workflow.graph,
+      nodes,
+    });
+    return workflow._id;
+  },
+});
+
+export const updateNodeForMcp = internalMutation({
+  args: {
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    nodeId: v.string(),
+    label: v.optional(v.string()),
+    position: v.optional(v.object({ x: v.number(), y: v.number() })),
+    provider: v.optional(v.union(v.string(), v.null())),
+    model: v.optional(v.union(v.string(), v.null())),
+    config: v.optional(v.record(v.string(), v.any())),
+    inputBindings: v.optional(v.union(v.any(), v.null())),
+    retention: v.optional(v.union(v.any(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const workflow = await getOwnedWorkflow(ctx, args.workflowId, args.userId);
     let found = false;
     const nodes = workflow.graph.nodes.map((node) => {
       if (node.id !== args.nodeId) return node;
@@ -615,6 +612,28 @@ export const deleteNode = mutation({
   },
 });
 
+export const deleteNodeForMcp = internalMutation({
+  args: {
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    nodeId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const workflow = await getOwnedWorkflow(ctx, args.workflowId, args.userId);
+    const nodes = workflow.graph.nodes.filter((node) => node.id !== args.nodeId);
+    if (nodes.length === workflow.graph.nodes.length) throw new Error("Workflow node not found");
+
+    await patchWorkflowGraph(ctx, workflow, {
+      ...workflow.graph,
+      nodes,
+      edges: workflow.graph.edges.filter(
+        (edge) => edge.sourceNodeId !== args.nodeId && edge.targetNodeId !== args.nodeId
+      ),
+    });
+    return workflow._id;
+  },
+});
+
 export const connectNodes = mutation({
   args: {
     workflowId: v.id("workflows"),
@@ -627,6 +646,42 @@ export const connectNodes = mutation({
   handler: async (ctx, args) => {
     const userId = requireUserId(await ctx.auth.getUserIdentity());
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
+    const edge = {
+      id: args.edgeId?.trim() || `${args.sourceNodeId}:${args.sourcePort}->${args.targetNodeId}:${args.targetPort}`,
+      sourceNodeId: args.sourceNodeId,
+      sourcePort: args.sourcePort,
+      targetNodeId: args.targetNodeId,
+      targetPort: args.targetPort,
+    } satisfies WorkflowEdgeDoc;
+
+    const duplicateConnection = workflow.graph.edges.some((candidate) =>
+      candidate.sourceNodeId === edge.sourceNodeId &&
+      candidate.sourcePort === edge.sourcePort &&
+      candidate.targetNodeId === edge.targetNodeId &&
+      candidate.targetPort === edge.targetPort
+    );
+    if (duplicateConnection) throw new Error("Workflow edge already exists");
+
+    await patchWorkflowGraph(ctx, workflow, {
+      ...workflow.graph,
+      edges: [...workflow.graph.edges, edge],
+    });
+    return workflow._id;
+  },
+});
+
+export const connectNodesForMcp = internalMutation({
+  args: {
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    edgeId: v.optional(v.string()),
+    sourceNodeId: v.string(),
+    sourcePort: v.string(),
+    targetNodeId: v.string(),
+    targetPort: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const workflow = await getOwnedWorkflow(ctx, args.workflowId, args.userId);
     const edge = {
       id: args.edgeId?.trim() || `${args.sourceNodeId}:${args.sourcePort}->${args.targetNodeId}:${args.targetPort}`,
       sourceNodeId: args.sourceNodeId,
@@ -670,6 +725,25 @@ export const disconnectEdge = mutation({
   },
 });
 
+export const disconnectEdgeForMcp = internalMutation({
+  args: {
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    edgeId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const workflow = await getOwnedWorkflow(ctx, args.workflowId, args.userId);
+    const edges = workflow.graph.edges.filter((edge) => edge.id !== args.edgeId);
+    if (edges.length === workflow.graph.edges.length) throw new Error("Workflow edge not found");
+
+    await patchWorkflowGraph(ctx, workflow, {
+      ...workflow.graph,
+      edges,
+    });
+    return workflow._id;
+  },
+});
+
 export const replaceEdge = mutation({
   args: {
     workflowId: v.id("workflows"),
@@ -679,6 +753,31 @@ export const replaceEdge = mutation({
   handler: async (ctx, args) => {
     const userId = requireUserId(await ctx.auth.getUserIdentity());
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
+    let found = false;
+    const edges = workflow.graph.edges.map((edge) => {
+      if (edge.id !== args.edgeId) return edge;
+      found = true;
+      return args.edge as WorkflowEdge;
+    });
+    if (!found) throw new Error("Workflow edge not found");
+
+    await patchWorkflowGraph(ctx, workflow, {
+      ...workflow.graph,
+      edges,
+    });
+    return workflow._id;
+  },
+});
+
+export const replaceEdgeForMcp = internalMutation({
+  args: {
+    userId: v.string(),
+    workflowId: v.id("workflows"),
+    edgeId: v.string(),
+    edge: workflowEdgeValidator,
+  },
+  handler: async (ctx, args) => {
+    const workflow = await getOwnedWorkflow(ctx, args.workflowId, args.userId);
     let found = false;
     const edges = workflow.graph.edges.map((edge) => {
       if (edge.id !== args.edgeId) return edge;

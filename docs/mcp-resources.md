@@ -37,7 +37,6 @@ single security posture.
 | `content-engine://architecture/guide` | `text/markdown` | Product direction, workflow invariants, provider decisions, and recommended agent workflow-building loop. |
 | `content-engine://workflows/graph-schema` | `application/json` | Graph schema version, node types, port data types, provider names, graph shape, and validation invariants. |
 | `content-engine://workflows/node-catalog` | `application/json` | Node catalog entries with labels, descriptions, ports, provider requirements, defaults, retention, and output artifact types. |
-| `content-engine://workflows/templates` | `application/json` | Built-in workflow templates with required inputs and starter graphs. |
 | `content-engine://prompts/agent-recipes` | `application/json` | AI Agent presets plus guidance for writing reusable prompt/script/analysis nodes. |
 | `content-engine://knowledge/prompting/ai-ugc` | `application/json` | Persona-led UGC ad and organic UGC prompting guidance. |
 | `content-engine://knowledge/prompting/transformation` | `application/json` | Before/after identity preservation and transformation workflow guidance. |
@@ -64,7 +63,7 @@ Recommended external-agent flow:
 
 1. Read `content-engine://architecture/guide`.
 2. Read graph schema and node catalog.
-3. Read templates, agent recipes, and relevant prompt knowledge resources.
+3. Read agent recipes and relevant prompt knowledge resources.
 4. Read user-scoped brand, persona, creative asset, and model catalog resources.
 5. Create or edit a workflow through MCP tools using ids from the resource
    summaries.

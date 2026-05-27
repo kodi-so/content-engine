@@ -35,7 +35,6 @@ not create an MCP-only workflow representation.
 | Function | Purpose |
 | --- | --- |
 | `mcp.workflows.createBlank` | Create a minimal valid workflow containing a runner and export node. |
-| `mcp.workflows.createFromTemplate` | Create an inactive workflow draft from a built-in template, optionally hydrating the creative request. |
 | `mcp.workflows.updateMetadata` | Update workflow metadata, policies, trigger, schedule, or social account. |
 | `mcp.workflows.updateGraph` | Replace the entire graph after validation. |
 | `mcp.workflows.addNode` | Add one node and validate the resulting graph. |
