@@ -1,7 +1,7 @@
 import { SignOutButton, useUser } from "@clerk/clerk-react";
 import { BrainCircuit, BriefcaseBusiness, LogOut, Settings } from "lucide-react";
 import { useState, type CSSProperties } from "react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import { navItems } from "../app/navigation";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 
@@ -13,6 +13,7 @@ type NavTooltipState = {
 
 export function Sidebar() {
   const { user } = useUser();
+  const location = useLocation();
   const {
     activeMembership,
     activeWorkspace,
@@ -22,6 +23,7 @@ export function Sidebar() {
     workspaces,
   } = useWorkspace();
   const [navTooltip, setNavTooltip] = useState<NavTooltipState | null>(null);
+  const isWorkflowCanvasRoute = /^\/workflows\/[^/]+/.test(location.pathname);
   const navTooltipStyle = navTooltip
     ? ({
         top: `${navTooltip.top}px`,
@@ -53,11 +55,21 @@ export function Sidebar() {
           </span>
         </div>
 
-        <div className="workspace-switcher">
-          <label className="workspace-switcher-field">
-            <span>Workspace</span>
+        <div
+          className={[
+            "mb-[var(--space-4)] grid gap-[var(--space-2)] rounded-[var(--radius-md)]",
+            "border border-[var(--color-sidebar-border)] bg-[oklch(100%_0_0_/_0.045)] p-[var(--space-3)]",
+            "max-[900px]:mb-[var(--space-3)]",
+            isWorkflowCanvasRoute ? "hidden" : "",
+          ].filter(Boolean).join(" ")}
+        >
+          <label className="grid gap-[var(--space-2)]">
+            <span className="text-[0.68rem] font-[750] uppercase leading-[1.1] tracking-[0.06em] text-[var(--color-sidebar-muted)]">
+              Workspace
+            </span>
             <select
               aria-label="Active workspace"
+              className="min-h-[2.35rem] w-full min-w-0 rounded-[var(--radius-sm)] border border-[oklch(100%_0_0_/_0.1)] bg-[oklch(12%_0.028_220)] px-[var(--space-2)] text-[0.82rem] font-[650] text-[var(--color-sidebar-text)]"
               disabled={isWorkspaceLoading || !workspaces?.length}
               value={activeWorkspaceId ?? ""}
               onChange={(event) => setActiveWorkspaceId(event.target.value as typeof activeWorkspaceId)}
@@ -70,14 +82,17 @@ export function Sidebar() {
               ))}
             </select>
           </label>
-          <div className="workspace-switcher-meta">
-            <span>
+          <div className="flex items-center justify-between gap-[var(--space-2)] text-[0.72rem] capitalize text-[var(--color-sidebar-muted)]">
+            <span className="inline-flex min-w-0 items-center gap-[var(--space-1)]">
               <BriefcaseBusiness size={13} />
               {activeWorkspace?.workspaceType === "team" ? "Team" : "Personal"}
             </span>
             {activeMembership ? <span>{activeMembership.role}</span> : null}
           </div>
-          <Link className="workspace-settings-link" to="/settings">
+          <Link
+            className="inline-flex min-h-[2rem] items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-sm)] text-[0.78rem] font-[650] text-[var(--color-sidebar-text)] no-underline hover:bg-[oklch(100%_0_0_/_0.06)]"
+            to="/settings"
+          >
             <Settings size={14} />
             Settings
           </Link>

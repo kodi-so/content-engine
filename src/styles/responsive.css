@@ -48,21 +48,8 @@
   .metric-grid,
   .two-column,
   .form-grid,
-  .settings-access-grid,
-  .settings-shell,
-  .settings-summary,
-  .settings-workspace-grid,
   .filter-grid {
     grid-template-columns: 1fr;
-  }
-
-  .workspace-switcher {
-    margin-bottom: var(--space-3);
-  }
-
-  .settings-tabs {
-    position: static;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .prompt-field {
@@ -109,17 +96,6 @@
 
   .button-row {
     display: grid;
-  }
-
-  .settings-tabs,
-  .settings-member-row,
-  .settings-member-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-member-actions {
-    display: grid;
-    justify-items: stretch;
   }
 
   .primary-button,

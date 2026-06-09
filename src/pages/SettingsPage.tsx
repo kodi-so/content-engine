@@ -34,6 +34,13 @@ const settingsTabs: Array<{
   { id: "mcp", label: "MCP Access", icon: KeyRound },
 ];
 
+const settingsStackClass = "grid min-w-0 gap-[var(--space-4)]";
+const settingsInfoCardClass =
+  "grid gap-[var(--space-1)] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-[var(--space-4)]";
+const settingsEyebrowClass =
+  "text-[0.74rem] font-[750] uppercase leading-[1.15] tracking-[0.06em] text-[var(--color-ink-muted)]";
+const settingsBodyClass = "m-0 text-[0.9rem] leading-[1.5] text-[var(--color-ink-muted)]";
+
 function workspaceKindLabel(workspaceType?: "personal" | "team") {
   return workspaceType === "team" ? "Team workspace" : "Personal workspace";
 }
@@ -41,6 +48,17 @@ function workspaceKindLabel(workspaceType?: "personal" | "team") {
 function roleLabel(role?: string) {
   if (!role) return "Member";
   return role[0].toUpperCase() + role.slice(1);
+}
+
+function settingsTabClass(isActive: boolean) {
+  return [
+    "grid min-h-[2.45rem] cursor-pointer grid-cols-[1.1rem_minmax(0,1fr)] items-center gap-[var(--space-2)]",
+    "rounded-[var(--radius-md)] border-0 bg-transparent px-[var(--space-3)] text-left text-[0.88rem]",
+    "font-[650] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-tinted)] hover:text-[var(--color-ink)]",
+    isActive
+      ? "bg-[var(--color-surface-tinted)] text-[var(--color-ink)] shadow-[inset_0_0_0_1px_var(--color-border)]"
+      : "",
+  ].filter(Boolean).join(" ");
 }
 
 export function SettingsPage() {
@@ -189,12 +207,15 @@ export function SettingsPage() {
       title="Settings"
       description="Manage workspace context, team access, account details, and external agent keys."
     >
-      <div className="settings-shell">
-        <aside className="settings-tabs" aria-label="Settings sections">
+      <div className="grid items-start gap-[var(--space-5)] lg:grid-cols-[minmax(12rem,15rem)_minmax(0,1fr)]">
+        <aside
+          className="grid gap-[var(--space-1)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-2)] shadow-[var(--shadow-sm)] max-[900px]:grid-cols-2 lg:sticky lg:top-[var(--space-4)] max-[560px]:grid-cols-1"
+          aria-label="Settings sections"
+        >
           {settingsTabs.map((tab) => (
             <button
               aria-current={activeTab === tab.id ? "page" : undefined}
-              className={activeTab === tab.id ? "active" : ""}
+              className={settingsTabClass(activeTab === tab.id)}
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               type="button"
@@ -205,28 +226,40 @@ export function SettingsPage() {
           ))}
         </aside>
 
-        <div className="settings-content">
-          <section className="settings-summary">
-            <div>
-              <span>{workspaceKindLabel(activeWorkspace?.workspaceType)}</span>
-              <strong>{activeWorkspace?.name ?? "Loading workspace"}</strong>
+        <div className={settingsStackClass}>
+          <section className="grid gap-[var(--space-3)] md:grid-cols-3">
+            <div className={settingsInfoCardClass}>
+              <span className={settingsEyebrowClass}>
+                {workspaceKindLabel(activeWorkspace?.workspaceType)}
+              </span>
+              <strong className="min-w-0 [overflow-wrap:anywhere] text-[1rem] font-[720] capitalize leading-[1.25] text-[var(--color-ink)]">
+                {activeWorkspace?.name ?? "Loading workspace"}
+              </strong>
             </div>
-            <div>
-              <span>Your role</span>
-              <strong>{roleLabel(activeMembership?.role)}</strong>
+            <div className={settingsInfoCardClass}>
+              <span className={settingsEyebrowClass}>Your role</span>
+              <strong className="min-w-0 [overflow-wrap:anywhere] text-[1rem] font-[720] capitalize leading-[1.25] text-[var(--color-ink)]">
+                {roleLabel(activeMembership?.role)}
+              </strong>
             </div>
-            <div>
-              <span>Members</span>
-              <strong>{members?.filter((row) => row.membership.status === "active").length ?? 0}</strong>
+            <div className={settingsInfoCardClass}>
+              <span className={settingsEyebrowClass}>Members</span>
+              <strong className="min-w-0 [overflow-wrap:anywhere] text-[1rem] font-[720] capitalize leading-[1.25] text-[var(--color-ink)]">
+                {members?.filter((row) => row.membership.status === "active").length ?? 0}
+              </strong>
             </div>
           </section>
 
-          {statusMessage ? <p className="settings-status">{statusMessage}</p> : null}
+          {statusMessage ? (
+            <p className="m-0 w-fit max-w-full rounded-full border border-[var(--color-border)] bg-[var(--color-primary-soft)] px-[var(--space-3)] py-[var(--space-2)] text-[0.82rem] font-[650] text-[var(--color-primary-strong)]">
+              {statusMessage}
+            </p>
+          ) : null}
 
           {activeTab === "workspace" ? (
-            <div className="settings-stack">
+            <div className={settingsStackClass}>
               <Panel title="Current Workspace">
-                <div className="settings-workspace-grid">
+                <div className="grid items-start gap-[var(--space-4)] md:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
                   <Select
                     label="Active workspace"
                     value={activeWorkspaceId ?? ""}
@@ -238,9 +271,9 @@ export function SettingsPage() {
                       </option>
                     ))}
                   </Select>
-                  <div className="settings-copy-block">
-                    <span>Workspace boundary</span>
-                    <p>
+                  <div className={settingsInfoCardClass}>
+                    <span className={settingsEyebrowClass}>Workspace boundary</span>
+                    <p className={settingsBodyClass}>
                       Brands, workflows, generated assets, publishing plans, and metrics are scoped
                       to the selected workspace.
                     </p>
@@ -281,7 +314,7 @@ export function SettingsPage() {
           ) : null}
 
           {activeTab === "team" ? (
-            <div className="settings-stack">
+            <div className={settingsStackClass}>
               <form className="panel form-grid" onSubmit={inviteMember}>
                 <h2>Team Members</h2>
                 <Field
@@ -323,16 +356,20 @@ export function SettingsPage() {
                     const isOwner = membership.role === "owner";
                     const isSelf = membership.userId === user?.id;
                     return (
-                      <article className="entity-row settings-member-row" key={membership._id}>
+                      <article
+                        className="entity-row grid-cols-[minmax(0,1fr)_minmax(13rem,auto)] max-[560px]:grid-cols-1"
+                        key={membership._id}
+                      >
                         <div>
                           <strong>{memberName}</strong>
                           <p>
                             {memberUser?.email ?? membership.userId} · {membership.status}
                           </p>
                         </div>
-                        <div className="settings-member-actions">
+                        <div className="inline-flex items-center gap-[var(--space-2)] max-[560px]:grid max-[560px]:justify-stretch">
                           <select
                             aria-label={`Role for ${memberName}`}
+                            className="min-h-[2.15rem] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-[var(--space-2)] text-[0.82rem] text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={!isWorkspaceAdmin || isOwner}
                             value={membership.role}
                             onChange={(event) =>
@@ -346,7 +383,7 @@ export function SettingsPage() {
                           </select>
                           <button
                             aria-label={`Remove ${memberName}`}
-                            className="icon-button danger"
+                            className="icon-button danger disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={!isWorkspaceAdmin || isOwner || isSelf}
                             onClick={() => void removeWorkspaceMember(membership.userId, memberName)}
                             type="button"
@@ -363,27 +400,27 @@ export function SettingsPage() {
           ) : null}
 
           {activeTab === "admin" ? (
-            <div className="settings-stack">
+            <div className={settingsStackClass}>
               <Panel title="Admin">
-                <div className="settings-admin-list">
-                  <div>
+                <div className="grid gap-[var(--space-3)]">
+                  <div className={settingsInfoCardClass}>
                     <strong>Clerk Organizations</strong>
-                    <p>
+                    <p className={settingsBodyClass}>
                       Convex workspaces are the source of truth. Clerk Organizations can be linked
                       later through the workspace's Clerk organization id when we want hosted invites
                       or org switching.
                     </p>
                   </div>
-                  <div>
+                  <div className={settingsInfoCardClass}>
                     <strong>Access model</strong>
-                    <p>
+                    <p className={settingsBodyClass}>
                       New records are written to the active workspace. Older personal records still
                       open for their original owner until we run a backfill.
                     </p>
                   </div>
-                  <div>
+                  <div className={settingsInfoCardClass}>
                     <strong>Roles</strong>
-                    <p>
+                    <p className={settingsBodyClass}>
                       Owners and admins manage workspace settings. Members can create and operate.
                       Viewers are intended for read-only review surfaces.
                     </p>
@@ -394,10 +431,10 @@ export function SettingsPage() {
           ) : null}
 
           {activeTab === "account" ? (
-            <div className="settings-stack">
+            <div className={settingsStackClass}>
               <Panel title="User Settings">
-                <div className="settings-account-grid">
-                  <div className="avatar settings-account-avatar">
+                <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-center gap-[var(--space-4)]">
+                  <div className="avatar h-[3rem] w-[3rem]">
                     {user?.imageUrl ? (
                       <img src={user.imageUrl} alt={user.fullName || "User"} />
                     ) : (
@@ -406,7 +443,7 @@ export function SettingsPage() {
                   </div>
                   <div>
                     <strong>{user?.fullName || "User"}</strong>
-                    <p>{user?.primaryEmailAddress?.emailAddress}</p>
+                    <p className={settingsBodyClass}>{user?.primaryEmailAddress?.emailAddress}</p>
                     <p className="muted">Profile details are managed by Clerk at sign-in.</p>
                   </div>
                 </div>
@@ -415,10 +452,10 @@ export function SettingsPage() {
           ) : null}
 
           {activeTab === "mcp" ? (
-            <div className="settings-stack">
-              <Panel title="MCP Access" className="settings-mcp-panel">
-                <div className="settings-access-grid">
-                  <label className="field settings-endpoint-field">
+            <div className={settingsStackClass}>
+              <Panel title="MCP Access" className="w-[min(100%,62rem)]">
+                <div className="grid items-end gap-[var(--space-3)] lg:grid-cols-[minmax(20rem,1fr)_minmax(12rem,16rem)_auto]">
+                  <label className="field col-span-full">
                     <span>MCP endpoint</span>
                     <div className="inline-field">
                       <input readOnly value={mcpEndpoint} />
@@ -447,7 +484,7 @@ export function SettingsPage() {
                     Create MCP key
                   </button>
                   {generatedKey ? (
-                    <label className="field settings-generated-key-field">
+                    <label className="field col-span-full">
                       <span>New key</span>
                       <div className="inline-field">
                         <input readOnly value={generatedKey} />
