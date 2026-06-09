@@ -183,6 +183,168 @@
   width: min(100%, 62rem);
 }
 
+.settings-shell {
+  display: grid;
+  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-5);
+}
+
+.settings-tabs {
+  display: grid;
+  gap: var(--space-1);
+  position: sticky;
+  top: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-tabs button {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.45rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 650;
+  padding-inline: var(--space-3);
+  text-align: left;
+}
+
+.settings-tabs button:hover,
+.settings-tabs button.active {
+  background: var(--color-surface-tinted);
+  color: var(--color-ink);
+}
+
+.settings-tabs button.active {
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.settings-content,
+.settings-stack {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-4);
+}
+
+.settings-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.settings-summary > div,
+.settings-copy-block,
+.settings-admin-list > div {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  padding: var(--space-4);
+}
+
+.settings-summary span,
+.settings-copy-block span {
+  color: var(--color-ink-muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.settings-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 720;
+  line-height: 1.25;
+  text-transform: capitalize;
+}
+
+.settings-status {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-size: 0.82rem;
+  font-weight: 650;
+  padding: var(--space-2) var(--space-3);
+}
+
+.settings-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.settings-copy-block p,
+.settings-admin-list p,
+.settings-account-grid p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.settings-admin-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-member-row {
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, auto);
+}
+
+.settings-member-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-member-actions select {
+  min-height: 2.15rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: 0.82rem;
+  padding-inline: var(--space-2);
+}
+
+.settings-member-actions select:disabled,
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.settings-account-grid {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.settings-account-avatar {
+  width: 3rem;
+  height: 3rem;
+}
+
 .settings-access-grid {
   display: grid;
   grid-template-columns: minmax(20rem, 1fr) minmax(12rem, 16rem) auto;

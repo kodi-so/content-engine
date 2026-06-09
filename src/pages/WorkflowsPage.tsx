@@ -12,6 +12,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { Page, Select } from "../components/ui";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { createStarterWorkflowGraph } from "../lib/workflow/workflowGraph";
 import { DEFAULT_PUBLISHING_PROVIDER } from "../lib/publishingRouting";
 import type { BrandId, WorkflowId } from "../types";
@@ -45,9 +46,11 @@ function formatSchedule(workflow: {
 
 export function WorkflowsPage() {
   const navigate = useNavigate();
-  const brands = useQuery(api.accounts.brands.list);
-  const accounts = useQuery(api.accounts.socialAccounts.list);
-  const workflows = useQuery(api.workflows.definitions.list);
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
+  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
+  const accounts = useQuery(api.accounts.socialAccounts.list, workspaceArgs);
+  const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
   const createWorkflow = useMutation(api.workflows.definitions.create);
   const updateWorkflowMetadata = useMutation(api.workflows.definitions.updateMetadata);
   const duplicateWorkflow = useMutation(api.workflows.definitions.duplicate);
@@ -126,6 +129,7 @@ export function WorkflowsPage() {
     setActionStatus("Creating workflow");
     try {
       const workflowId = await createWorkflow({
+        ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
         ...(brandId ? { brandId } : {}),
         name,
         trigger: "manual",
@@ -189,7 +193,10 @@ export function WorkflowsPage() {
   };
 
   return (
-    <Page title="Workflows" description="Saved canvases for repeatable content automation.">
+    <Page
+      title="Workflows"
+      description={`Saved canvases for ${activeWorkspace?.name ?? "this workspace"}.`}
+    >
       <section className="workflow-index-panel">
         <div className="workflow-index-toolbar">
           <div>

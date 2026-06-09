@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Page, Panel, Select } from "../components/ui";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { artifactSummary } from "../lib/artifactUtils";
 import type { ArtifactDoc, WorkflowDoc, WorkflowRunDoc } from "../types";
 
@@ -433,10 +434,15 @@ function groupLibraryOutputs(args: {
 }
 
 export function LibraryPage() {
-  const artifacts = useQuery(api.artifacts.records.list, { includeDebug: true });
-  const brands = useQuery(api.accounts.brands.list);
-  const workflows = useQuery(api.workflows.definitions.list);
-  const runs = useQuery(api.workflows.runs.list, {});
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
+  const artifacts = useQuery(api.artifacts.records.list, {
+    ...workspaceArgs,
+    includeDebug: true,
+  });
+  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
+  const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
+  const runs = useQuery(api.workflows.runs.list, workspaceArgs);
   const deleteArtifact = useMutation(api.artifacts.records.remove);
   const [libraryView, setLibraryView] = useState<"assets" | "workflows">("assets");
   const [brandFilter, setBrandFilter] = useState("");
@@ -517,7 +523,10 @@ export function LibraryPage() {
       (libraryView === "assets" ? "Saved Assets" : "Workflow Exports");
 
   return (
-    <Page title="Library" description="Saved assets and workflow exports.">
+    <Page
+      title="Library"
+      description={`Saved assets and workflow exports for ${activeWorkspace?.name ?? "this workspace"}.`}
+    >
       <Panel title={title}>
         <div className="section-toolbar">
           <div className="grid min-w-0 gap-[var(--space-3)]">

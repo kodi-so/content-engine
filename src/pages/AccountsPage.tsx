@@ -3,12 +3,15 @@ import { Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../../convex/_generated/api";
 import { EntityGrid, Field, FormPanel, Page, Select } from "../components/ui";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { PUBLISHING_PROVIDER_ROUTES } from "../lib/publishingRouting";
 import type { BrandId, Platform, PublishingProvider } from "../types";
 
 export function AccountsPage() {
-  const brands = useQuery(api.accounts.brands.list);
-  const accounts = useQuery(api.accounts.socialAccounts.list);
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
+  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
+  const accounts = useQuery(api.accounts.socialAccounts.list, workspaceArgs);
   const upsertAccount = useMutation(api.accounts.socialAccounts.upsertManual);
   const syncProviderAccounts = useAction(api.accounts.socialAccounts.syncProviderAccounts);
   const [brandId, setBrandId] = useState("");
@@ -22,6 +25,7 @@ export function AccountsPage() {
     if (!username.trim()) return;
 
     await upsertAccount({
+      ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
       brandId: brandId ? (brandId as BrandId) : undefined,
       provider,
       platform,
@@ -37,6 +41,7 @@ export function AccountsPage() {
     try {
       const result = await syncProviderAccounts({
         provider: "postiz",
+        ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
         brandId: brandId ? (brandId as BrandId) : undefined,
       });
       setSyncStatus(`Synced ${result.synced} accounts`);
@@ -46,7 +51,10 @@ export function AccountsPage() {
   };
 
   return (
-    <Page title="Social Accounts" description="Provider-backed accounts replace direct platform OAuth.">
+    <Page
+      title="Social Accounts"
+      description={`Provider-backed accounts for ${activeWorkspace?.name ?? "this workspace"}.`}
+    >
       <FormPanel title="Add Provider Account" onSubmit={handleSubmit}>
         <Select label="Brand" value={brandId} onChange={setBrandId}>
           <option value="">Unassigned</option>

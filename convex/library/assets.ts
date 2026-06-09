@@ -180,6 +180,7 @@ function matchesBrand(asset: SelectableLibraryAsset, brandId?: Id<"brands">) {
 
 export const listSelectable = query({
   args: {
+    workspaceId: v.optional(v.id("workspaces")),
     brandId: v.optional(v.id("brands")),
     mediaKind: v.optional(
       v.union(
@@ -194,15 +195,35 @@ export const listSelectable = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
 
+    if (args.workspaceId) {
+      const membership = await ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_workspace_user", (q) =>
+          q.eq("workspaceId", args.workspaceId!).eq("userId", identity.subject)
+        )
+        .unique();
+      if (membership?.status !== "active") return [];
+    }
+
     const [artifacts, creativeAssets] = await Promise.all([
-      ctx.db
-        .query("artifacts")
-        .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-        .collect(),
-      ctx.db
-        .query("creativeAssets")
-        .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-        .collect(),
+      args.workspaceId
+        ? ctx.db
+            .query("artifacts")
+            .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+            .collect()
+        : ctx.db
+            .query("artifacts")
+            .withIndex("by_user", (q) => q.eq("userId", identity.subject))
+            .collect(),
+      args.workspaceId
+        ? ctx.db
+            .query("creativeAssets")
+            .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+            .collect()
+        : ctx.db
+            .query("creativeAssets")
+            .withIndex("by_user", (q) => q.eq("userId", identity.subject))
+            .collect(),
     ]);
     const artifactsById = new Map(artifacts.map((artifact) => [
       String(artifact._id),

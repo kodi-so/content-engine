@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "
 import { api } from "../../convex/_generated/api";
 import type { BrandId, CreativeAssetDoc, CreativeAssetId, PersonaDoc, PersonaId, PersonaType } from "../types";
 import { Field, Page, Select, TextArea } from "../components/ui";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { fileToDataUrl } from "../lib/browser/dataUrl";
 
 type AssetRole = "source" | "generated" | "voice";
@@ -108,7 +109,11 @@ function describeAsset(asset: CreativeAssetDoc) {
 }
 
 export function PersonasPage() {
-  const brands = useQuery(api.accounts.brands.list);
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const brands = useQuery(
+    api.accounts.brands.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}
+  );
   const [brandId, setBrandId] = useState("");
   const personas = useQuery(
     api.accounts.personas.list,
@@ -333,7 +338,10 @@ export function PersonasPage() {
   };
 
   return (
-    <Page title="Personas" description="Reusable identities for UGC characters, mascots, spokespeople, and transformation concepts.">
+    <Page
+      title="Personas"
+      description={`Reusable identities for ${activeWorkspace?.name ?? "this workspace"}.`}
+    >
       <div className="grid min-w-0 gap-[var(--space-4)] xl:grid-cols-[19rem_minmax(0,1fr)]">
         <aside className="panel content-start">
           <div className="section-toolbar">

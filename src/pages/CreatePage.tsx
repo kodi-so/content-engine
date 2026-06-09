@@ -23,6 +23,7 @@ import {
 } from "../components/create/CreateGenerationConfigField";
 import type { SelectableLibraryAsset } from "../components/library/ReferenceAssetField";
 import { WorkflowSelect } from "../components/workflow/WorkflowSelect";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 import { fileToDataUrl } from "../lib/browser/dataUrl";
 import {
   createGenerationFields,
@@ -250,9 +251,11 @@ function CreateResultPanel({
 
 export function CreatePage() {
   const navigate = useNavigate();
-  const brands = useQuery(api.accounts.brands.list);
-  const workflows = useQuery(api.workflows.definitions.list);
-  const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, {});
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
+  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
+  const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
+  const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
   const createWorkflow = useMutation(api.workflows.definitions.create);
   const createSlideshow = useMutation(api.content.requests.createSlideshow);
   const deleteArtifact = useMutation(api.artifacts.records.remove);
@@ -630,6 +633,7 @@ export function CreatePage() {
 
       if (mode === "workflow") {
         const workflowId = await createWorkflow({
+          ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
           brandId: workflowBrandId,
           name: name.trim() || draftName(creativeRequest),
           description: `Prompt draft: ${creativeRequest}`,
@@ -648,6 +652,7 @@ export function CreatePage() {
 
       if (mode === "slideshow") {
         const requestId = await createSlideshow({
+          ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
           prompt: creativeRequest,
           requestedRenderingMode: slideshowMode as
             | "background_plus_overlay"
@@ -790,7 +795,7 @@ export function CreatePage() {
   return (
     <Page
       title="Create"
-      description="Generate assets directly, build slideshows, or start a reusable workflow."
+      description={`Generate assets, slideshows, or workflow drafts inside ${activeWorkspace?.name ?? "this workspace"}.`}
     >
       <form className="panel grid gap-[var(--space-5)]" onSubmit={handleSubmit}>
         <div className="section-toolbar">

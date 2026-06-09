@@ -11,6 +11,7 @@ import {
 import { api } from "../convex/_generated/api";
 import { Sidebar } from "./components/AppShell";
 import { LoadingScreen, SignInScreen } from "./components/ui";
+import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { AccountsPage } from "./pages/AccountsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { BrandsPage } from "./pages/BrandsPage";
@@ -43,25 +44,27 @@ function AppContent() {
   if (!isSignedIn) return <SignInScreen />;
 
   return (
-    <div className={`app-shell${isWorkflowCanvasRoute ? " app-shell-canvas" : ""}`}>
-      <Sidebar />
-      <main className="workspace">
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/create" element={<CreatePage />} />
-          <Route path="/brands" element={<BrandsPage />} />
-          <Route path="/personas" element={<PersonasPage />} />
-          <Route path="/accounts" element={<AccountsPage />} />
-          <Route path="/workflows" element={<WorkflowsPage />} />
-          <Route path="/workflows/:workflowId" element={<WorkflowCanvasPage />} />
-          <Route path="/library" element={<LibraryPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <WorkspaceProvider>
+      <div className={`app-shell${isWorkflowCanvasRoute ? " app-shell-canvas" : ""}`}>
+        <Sidebar />
+        <main className="workspace">
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/create" element={<CreatePage />} />
+            <Route path="/brands" element={<BrandsPage />} />
+            <Route path="/personas" element={<PersonasPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/workflows" element={<WorkflowsPage />} />
+            <Route path="/workflows/:workflowId" element={<WorkflowCanvasPage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </WorkspaceProvider>
   );
 }
 

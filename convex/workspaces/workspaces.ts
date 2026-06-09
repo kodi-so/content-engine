@@ -221,11 +221,98 @@ export const upsertMember = mutation({
   },
 });
 
+export const upsertMemberByEmail = mutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    email: v.string(),
+    role: assignableWorkspaceRoleValidator,
+  },
+  handler: async (ctx, args) => {
+    const currentUserId = await requireCurrentUserId(ctx);
+    await requireWorkspaceMember(ctx, args.workspaceId, currentUserId, managerRoles);
+
+    const email = args.email.trim().toLowerCase();
+    if (!email) throw new Error("Email is required");
+
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("email"), email))
+      .first();
+    if (!user) {
+      throw new Error("That person needs to sign in once before they can be added");
+    }
+    if (user.subject === currentUserId) {
+      throw new Error("Use role changes for your own membership");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace_user", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("userId", user.subject)
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        role: args.role,
+        status: "active",
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("workspaceMembers", {
+      workspaceId: args.workspaceId,
+      userId: user.subject,
+      role: args.role,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const listMembers = query({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    const currentUserId = await requireCurrentUserId(ctx);
+    await requireWorkspaceMember(ctx, args.workspaceId, currentUserId);
+
+    const memberships = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    const rows = await Promise.all(
+      memberships.map(async (membership) => ({
+        membership,
+        user: await ctx.db
+          .query("users")
+          .withIndex("by_subject", (q) => q.eq("subject", membership.userId))
+          .unique(),
+      }))
+    );
+
+    return rows.sort((first, second) => {
+      if (first.membership.status !== second.membership.status) {
+        return first.membership.status === "active" ? -1 : 1;
+      }
+      const roleRank: Record<WorkspaceRole, number> = {
+        owner: 0,
+        admin: 1,
+        member: 2,
+        viewer: 3,
+      };
+      return roleRank[first.membership.role] - roleRank[second.membership.role];
+    });
+  },
+});
+
 export const setMemberRole = mutation({
   args: {
     workspaceId: v.id("workspaces"),
     userId: v.string(),
-    role: workspaceRoleValidator,
+    role: assignableWorkspaceRoleValidator,
   },
   handler: async (ctx, args) => {
     const currentUserId = await requireCurrentUserId(ctx);
@@ -235,7 +322,7 @@ export const setMemberRole = mutation({
       currentUserId,
       managerRoles
     );
-    if (workspace.ownerUserId === args.userId && args.role !== "owner") {
+    if (workspace.ownerUserId === args.userId) {
       throw new Error("Workspace owner must keep the owner role");
     }
 

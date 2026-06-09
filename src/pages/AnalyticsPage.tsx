@@ -1,12 +1,20 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Metric, Page } from "../components/ui";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 export function AnalyticsPage() {
-  const metrics = useQuery(api.publishing.metrics.list, {});
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const metrics = useQuery(
+    api.publishing.metrics.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}
+  );
 
   return (
-    <Page title="Analytics" description="Performance data will feed future workflow decisions.">
+    <Page
+      title="Analytics"
+      description={`Performance data for ${activeWorkspace?.name ?? "this workspace"}.`}
+    >
       <div className="metric-grid">
         <Metric label="Metric Snapshots" value={metrics?.length ?? 0} />
         <Metric

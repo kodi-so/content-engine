@@ -3,9 +3,14 @@ import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../../convex/_generated/api";
 import { EntityGrid, Field, FormPanel, Page } from "../components/ui";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 export function BrandsPage() {
-  const brands = useQuery(api.accounts.brands.list);
+  const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const brands = useQuery(
+    api.accounts.brands.list,
+    activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}
+  );
   const createBrand = useMutation(api.accounts.brands.create);
   const [name, setName] = useState("");
   const [niche, setNiche] = useState("");
@@ -16,6 +21,7 @@ export function BrandsPage() {
     if (!name.trim()) return;
 
     await createBrand({
+      ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
       name: name.trim(),
       niche: niche.trim() || undefined,
       voice: voice.trim() || undefined,
@@ -26,7 +32,10 @@ export function BrandsPage() {
   };
 
   return (
-    <Page title="Brands" description="Define the memory and strategy that each account runs on.">
+    <Page
+      title="Brands"
+      description={`Define the memory and strategy for ${activeWorkspace?.name ?? "this workspace"}.`}
+    >
       <FormPanel title="Create Brand" onSubmit={handleSubmit}>
         <Field label="Name" value={name} onChange={setName} placeholder="Habit Lab" />
         <Field label="Niche" value={niche} onChange={setNiche} placeholder="Self-improvement for busy founders" />

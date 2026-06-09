@@ -1,8 +1,9 @@
 import { SignOutButton, useUser } from "@clerk/clerk-react";
-import { BrainCircuit, LogOut } from "lucide-react";
+import { BrainCircuit, BriefcaseBusiness, LogOut, Settings } from "lucide-react";
 import { useState, type CSSProperties } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import { navItems } from "../app/navigation";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 type NavTooltipState = {
   label: string;
@@ -12,6 +13,14 @@ type NavTooltipState = {
 
 export function Sidebar() {
   const { user } = useUser();
+  const {
+    activeMembership,
+    activeWorkspace,
+    activeWorkspaceId,
+    isWorkspaceLoading,
+    setActiveWorkspaceId,
+    workspaces,
+  } = useWorkspace();
   const [navTooltip, setNavTooltip] = useState<NavTooltipState | null>(null);
   const navTooltipStyle = navTooltip
     ? ({
@@ -42,6 +51,36 @@ export function Sidebar() {
             Content Engine
             <small>Agent workspace</small>
           </span>
+        </div>
+
+        <div className="workspace-switcher">
+          <label className="workspace-switcher-field">
+            <span>Workspace</span>
+            <select
+              aria-label="Active workspace"
+              disabled={isWorkspaceLoading || !workspaces?.length}
+              value={activeWorkspaceId ?? ""}
+              onChange={(event) => setActiveWorkspaceId(event.target.value as typeof activeWorkspaceId)}
+            >
+              {!activeWorkspaceId ? <option value="">Loading</option> : null}
+              {workspaces?.map(({ workspace }) => (
+                <option key={workspace._id} value={workspace._id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="workspace-switcher-meta">
+            <span>
+              <BriefcaseBusiness size={13} />
+              {activeWorkspace?.workspaceType === "team" ? "Team" : "Personal"}
+            </span>
+            {activeMembership ? <span>{activeMembership.role}</span> : null}
+          </div>
+          <Link className="workspace-settings-link" to="/settings">
+            <Settings size={14} />
+            Settings
+          </Link>
         </div>
 
         <nav className="nav-list">
