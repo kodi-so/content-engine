@@ -1,4 +1,6 @@
 import { useAuth } from "@clerk/clerk-react";
+import { useMutation } from "convex/react";
+import { useEffect } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -6,6 +8,7 @@ import {
   Routes,
   useLocation,
 } from "react-router-dom";
+import { api } from "../convex/_generated/api";
 import { Sidebar } from "./components/AppShell";
 import { LoadingScreen, SignInScreen } from "./components/ui";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -13,6 +16,7 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { BrandsPage } from "./pages/BrandsPage";
 import { CreatePage } from "./pages/CreatePage";
 import { Dashboard } from "./pages/Dashboard";
+import { LandingPage } from "./pages/LandingPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { PersonasPage } from "./pages/PersonasPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -22,9 +26,20 @@ import { WorkflowsPage } from "./pages/WorkflowsPage";
 function AppContent() {
   const { isLoaded, isSignedIn } = useAuth();
   const location = useLocation();
+  const ensureCurrentUser = useMutation(api.auth.users.ensure);
   const isWorkflowCanvasRoute = /^\/workflows\/[^/]+/.test(location.pathname);
 
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void ensureCurrentUser();
+  }, [ensureCurrentUser, isLoaded, isSignedIn]);
+
   if (!isLoaded) return <LoadingScreen />;
+
+  if (location.pathname === "/") {
+    return <LandingPage />;
+  }
+
   if (!isSignedIn) return <SignInScreen />;
 
   return (
@@ -32,7 +47,7 @@ function AppContent() {
       <Sidebar />
       <main className="workspace">
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/brands" element={<BrandsPage />} />

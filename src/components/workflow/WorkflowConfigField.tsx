@@ -1,6 +1,9 @@
-import { Upload, X } from "lucide-react";
 import type { ChangeEvent } from "react";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
+import {
+  ReferenceAssetField,
+  type SelectableLibraryAsset,
+} from "../library/ReferenceAssetField";
 import type { WorkflowFlowNode } from "../../lib/workflow/workflowCanvasGraph";
 import {
   coerceConfigFieldValue,
@@ -27,8 +30,15 @@ export type WorkflowConfigFieldProps = {
   field: ConfigField;
   isUploadingImageReference: boolean;
   localFileFieldMeta: (fieldKey: string) => LocalFileFieldMeta | null;
+  libraryAssets?: SelectableLibraryAsset[];
   onBooleanConfigChange: (key: string, value: boolean) => void;
   onConfigChange: (key: string, value: unknown) => void;
+  onLibraryReferenceSelect: (
+    assets: SelectableLibraryAsset[],
+    configKey: string,
+    kind: LocalReferenceFileKind,
+    options?: { multiple?: boolean; maxCount?: number }
+  ) => void;
   onLocalReferenceFileUpload: (
     event: ChangeEvent<HTMLInputElement>,
     configKey: string,
@@ -59,8 +69,10 @@ export function WorkflowConfigField({
   field,
   isUploadingImageReference,
   localFileFieldMeta,
+  libraryAssets,
   onBooleanConfigChange,
   onConfigChange,
+  onLibraryReferenceSelect,
   onLocalReferenceFileUpload,
   onRemoveLocalReferenceFile,
   selectedImageModelUiContract,
@@ -138,65 +150,39 @@ export function WorkflowConfigField({
 
     return (
       <div className="workflow-inspector-field workflow-inspector-field-paired">
-        <span>{field.label}</span>
-        <div className={`workflow-reference-upload${localFilesDisabled ? " is-disabled" : ""}`}>
-          <label>
-            <Upload size={15} />
-            <span>{isUploadingImageReference ? "Uploading..." : "Upload files"}</span>
-            <input
-              accept={localFileMeta.accept}
-              disabled={isUploadingImageReference || localFilesDisabled}
-              multiple={localFileMeta.multiple}
-              onChange={(event) => {
-                onLocalReferenceFileUpload(event, field.key, localFileMeta.kind, {
-                  multiple: localFileMeta.multiple,
-                  maxCount: localFileMeta.maxCount,
-                });
-              }}
-              type="file"
-            />
-          </label>
-        </div>
-        {files.length ? (
-          <div className="workflow-reference-list">
-            {files.map((file) => (
-              <div className="workflow-reference-item" key={file.id}>
-                {file.kind === "image" ? (
-                  <img alt="" src={file.storageUrl} />
-                ) : (
-                  <span className="workflow-reference-file-kind">
-                    {String(file.kind).slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-                <span>{file.title}</span>
-                <button
-                  aria-label={`Remove ${file.title}`}
-                  disabled={localFilesDisabled}
-                  onClick={() => onRemoveLocalReferenceFile(field.key, file.id, localFileMeta.kind)}
-                  type="button"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <small>
-            {localFilesDisabled
-              ? localFileMeta.disabledCopy
-              : isImageGenerationNode && selectedImageModelUiContract?.images.required
-                ? "At least one image is required for this model."
-                : "No files uploaded."}
-            {localFileMeta.maxCount
-              ? ` Up to ${localFileMeta.maxCount} allowed.`
-              : !localFileMeta.multiple
-                ? " One image allowed."
-                : null}
-          </small>
-        )}
-        {localFilesDisabled && files.length ? (
-          <small>Uploaded files are saved here but ignored while the input toggle is enabled.</small>
-        ) : null}
+        <ReferenceAssetField
+          accept={localFileMeta.accept}
+          disabled={localFilesDisabled}
+          disabledCopy={localFileMeta.disabledCopy}
+          files={files}
+          helperText={
+            isImageGenerationNode && selectedImageModelUiContract?.images.required
+              ? "At least one image is required for this model."
+              : "No files selected."
+          }
+          isUploading={isUploadingImageReference}
+          kind={localFileMeta.kind}
+          label={field.label}
+          libraryAssets={libraryAssets}
+          maxCount={localFileMeta.maxCount}
+          multiple={localFileMeta.multiple}
+          onLibraryAssetsSelect={(assets) =>
+            onLibraryReferenceSelect(assets, field.key, localFileMeta.kind, {
+              multiple: localFileMeta.multiple,
+              maxCount: localFileMeta.maxCount,
+            })
+          }
+          onRemoveFile={(fileId) =>
+            onRemoveLocalReferenceFile(field.key, fileId, localFileMeta.kind)
+          }
+          onUpload={(event) => {
+            onLocalReferenceFileUpload(event, field.key, localFileMeta.kind, {
+              multiple: localFileMeta.multiple,
+              maxCount: localFileMeta.maxCount,
+            });
+          }}
+          required={field.required}
+        />
         {field.description ? <small>{field.description}</small> : null}
       </div>
     );

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, mutation, query } from "../_generated/server";
+import { action, internalQuery, mutation, query } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { storeGeneratedAsset } from "../content/assetStorage";
 import { getModelProvider } from "../providers";
@@ -131,6 +131,13 @@ export const list = query({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .collect();
+  },
+});
+
+export const getForRunner = internalQuery({
+  args: { id: v.id("creativeAssets") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
   },
 });
 

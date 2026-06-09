@@ -16,7 +16,6 @@ export type CreateGenerationFieldGroups = {
   promptFields: ConfigField[];
   referenceFields: ConfigField[];
   coreFields: ConfigField[];
-  advancedFields: ConfigField[];
 };
 
 const createOnlyHiddenFieldKeys = new Set([
@@ -44,7 +43,6 @@ const coreFieldKeys = new Set([
   "count",
   "durationSeconds",
   "mode",
-  "resolution",
   "voice",
 ]);
 
@@ -57,14 +55,14 @@ export function defaultCreateGenerationConfig(mode: CreateMode): Record<string, 
     case "image":
       return {
         prompt: "",
-        aspectRatio: "9:16",
+        aspectRatio: "4:5",
         count: 1,
         localReferenceImages: [],
       };
     case "video":
       return {
         prompt: "",
-        aspectRatio: "9:16",
+        aspectRatio: "4:5",
         durationSeconds: 5,
         startEndFrameMode: false,
         localStartFrameImages: [],
@@ -121,7 +119,6 @@ export function groupCreateGenerationFields(
     promptFields: [],
     referenceFields: [],
     coreFields: [],
-    advancedFields: [],
   };
 
   for (const field of fields) {
@@ -129,10 +126,8 @@ export function groupCreateGenerationFields(
       groups.promptFields.push(field);
     } else if (referenceFieldKeys.has(field.key)) {
       groups.referenceFields.push(field);
-    } else if (coreFieldKeys.has(field.key) && !field.advanced) {
+    } else if (coreFieldKeys.has(field.key)) {
       groups.coreFields.push(field);
-    } else {
-      groups.advancedFields.push(field);
     }
   }
 

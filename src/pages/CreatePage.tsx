@@ -1,22 +1,27 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowRight,
+  Check,
   FileText,
   Image,
   Library,
+  LoaderCircle,
   Music,
   Sparkles,
+  Trash2,
   Video,
   Workflow,
 } from "lucide-react";
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { Field, Page, Panel, Select, TextArea } from "../components/ui";
 import {
   CreateGenerationConfigField,
   type CreateLocalFileFieldMeta,
 } from "../components/create/CreateGenerationConfigField";
+import type { SelectableLibraryAsset } from "../components/library/ReferenceAssetField";
 import { WorkflowSelect } from "../components/workflow/WorkflowSelect";
 import { fileToDataUrl } from "../lib/browser/dataUrl";
 import {
@@ -49,10 +54,12 @@ import type { BrandId } from "../types";
 
 type CreateResult = {
   kind: CreateMode;
-  status: "pending" | "complete" | "error";
+  status: "pending" | "review" | "saved" | "error";
+  artifactIds?: Id<"artifacts">[];
   title: string;
   detail: string;
   model?: string;
+  prompt?: string;
   url?: string;
 };
 
@@ -126,14 +133,26 @@ function mediaPreviewTitle(kind: CreateMode) {
   }
 }
 
-function CreateResultPanel({ result }: { result: CreateResult }) {
+function CreateResultPanel({
+  isReviewActionPending,
+  onReject,
+  onSave,
+  result,
+}: {
+  isReviewActionPending: boolean;
+  onReject: (result: CreateResult) => void;
+  onSave: (result: CreateResult) => void;
+  result: CreateResult;
+}) {
   const isPending = result.status === "pending";
   const isError = result.status === "error";
+  const isReview = result.status === "review";
+  const isSaved = result.status === "saved";
 
   return (
     <aside className="grid content-start rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-page-quiet)] p-[var(--space-4)]">
       <div className="entity-eyebrow">
-        {isPending ? "Generating" : isError ? "Needs attention" : "Created"}
+        {isPending ? "Generating" : isError ? "Needs attention" : isSaved ? "Saved" : "Preview"}
       </div>
       <h3 className="m-0 mt-[var(--space-1)] text-[1.05rem] font-[780]">
         {result.title}
@@ -156,15 +175,14 @@ function CreateResultPanel({ result }: { result: CreateResult }) {
             </div>
           ) : (
             <div className="mx-auto grid aspect-[9/16] max-h-[26rem] w-full max-w-[16rem] place-items-center rounded-[var(--radius-sm)] border border-dashed border-[var(--color-border)] bg-[var(--color-page)]">
-              {result.kind === "video" ? (
-                <Video className="animate-pulse text-[var(--color-primary)]" size={28} />
-              ) : (
-                <Image className="animate-pulse text-[var(--color-primary)]" size={28} />
-              )}
+              <LoaderCircle
+                className="animate-spin text-[var(--color-primary)]"
+                size={32}
+              />
             </div>
           )}
           <div className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page)] p-[var(--space-3)] text-[0.78rem] text-[var(--color-ink-muted)]">
-            <strong className="block text-[var(--color-ink)]">Saving to media library</strong>
+            <strong className="block text-[var(--color-ink)]">Creating preview</strong>
             {result.model ? <span>{result.model}</span> : null}
           </div>
         </div>
@@ -186,7 +204,41 @@ function CreateResultPanel({ result }: { result: CreateResult }) {
         )
       ) : null}
 
-      {result.status === "complete" ? (
+      {result.prompt && !isPending ? (
+        <details className="mt-[var(--space-3)] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page)] p-[var(--space-3)] text-[0.78rem] text-[var(--color-ink-muted)]">
+          <summary className="cursor-pointer list-none font-[760] text-[var(--color-ink)] marker:hidden">
+            Prompt used
+          </summary>
+          <p className="m-0 mt-[var(--space-2)] max-h-[9rem] overflow-auto leading-[1.45]">
+            {result.prompt}
+          </p>
+        </details>
+      ) : null}
+
+      {isReview ? (
+        <div className="mt-[var(--space-3)] flex flex-wrap gap-[var(--space-2)]">
+          <button
+            className="primary-button"
+            disabled={isReviewActionPending}
+            onClick={() => onSave(result)}
+            type="button"
+          >
+            <Check size={16} />
+            {isReviewActionPending ? "Saving..." : "Save"}
+          </button>
+          <button
+            className="secondary-button text-[var(--color-danger)]"
+            disabled={isReviewActionPending}
+            onClick={() => onReject(result)}
+            type="button"
+          >
+            <Trash2 size={16} />
+            {isReviewActionPending ? "Rejecting..." : "Reject"}
+          </button>
+        </div>
+      ) : null}
+
+      {isSaved ? (
         <Link className="secondary-button mt-[var(--space-3)] w-fit" to="/library">
           <Library size={16} />
           Open library
@@ -200,8 +252,11 @@ export function CreatePage() {
   const navigate = useNavigate();
   const brands = useQuery(api.accounts.brands.list);
   const workflows = useQuery(api.workflows.definitions.list);
+  const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, {});
   const createWorkflow = useMutation(api.workflows.definitions.create);
   const createSlideshow = useMutation(api.content.requests.createSlideshow);
+  const deleteArtifact = useMutation(api.artifacts.records.remove);
+  const saveArtifactToLibrary = useMutation(api.artifacts.records.saveToLibrary);
   const uploadReference = useAction(api.storage.files.uploadBase64ImageWithMetadata);
   const generateImage = useAction(api.content.createAssets.generateImage);
   const generateVideo = useAction(api.content.createAssets.generateVideo);
@@ -226,6 +281,7 @@ export function CreatePage() {
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingReference, setIsUploadingReference] = useState(false);
+  const [isReviewActionPending, setIsReviewActionPending] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
 
   const selectedWorkflowBrandId = mode === "workflow" ? brandId : "";
@@ -421,6 +477,97 @@ export function CreatePage() {
     }));
   };
 
+  const handleLibraryReferenceSelect = (
+    assets: SelectableLibraryAsset[],
+    configKey: string,
+    kind: LocalReferenceFileKind,
+    options: { multiple?: boolean; maxCount?: number } = {}
+  ) => {
+    if (!assets.length) return;
+
+    setGenerationConfig((current) => {
+      const existingFiles = localReferenceFilesFromConfig(current, configKey, kind);
+      const remainingSlots = options.maxCount
+        ? Math.max(0, options.maxCount - existingFiles.length)
+        : options.multiple === false
+          ? 1
+          : assets.length;
+      const selectedAssets = assets.slice(0, remainingSlots);
+
+      if (!selectedAssets.length) {
+        setStatus(
+          options.maxCount
+            ? `This field allows up to ${options.maxCount} file${options.maxCount === 1 ? "" : "s"}.`
+            : "This field only allows one file."
+        );
+        return current;
+      }
+
+      const selectedFiles = selectedAssets.map((asset) => ({
+        id: asset.id,
+        source: asset.source,
+        sourceId: asset.sourceId,
+        storageUrl: asset.storageUrl,
+        title: asset.title,
+        mimeType: asset.mimeType,
+        kind: asset.mediaKind === "media" ? kind : asset.mediaKind,
+      }));
+
+      setStatus("");
+      return {
+        ...current,
+        [configKey]: [
+          ...(options.multiple === false
+            ? []
+            : localReferenceFilesFromConfig(current, configKey, kind)),
+          ...selectedFiles,
+        ],
+      };
+    });
+  };
+
+  const saveResultToLibrary = async (currentResult: CreateResult) => {
+    const artifactIds = currentResult.artifactIds ?? [];
+    if (!artifactIds.length || isReviewActionPending) return;
+
+    setIsReviewActionPending(true);
+    setStatus("");
+    try {
+      await Promise.all(
+        artifactIds.map((artifactId) => saveArtifactToLibrary({ id: artifactId }))
+      );
+      setResult({
+        ...currentResult,
+        status: "saved",
+        detail: `${artifactIds.length} ${currentResult.kind}${artifactIds.length === 1 ? "" : "s"} saved to the media library.`,
+      });
+      setStatus("Saved to library");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to save preview");
+    } finally {
+      setIsReviewActionPending(false);
+    }
+  };
+
+  const rejectResult = async (currentResult: CreateResult) => {
+    const artifactIds = currentResult.artifactIds ?? [];
+    if (!artifactIds.length || isReviewActionPending) return;
+
+    setIsReviewActionPending(true);
+    setStatus("");
+    try {
+      await Promise.all(
+        artifactIds.map((artifactId) => deleteArtifact({ id: artifactId }))
+      );
+      setResult(null);
+      setStatus("Preview rejected");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to reject preview");
+    } finally {
+      setIsReviewActionPending(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const creativeRequest = currentPrompt;
@@ -432,8 +579,9 @@ export function CreatePage() {
         kind: mode,
         status: "pending",
         title: mediaPreviewTitle(mode),
-        detail: "Generating and saving to the media library.",
+        detail: "Generating a preview. Save it if it looks right.",
         model: selectedProviderModel?.displayName ?? selectedModel,
+        prompt: creativeRequest,
       });
     } else {
       setResult(null);
@@ -507,9 +655,10 @@ export function CreatePage() {
         });
         setResult({
           kind: "slideshow",
-          status: "complete",
+          status: "saved",
           title: resultTitle(creativeRequest, "Slideshow queued"),
           detail: `Slideshow request queued. Request ID: ${requestId}`,
+          prompt: creativeRequest,
         });
       }
 
@@ -531,10 +680,12 @@ export function CreatePage() {
         });
         setResult({
           kind: "image",
-          status: "complete",
+          status: "review",
+          artifactIds: generated.artifactIds,
           title: generated.assets[0]?.title ?? resultTitle(creativeRequest, "Generated image"),
-          detail: `${generated.assets.length} image${generated.assets.length === 1 ? "" : "s"} saved to the media library.`,
+          detail: `${generated.assets.length} image${generated.assets.length === 1 ? "" : "s"} ready to review.`,
           model: selectedProviderModel?.displayName ?? selectedModel,
+          prompt: creativeRequest,
           url: generated.assets[0]?.storageUrl,
         });
       }
@@ -577,10 +728,12 @@ export function CreatePage() {
         });
         setResult({
           kind: "video",
-          status: "complete",
+          status: "review",
+          artifactIds: [generated.artifactId],
           title: generated.title,
-          detail: "Video saved to the media library.",
+          detail: "Video ready to review.",
           model: selectedProviderModel?.displayName ?? selectedModel,
+          prompt: creativeRequest,
           url: generated.storageUrl,
         });
       }
@@ -602,17 +755,17 @@ export function CreatePage() {
         });
         setResult({
           kind: "audio",
-          status: "complete",
+          status: "review",
+          artifactIds: [generated.artifactId],
           title: generated.title,
-          detail: "Audio saved to the media library.",
+          detail: "Audio ready to review.",
           model: selectedProviderModel?.displayName ?? selectedModel,
+          prompt: creativeRequest,
           url: generated.storageUrl,
         });
       }
 
-      if (isCreateGenerationMode(mode)) {
-        setGenerationConfig(defaultCreateGenerationConfig(mode));
-      } else {
+      if (!isCreateGenerationMode(mode)) {
         setPrompt("");
       }
       setStatus("");
@@ -626,6 +779,7 @@ export function CreatePage() {
           title: "Generation failed",
           detail: message,
           model: selectedProviderModel?.displayName ?? selectedModel,
+          prompt: creativeRequest,
         });
       }
     } finally {
@@ -708,7 +862,9 @@ export function CreatePage() {
                         isUploadingReference={isUploadingReference}
                         key={field.key}
                         localFileFieldMeta={localFileFieldMeta}
+                        libraryAssets={selectableLibraryAssets}
                         onConfigChange={handleGenerationConfigChange}
+                        onLibraryReferenceSelect={handleLibraryReferenceSelect}
                         onLocalReferenceFileUpload={handleReferenceUpload}
                         onRemoveLocalReferenceFile={removeReferenceUpload}
                       />
@@ -746,7 +902,9 @@ export function CreatePage() {
                           isUploadingReference={isUploadingReference}
                           key={field.key}
                           localFileFieldMeta={localFileFieldMeta}
+                          libraryAssets={selectableLibraryAssets}
                           onConfigChange={handleGenerationConfigChange}
+                          onLibraryReferenceSelect={handleLibraryReferenceSelect}
                           onLocalReferenceFileUpload={handleReferenceUpload}
                           onRemoveLocalReferenceFile={removeReferenceUpload}
                         />
@@ -768,7 +926,9 @@ export function CreatePage() {
                           isUploadingReference={isUploadingReference}
                           key={field.key}
                           localFileFieldMeta={localFileFieldMeta}
+                          libraryAssets={selectableLibraryAssets}
                           onConfigChange={handleGenerationConfigChange}
+                          onLibraryReferenceSelect={handleLibraryReferenceSelect}
                           onLocalReferenceFileUpload={handleReferenceUpload}
                           onRemoveLocalReferenceFile={removeReferenceUpload}
                         />
@@ -777,30 +937,6 @@ export function CreatePage() {
                   </div>
                 ) : null}
 
-                {generationFieldGroups.advancedFields.length ? (
-                  <details className="group border-t border-[var(--color-border)] pt-[var(--space-4)]">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-[var(--space-3)] text-[0.9rem] font-[800] text-[var(--color-ink)] marker:hidden">
-                      Advanced settings
-                      <span className="rounded-full border border-[var(--color-border)] px-[var(--space-2)] py-[0.1rem] text-[0.72rem] font-[780] text-[var(--color-ink-muted)]">
-                        {generationFieldGroups.advancedFields.length}
-                      </span>
-                    </summary>
-                    <div className="mt-[var(--space-3)] grid min-w-0 gap-[var(--space-3)] md:grid-cols-2">
-                      {generationFieldGroups.advancedFields.map((field) => (
-                        <CreateGenerationConfigField
-                          config={generationConfig}
-                          field={field}
-                          isUploadingReference={isUploadingReference}
-                          key={field.key}
-                          localFileFieldMeta={localFileFieldMeta}
-                          onConfigChange={handleGenerationConfigChange}
-                          onLocalReferenceFileUpload={handleReferenceUpload}
-                          onRemoveLocalReferenceFile={removeReferenceUpload}
-                        />
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
               </>
             ) : (
               <TextArea
@@ -837,7 +973,18 @@ export function CreatePage() {
             {status && <p className="muted">{status}</p>}
           </section>
 
-          {result ? <CreateResultPanel result={result} /> : null}
+          {result ? (
+            <CreateResultPanel
+              isReviewActionPending={isReviewActionPending}
+              onReject={(currentResult) => {
+                void rejectResult(currentResult);
+              }}
+              onSave={(currentResult) => {
+                void saveResultToLibrary(currentResult);
+              }}
+              result={result}
+            />
+          ) : null}
         </div>
       </form>
 

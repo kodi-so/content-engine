@@ -43,6 +43,7 @@ import {
   imageProviderInputFromModelSchema,
   modelProviderNameForNode,
 } from "../../runtime/providerInputs";
+import { assertLibraryReferencesExistForRun } from "../../runtime/libraryReferences";
 
 export async function executeAudioGenerationNode({
   ctx,
@@ -56,6 +57,11 @@ export async function executeAudioGenerationNode({
 
   if (isAudioGenerationNode(node)) {
     const config = objectValue(node.config);
+    await assertLibraryReferencesExistForRun(ctx, {
+      config,
+      nodeLabel: node.label,
+      userId: context.run.userId,
+    });
     const inputs = resolvedInputs.inputs ?? {};
     const providerName = modelProviderNameForNode(node);
     const provider = getModelProvider(providerName);

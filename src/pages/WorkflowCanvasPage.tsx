@@ -20,6 +20,7 @@ import { WorkflowConfigField } from "../components/workflow/WorkflowConfigField"
 import { WorkflowExecutionPanel } from "../components/workflow/WorkflowExecutionPanel";
 import { WorkflowNodeInspector } from "../components/workflow/WorkflowNodeInspector";
 import { WorkflowNodePalette } from "../components/workflow/WorkflowNodePalette";
+import type { SelectableLibraryAsset } from "../components/library/ReferenceAssetField";
 import type {
   WorkflowGraph,
   WorkflowNodeType,
@@ -38,7 +39,11 @@ import {
   type WorkflowCanvasNodeExecutionStatus,
   type WorkflowFlowNode,
 } from "../lib/workflow/workflowCanvasGraph";
-import type { ConfigField } from "../lib/workflow/workflowConfigFields";
+import {
+  localReferenceFilesFromConfig,
+  type ConfigField,
+  type LocalReferenceFileKind,
+} from "../lib/workflow/workflowConfigFields";
 import { getWorkflowNodeDefinition } from "../lib/workflow/workflowNodeCatalog";
 import { validateWorkflowGraph } from "../lib/workflow/workflowGraphValidation";
 import { recommendedModelIdForNodeType } from "../lib/workflow/workflowModelCatalog";
@@ -80,6 +85,10 @@ export function WorkflowCanvasPage() {
   const workflowRuns = useQuery(
     api.workflows.runs.list,
     workflowId ? { workflowId: workflowId as Id<"workflows"> } : "skip"
+  );
+  const selectableLibraryAssets = useQuery(
+    api.library.assets.listSelectable,
+    workflow?.brandId ? { brandId: workflow.brandId } : {}
   );
   const updateGraph = useMutation(api.workflows.definitions.updateGraph);
   const updateNodePositions = useMutation(api.workflows.definitions.updateNodePositions);
@@ -454,6 +463,59 @@ export function WorkflowCanvasPage() {
     uploadReferenceImage,
   });
 
+  const handleLibraryReferenceSelect = useCallback(
+    (
+      assets: SelectableLibraryAsset[],
+      configKey: string,
+      kind: LocalReferenceFileKind,
+      options: { multiple?: boolean; maxCount?: number } = {}
+    ) => {
+      if (!assets.length) return;
+
+      updateSelectedNodeData((data) => {
+        const existingFiles = localReferenceFilesFromConfig(data.config, configKey, kind);
+        const remainingSlots = options.maxCount
+          ? Math.max(0, options.maxCount - existingFiles.length)
+          : options.multiple === false
+            ? 1
+            : assets.length;
+        const selectedAssets = assets.slice(0, remainingSlots);
+
+        if (!selectedAssets.length) {
+          setSaveStatus(
+            options.maxCount
+              ? `This field allows up to ${options.maxCount} file${options.maxCount === 1 ? "" : "s"}.`
+              : "This field only allows one file."
+          );
+          return {};
+        }
+
+        const selectedFiles = selectedAssets.map((asset) => ({
+          id: asset.id,
+          source: asset.source,
+          sourceId: asset.sourceId,
+          storageUrl: asset.storageUrl,
+          title: asset.title,
+          mimeType: asset.mimeType,
+          kind: asset.mediaKind === "media" ? kind : asset.mediaKind,
+        }));
+
+        return {
+          config: {
+            ...data.config,
+            [configKey]: [
+              ...(options.multiple === false
+                ? []
+                : localReferenceFilesFromConfig(data.config, configKey, kind)),
+              ...selectedFiles,
+            ],
+          },
+        };
+      });
+    },
+    [updateSelectedNodeData]
+  );
+
   const handleSaveGraph = useCallback(async () => {
     if (!workflow) return;
 
@@ -536,8 +598,10 @@ export function WorkflowCanvasPage() {
         isUploadingImageReference={isUploadingImageReference}
         key={field.key}
         localFileFieldMeta={localFileFieldMeta}
+        libraryAssets={selectableLibraryAssets}
         onBooleanConfigChange={updateSelectedBooleanConfigValue}
         onConfigChange={updateSelectedConfigValue}
+        onLibraryReferenceSelect={handleLibraryReferenceSelect}
         onLocalReferenceFileUpload={(event, configKey, kind, options) => {
           void handleLocalReferenceFileUpload(event, configKey, kind, options);
         }}

@@ -13,6 +13,7 @@ import {
   modelProviderValidator,
   reviewStatusValidator,
 } from "../validators";
+import { ensureCurrentUser } from "../auth/users";
 
 function reviewResolution(
   artifacts: Array<{ reviewStatus: string } | null>
@@ -173,37 +174,56 @@ export const list = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
+    const userId = identity.subject;
 
     if (args.workflowRunId) {
-      return await ctx.db
+      const run = await ctx.db.get(args.workflowRunId);
+      if (!run || run.userId !== userId) return [];
+
+      const artifacts = await ctx.db
         .query("artifacts")
         .withIndex("by_workflow_run", (q) =>
           q.eq("workflowRunId", args.workflowRunId!)
         )
         .collect();
+      return artifacts.filter((artifact) => artifact.userId === userId);
     }
 
     if (args.contentRequestId) {
+      const request = await ctx.db.get(args.contentRequestId);
+      if (!request || request.userId !== userId) return [];
+
       const artifacts = await ctx.db
         .query("artifacts")
         .withIndex("by_content_request", (q) =>
           q.eq("contentRequestId", args.contentRequestId!)
         )
         .collect();
-      return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
+      return artifacts.filter(
+        (artifact) =>
+          artifact.userId === userId &&
+          (args.includeDebug || isLibraryArtifact(artifact))
+      );
     }
 
     if (args.brandId) {
+      const brand = await ctx.db.get(args.brandId);
+      if (!brand || brand.userId !== userId) return [];
+
       const artifacts = await ctx.db
         .query("artifacts")
         .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
         .collect();
-      return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
+      return artifacts.filter(
+        (artifact) =>
+          artifact.userId === userId &&
+          (args.includeDebug || isLibraryArtifact(artifact))
+      );
     }
 
     const artifacts = await ctx.db
       .query("artifacts")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .collect();
     return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
@@ -278,12 +298,11 @@ export const create = mutation({
     reviewStatus: v.optional(reviewStatusValidator),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const { userId } = await ensureCurrentUser(ctx);
 
     const now = Date.now();
     return await ctx.db.insert("artifacts", {
-      userId: identity.subject,
+      userId,
       ...args,
       reviewStatus: args.reviewStatus ?? "not_required",
       createdAt: now,
@@ -354,11 +373,10 @@ export const setReviewStatus = mutation({
     reviewStatus: reviewStatusValidator,
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const { userId } = await ensureCurrentUser(ctx);
 
     const artifact = await ctx.db.get(args.id);
-    if (!artifact || artifact.userId !== identity.subject) {
+    if (!artifact || artifact.userId !== userId) {
       throw new Error("Artifact not found");
     }
 
@@ -375,24 +393,41 @@ export const setReviewStatus = mutation({
   },
 });
 
+export const saveToLibrary = mutation({
+  args: { id: v.id("artifacts") },
+  handler: async (ctx, args) => {
+    const { userId } = await ensureCurrentUser(ctx);
+
+    const artifact = await ctx.db.get(args.id);
+    if (!artifact || artifact.userId !== userId) {
+      throw new Error("Artifact not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      lifecycle: "saved",
+      reviewStatus: "approved",
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const requestRevision = mutation({
   args: {
     id: v.id("artifacts"),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const { userId } = await ensureCurrentUser(ctx);
 
     const artifact = await ctx.db.get(args.id);
-    if (!artifact || artifact.userId !== identity.subject) {
+    if (!artifact || artifact.userId !== userId) {
       throw new Error("Artifact not found");
     }
 
     const now = Date.now();
     const data = appendRevisionRequest(artifact, {
       note: args.note,
-      requestedBy: identity.subject,
+      requestedBy: userId,
       requestedAt: now,
     });
 
@@ -429,11 +464,10 @@ export const requestRevision = mutation({
 export const remove = mutation({
   args: { id: v.id("artifacts") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const { userId } = await ensureCurrentUser(ctx);
 
     const artifact = await ctx.db.get(args.id);
-    if (!artifact || artifact.userId !== identity.subject) {
+    if (!artifact || artifact.userId !== userId) {
       throw new Error("Artifact not found");
     }
 
@@ -446,7 +480,7 @@ export const remove = mutation({
         .collect();
 
       for (const plan of plans) {
-        if (plan.userId !== identity.subject) continue;
+        if (plan.userId !== userId) continue;
         if (!plan.artifactIds.some((artifactId) => artifactId === args.id)) {
           continue;
         }

@@ -14,6 +14,7 @@ import type * as accounts_personas from "../accounts/personas.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as artifacts_records from "../artifacts/records.js";
 import type * as artifacts_regeneration from "../artifacts/regeneration.js";
+import type * as auth_users from "../auth/users.js";
 import type * as content_assetStorage from "../content/assetStorage.js";
 import type * as content_createAssets from "../content/createAssets.js";
 import type * as content_dryRun from "../content/dryRun.js";
@@ -30,6 +31,7 @@ import type * as content_slideshows from "../content/slideshows.js";
 import type * as content_types from "../content/types.js";
 import type * as http from "../http.js";
 import type * as lib_text from "../lib/text.js";
+import type * as library_assets from "../library/assets.js";
 import type * as mcp_apiKeyRecords from "../mcp/apiKeyRecords.js";
 import type * as mcp_apiKeys from "../mcp/apiKeys.js";
 import type * as mcp_http from "../mcp/http.js";
@@ -79,6 +81,7 @@ import type * as workflows_runtime_executionTypes from "../workflows/runtime/exe
 import type * as workflows_runtime_generationWaiters from "../workflows/runtime/generationWaiters.js";
 import type * as workflows_runtime_graphExecution from "../workflows/runtime/graphExecution.js";
 import type * as workflows_runtime_inputValues from "../workflows/runtime/inputValues.js";
+import type * as workflows_runtime_libraryReferences from "../workflows/runtime/libraryReferences.js";
 import type * as workflows_runtime_mediaNodeItems from "../workflows/runtime/mediaNodeItems.js";
 import type * as workflows_runtime_nodeRuntime from "../workflows/runtime/nodeRuntime.js";
 import type * as workflows_runtime_outputRefs from "../workflows/runtime/outputRefs.js";
@@ -99,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "artifacts/records": typeof artifacts_records;
   "artifacts/regeneration": typeof artifacts_regeneration;
+  "auth/users": typeof auth_users;
   "content/assetStorage": typeof content_assetStorage;
   "content/createAssets": typeof content_createAssets;
   "content/dryRun": typeof content_dryRun;
@@ -115,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "content/types": typeof content_types;
   http: typeof http;
   "lib/text": typeof lib_text;
+  "library/assets": typeof library_assets;
   "mcp/apiKeyRecords": typeof mcp_apiKeyRecords;
   "mcp/apiKeys": typeof mcp_apiKeys;
   "mcp/http": typeof mcp_http;
@@ -164,6 +169,7 @@ declare const fullApi: ApiFromModules<{
   "workflows/runtime/generationWaiters": typeof workflows_runtime_generationWaiters;
   "workflows/runtime/graphExecution": typeof workflows_runtime_graphExecution;
   "workflows/runtime/inputValues": typeof workflows_runtime_inputValues;
+  "workflows/runtime/libraryReferences": typeof workflows_runtime_libraryReferences;
   "workflows/runtime/mediaNodeItems": typeof workflows_runtime_mediaNodeItems;
   "workflows/runtime/nodeRuntime": typeof workflows_runtime_nodeRuntime;
   "workflows/runtime/outputRefs": typeof workflows_runtime_outputRefs;

@@ -7,17 +7,22 @@ export const list = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
+    const userId = identity.subject;
 
     if (args.brandId) {
-      return await ctx.db
+      const brand = await ctx.db.get(args.brandId);
+      if (!brand || brand.userId !== userId) return [];
+
+      const metrics = await ctx.db
         .query("postMetrics")
         .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
         .collect();
+      return metrics.filter((metric) => metric.userId === userId);
     }
 
     return await ctx.db
       .query("postMetrics")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .collect();
   },

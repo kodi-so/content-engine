@@ -43,6 +43,7 @@ import {
   imageProviderInputFromModelSchema,
   modelProviderNameForNode,
 } from "../../runtime/providerInputs";
+import { assertLibraryReferencesExistForRun } from "../../runtime/libraryReferences";
 
 export async function executeVideoTransformNode({
   ctx,
@@ -56,6 +57,11 @@ export async function executeVideoTransformNode({
 
   if (isLipsyncNode(node)) {
     const config = objectValue(node.config);
+    await assertLibraryReferencesExistForRun(ctx, {
+      config,
+      nodeLabel: node.label,
+      userId: context.run.userId,
+    });
     const inputs = resolvedInputs.inputs ?? {};
     const providerName = modelProviderNameForNode(node);
     const provider = getModelProvider(providerName);
@@ -287,6 +293,11 @@ export async function executeVideoTransformNode({
 
   if (isAiVideoEditorNode(node)) {
     const config = objectValue(node.config);
+    await assertLibraryReferencesExistForRun(ctx, {
+      config,
+      nodeLabel: node.label,
+      userId: context.run.userId,
+    });
     const inputs = resolvedInputs.inputs ?? {};
     const providerName = modelProviderNameForNode(node);
     const provider = getModelProvider(providerName);

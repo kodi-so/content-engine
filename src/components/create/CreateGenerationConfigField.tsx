@@ -1,5 +1,8 @@
-import { Upload, X } from "lucide-react";
 import type { ChangeEvent } from "react";
+import {
+  ReferenceAssetField,
+  type SelectableLibraryAsset,
+} from "../library/ReferenceAssetField";
 import {
   coerceConfigFieldValue,
   configFieldValue,
@@ -24,7 +27,14 @@ type CreateGenerationConfigFieldProps = {
   field: ConfigField;
   isUploadingReference: boolean;
   localFileFieldMeta: (fieldKey: string) => CreateLocalFileFieldMeta | null;
+  libraryAssets?: SelectableLibraryAsset[];
   onConfigChange: (key: string, value: unknown) => void;
+  onLibraryReferenceSelect: (
+    assets: SelectableLibraryAsset[],
+    configKey: string,
+    kind: LocalReferenceFileKind,
+    options?: { multiple?: boolean; maxCount?: number }
+  ) => void;
   onLocalReferenceFileUpload: (
     event: ChangeEvent<HTMLInputElement>,
     configKey: string,
@@ -60,7 +70,9 @@ export function CreateGenerationConfigField({
   field,
   isUploadingReference,
   localFileFieldMeta,
+  libraryAssets,
   onConfigChange,
+  onLibraryReferenceSelect,
   onLocalReferenceFileUpload,
   onRemoveLocalReferenceFile,
 }: CreateGenerationConfigFieldProps) {
@@ -75,64 +87,34 @@ export function CreateGenerationConfigField({
     );
 
     return (
-      <div className={`${fieldShellClass}${className ? ` ${className}` : ""}`}>
-        <span className={fieldLabelClass}>
-          {field.label}
-          {field.required ? " *" : ""}
-        </span>
-        <div>
-          <label className="inline-flex min-h-[4.5rem] w-full cursor-pointer items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-sm)] border border-dashed border-[var(--color-border)] bg-[var(--color-page)] px-[var(--space-3)] text-[0.84rem] font-[760] text-[var(--color-ink)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-tinted)]">
-            <Upload size={15} />
-            <span>{isUploadingReference ? "Uploading..." : "Upload files"}</span>
-            <input
-              className="hidden"
-              accept={localFileMeta.accept}
-              disabled={isUploadingReference}
-              multiple={localFileMeta.multiple}
-              onChange={(event) =>
-                onLocalReferenceFileUpload(event, field.key, localFileMeta.kind, {
-                  multiple: localFileMeta.multiple,
-                  maxCount: localFileMeta.maxCount,
-                })
-              }
-              type="file"
-            />
-          </label>
-        </div>
-        {files.length ? (
-          <div className="workflow-reference-list">
-            {files.map((file) => (
-              <div className="workflow-reference-item" key={file.id}>
-                {file.kind === "image" ? (
-                  <img alt="" src={file.storageUrl} />
-                ) : (
-                  <span className="workflow-reference-file-kind">
-                    {String(file.kind).slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-                <span>{file.title}</span>
-                <button
-                  aria-label={`Remove ${file.title}`}
-                  onClick={() =>
-                    onRemoveLocalReferenceFile(field.key, file.id, localFileMeta.kind)
-                  }
-                  type="button"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <small className={helperTextClass}>
-            {field.required ? "At least one file is required." : "No files uploaded."}
-            {localFileMeta.maxCount
-              ? ` Up to ${localFileMeta.maxCount} allowed.`
-              : !localFileMeta.multiple
-                ? " One file allowed."
-                : null}
-          </small>
-        )}
+      <div className={`${className ? `${className} ` : ""}min-w-0`}>
+        <ReferenceAssetField
+          accept={localFileMeta.accept}
+          files={files}
+          helperText={field.required ? "At least one file is required." : "No files selected."}
+          isUploading={isUploadingReference}
+          kind={localFileMeta.kind}
+          label={field.label}
+          libraryAssets={libraryAssets}
+          maxCount={localFileMeta.maxCount}
+          multiple={localFileMeta.multiple}
+          onLibraryAssetsSelect={(assets) =>
+            onLibraryReferenceSelect(assets, field.key, localFileMeta.kind, {
+              multiple: localFileMeta.multiple,
+              maxCount: localFileMeta.maxCount,
+            })
+          }
+          onRemoveFile={(fileId) =>
+            onRemoveLocalReferenceFile(field.key, fileId, localFileMeta.kind)
+          }
+          onUpload={(event) =>
+            onLocalReferenceFileUpload(event, field.key, localFileMeta.kind, {
+              multiple: localFileMeta.multiple,
+              maxCount: localFileMeta.maxCount,
+            })
+          }
+          required={field.required}
+        />
         {field.description ? <small className={helperTextClass}>{field.description}</small> : null}
       </div>
     );

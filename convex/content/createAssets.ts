@@ -178,8 +178,8 @@ export const generateImage = action({
         provider: result.metadata.provider,
         model: result.metadata.model,
         prompt,
-        lifecycle: "saved",
-        reviewStatus: "not_required",
+        lifecycle: "preview",
+        reviewStatus: "pending",
       });
       assets.push({ artifactId, storageUrl: stored.storageUrl, title });
     }
@@ -275,8 +275,8 @@ export const generateVideo = action({
       provider: result.metadata.provider,
       model: result.metadata.model,
       prompt,
-      lifecycle: "saved",
-      reviewStatus: "not_required",
+      lifecycle: "preview",
+      reviewStatus: "pending",
     });
 
     return { artifactId, storageUrl: stored.storageUrl, title };
@@ -370,8 +370,8 @@ export const generateAudio = action({
       provider: result.metadata.provider,
       model: result.metadata.model,
       prompt: text,
-      lifecycle: "saved",
-      reviewStatus: "not_required",
+      lifecycle: "preview",
+      reviewStatus: "pending",
     });
 
     return { artifactId, storageUrl: stored.storageUrl, title };

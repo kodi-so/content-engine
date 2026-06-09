@@ -32,6 +32,22 @@ import {
 } from "./validators";
 
 export default defineSchema({
+  users: defineTable({
+    clerkUserId: v.string(),
+    subject: v.string(),
+    tokenIdentifier: v.string(),
+    issuer: v.string(),
+    email: v.optional(v.string()),
+    name: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_clerk_user_id", ["clerkUserId"])
+    .index("by_subject", ["subject"])
+    .index("by_token_identifier", ["tokenIdentifier"]),
+
   brands: defineTable({
     userId: v.string(),
     name: v.string(),

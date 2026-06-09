@@ -18,6 +18,39 @@ export type ConfigField = {
 
 export type LocalReferenceFileKind = "image" | "video" | "audio" | "media";
 
+export const creatorAspectRatioOptions = ["1:1", "4:5", "9:16"];
+
+const creatorMediaConfigFieldKeysByNodeType: Partial<Record<WorkflowNodeType, Set<string>>> = {
+  image_generation: new Set([
+    "promptFromInputNode",
+    "prompt",
+    "imageFromInputNode",
+    "localReferenceImages",
+    "aspectRatio",
+    "count",
+  ]),
+  video_generation: new Set([
+    "promptFromInputNode",
+    "prompt",
+    "imageFromInputNode",
+    "localReferenceImages",
+    "startEndFrameMode",
+    "localStartFrameImages",
+    "localEndFrameImages",
+    "localReferenceVideos",
+    "aspectRatio",
+    "durationSeconds",
+  ]),
+  audio_generation: new Set([
+    "mode",
+    "textFromInputNode",
+    "text",
+    "voiceFromInputNode",
+    "localReferenceAudios",
+    "voice",
+  ]),
+};
+
 const hiddenImageGenerationConfigKeys = new Set([
   "audio_url",
   "audio_urls",
@@ -365,7 +398,12 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
     case "agentMode":
       return { ...defaultField, type: "enum", enumValues: workflowAgentPresetIds() };
     case "aspectRatio":
-      return { ...defaultField, type: "enum", enumValues: ["9:16", "16:9", "1:1", "4:5", "3:4"] };
+      return {
+        ...defaultField,
+        required: true,
+        type: "enum",
+        enumValues: creatorAspectRatioOptions,
+      };
     case "autoPublish":
     case "audioFromInputNode":
     case "captionFromInputNode":
@@ -402,7 +440,9 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
         type: "boolean",
       };
     case "count":
+      return { ...defaultField, label: "Number of images", type: "number" };
     case "durationSeconds":
+      return { ...defaultField, label: "Duration", type: "number" };
     case "intervalHours":
     case "maxDurationSeconds":
     case "maxTokens":
@@ -485,9 +525,22 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
   }
 }
 
+function normalizeConfigField(field: ConfigField): ConfigField {
+  if (field.key === "aspectRatio") {
+    return {
+      ...field,
+      advanced: false,
+      required: true,
+      type: "enum",
+      enumValues: creatorAspectRatioOptions,
+    };
+  }
+
+  return field;
+}
+
 function imageConfigFieldHiddenByContract(
   key: string,
-  selectedModel: ProviderModelDoc | null,
   imageContract?: ImageModelUiContract | null
 ): boolean {
   if ((key === "prompt" || key === "promptFromInputNode") && imageContract?.prompt.visible === false) return true;
@@ -496,7 +549,6 @@ function imageConfigFieldHiddenByContract(
   if ((key === "localReferenceImages" || key === "imageFromInputNode") && imageContract?.images.visible === false) return true;
   if (key === "imageFromInputNode" && imageContract?.images.canComeFromInput === false) return true;
   if (key === "localReferenceImages" && imageContract?.images.canBeUploadedLocally === false) return true;
-  if (selectedModel && (key === "aspectRatio" || key === "count")) return true;
   return false;
 }
 
@@ -508,13 +560,15 @@ function configFieldHiddenForNode(
   imageContract?: ImageModelUiContract | null
 ): boolean {
   if (hiddenImageGenerationConfigKeys.has(key)) return true;
+  const creatorMediaFieldKeys = creatorMediaConfigFieldKeysByNodeType[type];
+  if (creatorMediaFieldKeys && !creatorMediaFieldKeys.has(key)) return true;
   if (
     type === "media" &&
     ["artifactIds", "creativeAssetIds", "referenceInstructions"].includes(key)
   ) {
     return true;
   }
-  if (type === "image_generation" && imageConfigFieldHiddenByContract(key, selectedModel, imageContract)) return true;
+  if (type === "image_generation" && imageConfigFieldHiddenByContract(key, imageContract)) return true;
   if (type === "video_generation") {
     if (key === "localReferenceImages" && config.startEndFrameMode === true) return true;
     if (
@@ -523,7 +577,7 @@ function configFieldHiddenForNode(
     ) return true;
   }
   if (!selectedModel) return false;
-  if (type === "video_generation" && ["aspectRatio", "durationSeconds", "resolution"].includes(key)) return true;
+  if (type === "video_generation" && key === "resolution") return true;
   if (type === "lipsync" && ["resolution", "turboMode"].includes(key)) return true;
   if (type === "ai_video_editor" && ["aspectRatio", "maxDurationSeconds", "renderMode"].includes(key)) return true;
   if (type === "audio_generation" && ["cfgScale", "temperature"].includes(key)) return true;
@@ -541,20 +595,29 @@ export function configFieldsForNode(
 
   for (const field of modelSchemaFields) {
     if (configFieldHiddenForNode(type, field.key, config, selectedModel, imageContract)) continue;
-    fieldsByKey.set(field.key, field);
+    fieldsByKey.set(field.key, normalizeConfigField(field));
   }
 
   for (const key of friendlyConfigFieldKeysForNode(type, config)) {
     if (configFieldHiddenForNode(type, key, config, selectedModel, imageContract)) continue;
     if (!fieldsByKey.has(key)) {
       const field = friendlyConfigFieldForKey(key, config);
-      fieldsByKey.set(key, key === "prompt" && imageContract?.prompt.required ? { ...field, required: true } : field);
+      fieldsByKey.set(
+        key,
+        normalizeConfigField(
+          key === "prompt" && imageContract?.prompt.required
+            ? { ...field, required: true }
+            : field
+        )
+      );
     }
   }
 
   for (const key of Object.keys(config)) {
     if (configFieldHiddenForNode(type, key, config, selectedModel, imageContract)) continue;
-    if (!fieldsByKey.has(key)) fieldsByKey.set(key, friendlyConfigFieldForKey(key, config));
+    if (!fieldsByKey.has(key)) {
+      fieldsByKey.set(key, normalizeConfigField(friendlyConfigFieldForKey(key, config)));
+    }
   }
 
   return [...fieldsByKey.values()].sort((a, b) => {
@@ -600,6 +663,7 @@ export function configFieldsForNode(
 export function configFieldValue(field: ConfigField, config: Record<string, unknown>): unknown {
   if (config[field.key] !== undefined) return config[field.key];
   if (field.defaultValue !== undefined) return field.defaultValue;
+  if (field.key === "aspectRatio") return "4:5";
   if (field.type === "boolean") return false;
   return "";
 }
@@ -624,6 +688,8 @@ export function localReferenceFilesFromConfig(
       title: typeof record.title === "string" ? record.title : "Reference file",
       mimeType: typeof record.mimeType === "string" ? record.mimeType : undefined,
       kind: typeof record.kind === "string" ? record.kind : fallbackKind,
+      source: typeof record.source === "string" ? record.source : undefined,
+      sourceId: typeof record.sourceId === "string" ? record.sourceId : undefined,
     }];
   });
 }

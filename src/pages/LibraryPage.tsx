@@ -1,7 +1,16 @@
-import { useQuery } from "convex/react";
-import { ArrowLeft, ChevronRight, ExternalLink, Folder, Image as ImageIcon } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  ExternalLink,
+  Folder,
+  Image as ImageIcon,
+  Music,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { Page, Panel, Select } from "../components/ui";
 import { artifactSummary } from "../lib/artifactUtils";
 import type { ArtifactDoc, WorkflowDoc, WorkflowRunDoc } from "../types";
@@ -19,12 +28,14 @@ type PackageMediaItem = {
 
 type LibraryOutput = {
   id: string;
+  artifactId?: Id<"artifacts">;
   title: string;
   type: string;
+  source: "create" | "workflow";
   createdAt: number;
   brandId?: string;
-  workflowId: string;
-  workflowRunId: string;
+  workflowId?: string;
+  workflowRunId?: string;
   provider?: string;
   model?: string;
   prompt?: string;
@@ -92,6 +103,41 @@ function exportedToMediaLibrary(artifact: ArtifactDoc) {
     );
 }
 
+function createPageArtifactOutput(artifact: ArtifactDoc): LibraryOutput | null {
+  if (!isRecord(artifact.data)) return null;
+  if (artifact.data.source !== "create_page") return null;
+  if (!artifact.storageUrl) return null;
+  if (artifact.lifecycle && artifact.lifecycle !== "saved") return null;
+
+  const mimeType = typeof artifact.data.mimeType === "string"
+    ? artifact.data.mimeType
+    : undefined;
+
+  return {
+    id: `create:${artifact._id}`,
+    artifactId: artifact._id,
+    title: artifact.title?.trim() || "Generated asset",
+    type: artifact.type,
+    source: "create",
+    createdAt: artifact.createdAt,
+    brandId: artifact.brandId ? String(artifact.brandId) : undefined,
+    provider: artifact.provider,
+    model: artifact.model,
+    prompt: artifact.prompt,
+    summary: artifactSummary(artifact),
+    storageUrl: artifact.storageUrl,
+    mimeType,
+    aspectRatio: artifactAspectRatio(artifact),
+  };
+}
+
+function createOutputsFromArtifacts(artifacts: ArtifactDoc[]) {
+  return artifacts
+    .map(createPageArtifactOutput)
+    .filter((output): output is LibraryOutput => Boolean(output))
+    .sort((first, second) => second.createdAt - first.createdAt);
+}
+
 function mediaItemsForArtifact(artifact: ArtifactDoc): PackageMediaItem[] {
   if (!isRecord(artifact.data) || !Array.isArray(artifact.data.mediaItems)) return [];
 
@@ -130,6 +176,7 @@ function outputsFromArtifacts(artifacts: ArtifactDoc[]) {
         id: `media:${artifact._id}:${key}`,
         title: item.title?.trim() || "Exported media",
         type: item.artifactType ?? item.role ?? "media",
+        source: "workflow",
         createdAt: exportTimestamp(artifact),
         brandId: artifact.brandId ? String(artifact.brandId) : undefined,
         workflowId: String(artifact.workflowId),
@@ -165,13 +212,19 @@ function MediaPreview({ output }: { output: LibraryOutput }) {
 
   return (
     <div
-      className="artifact-preview image-preview library-media-preview"
+      className="grid max-h-[18rem] min-h-[9rem] w-full overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page-quiet)]"
       style={resolvedAspectRatio ? { aspectRatio: resolvedAspectRatio } : undefined}
     >
-      {output.mimeType?.startsWith("video/") || output.type === "video" ? (
-        <video src={output.storageUrl} controls />
+      {output.mimeType?.startsWith("audio/") || output.type === "audio" ? (
+        <div className="grid place-items-center gap-[var(--space-3)] p-[var(--space-3)]">
+          <Music size={28} className="text-[var(--color-ink-muted)]" />
+          <audio src={output.storageUrl} controls className="w-full" />
+        </div>
+      ) : output.mimeType?.startsWith("video/") || output.type === "video" ? (
+        <video className="h-full w-full object-cover" src={output.storageUrl} controls />
       ) : (
         <img
+          className="h-full w-full object-cover"
           src={output.storageUrl}
           alt={output.title}
           onLoad={(event) => {
@@ -186,25 +239,52 @@ function MediaPreview({ output }: { output: LibraryOutput }) {
   );
 }
 
-function OutputCard({ output }: { output: LibraryOutput }) {
+function OutputCard({
+  isDeleting,
+  onDelete,
+  output,
+}: {
+  isDeleting?: boolean;
+  onDelete?: () => void;
+  output: LibraryOutput;
+}) {
   const metadata = [
+    output.source === "create" ? "Create" : "Workflow export",
     output.provider,
     output.model,
   ].filter(Boolean);
 
   return (
-    <article className="artifact-card">
+    <article className="group grid min-w-0 content-start gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-3)] shadow-[var(--shadow-sm)] transition hover:-translate-y-px hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-md)]">
       <MediaPreview output={output} />
-      <div className="artifact-copy">
+      <div className="grid min-w-0 gap-[var(--space-2)]">
         <div className="entity-eyebrow">{output.type.replaceAll("_", " ")}</div>
-        <h3>{output.title}</h3>
-        {metadata.length > 0 && <p>{metadata.join(" · ")}</p>}
-        {output.prompt && <p>{output.prompt}</p>}
-        {!output.prompt && output.summary && <p>{output.summary}</p>}
+        <h3 className="m-0 overflow-hidden text-[0.95rem] font-[760] leading-[1.2] text-[var(--color-ink)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+          {output.title}
+        </h3>
+        {metadata.length > 0 ? (
+          <p className="m-0 truncate text-[0.78rem] leading-snug text-[var(--color-ink-muted)]">
+            {metadata.join(" · ")}
+          </p>
+        ) : null}
+        {output.prompt ? (
+          <details className="group/prompt text-[0.78rem] text-[var(--color-ink-muted)]">
+            <summary className="cursor-pointer list-none font-[720] text-[var(--color-ink-soft)] marker:hidden">
+              Prompt used
+            </summary>
+            <p className="m-0 mt-[var(--space-2)] max-h-[7rem] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page)] p-[var(--space-2)] leading-[1.45]">
+              {output.prompt}
+            </p>
+          </details>
+        ) : !output.prompt && output.summary ? (
+          <p className="m-0 overflow-hidden text-[0.78rem] leading-snug text-[var(--color-ink-muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+            {output.summary}
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-[var(--space-2)]">
         <a
-          className="secondary-button"
+          className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem]"
           href={output.storageUrl}
           target="_blank"
           rel="noreferrer"
@@ -212,6 +292,17 @@ function OutputCard({ output }: { output: LibraryOutput }) {
           <ExternalLink size={16} />
           Open output
         </a>
+        {onDelete ? (
+          <button
+            className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem] text-[var(--color-danger)]"
+            disabled={isDeleting}
+            onClick={onDelete}
+            type="button"
+          >
+            <Trash2 size={15} />
+            {isDeleting ? "Deleting" : "Delete"}
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -294,6 +385,7 @@ function groupLibraryOutputs(args: {
   const runGroupsById = new Map<string, LibraryRunGroup>();
 
   for (const output of args.outputs) {
+    if (!output.workflowId || !output.workflowRunId) continue;
     const run = runsById.get(output.workflowRunId);
     const existing = runGroupsById.get(output.workflowRunId);
     if (existing) {
@@ -345,35 +437,55 @@ export function LibraryPage() {
   const brands = useQuery(api.accounts.brands.list);
   const workflows = useQuery(api.workflows.definitions.list);
   const runs = useQuery(api.workflows.runs.list, {});
+  const deleteArtifact = useMutation(api.artifacts.records.remove);
+  const [libraryView, setLibraryView] = useState<"assets" | "workflows">("assets");
   const [brandFilter, setBrandFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [deletingArtifactId, setDeletingArtifactId] = useState<string | null>(null);
+  const [libraryStatus, setLibraryStatus] = useState("");
 
-  const outputs = useMemo(
+  const workflowOutputs = useMemo(
     () => outputsFromArtifacts(artifacts ?? []),
     [artifacts]
   );
+  const createOutputs = useMemo(
+    () => createOutputsFromArtifacts(artifacts ?? []),
+    [artifacts]
+  );
 
-  const filteredOutputs = useMemo(
-    () => outputs.filter((output) => {
+  const filteredCreateOutputs = useMemo(
+    () => createOutputs.filter((output) => {
       if (brandFilter && output.brandId !== brandFilter) return false;
       if (typeFilter && output.type !== typeFilter) return false;
       return true;
     }),
-    [brandFilter, outputs, typeFilter]
+    [brandFilter, createOutputs, typeFilter]
+  );
+
+  const filteredWorkflowOutputs = useMemo(
+    () => workflowOutputs.filter((output) => {
+      if (brandFilter && output.brandId !== brandFilter) return false;
+      if (typeFilter && output.type !== typeFilter) return false;
+      return true;
+    }),
+    [brandFilter, typeFilter, workflowOutputs]
   );
 
   const folders = useMemo(
-    () => groupLibraryOutputs({ outputs: filteredOutputs, runs, workflows }),
-    [filteredOutputs, runs, workflows]
+    () => groupLibraryOutputs({ outputs: filteredWorkflowOutputs, runs, workflows }),
+    [filteredWorkflowOutputs, runs, workflows]
   );
 
   const selectedFolder = folders.find((folder) => folder.id === selectedWorkflowId);
   const selectedRun = selectedFolder?.runs.find((run) => run.id === selectedRunId);
   const outputTypes = useMemo(
-    () => Array.from(new Set(outputs.map((output) => output.type))).sort(),
-    [outputs]
+    () =>
+      Array.from(
+        new Set([...createOutputs, ...workflowOutputs].map((output) => output.type))
+      ).sort(),
+    [createOutputs, workflowOutputs]
   );
   const loading = !artifacts || !runs || !workflows;
 
@@ -382,15 +494,56 @@ export function LibraryPage() {
     setSelectedRunId(null);
   };
 
+  const removeSavedAsset = async (output: LibraryOutput) => {
+    if (!output.artifactId) return;
+    const confirmed = window.confirm(`Delete "${output.title}" from the library?`);
+    if (!confirmed) return;
+
+    setDeletingArtifactId(String(output.artifactId));
+    setLibraryStatus("");
+    try {
+      await deleteArtifact({ id: output.artifactId });
+      setLibraryStatus("Asset deleted");
+    } catch (error) {
+      setLibraryStatus(error instanceof Error ? error.message : "Unable to delete asset");
+    } finally {
+      setDeletingArtifactId(null);
+    }
+  };
+
   const title = selectedRun
     ? formatRunTime(selectedRun.run, selectedRun.createdAt)
-    : selectedFolder?.workflow?.name ?? "Media Library";
+    : selectedFolder?.workflow?.name ??
+      (libraryView === "assets" ? "Saved Assets" : "Workflow Exports");
 
   return (
-    <Page title="Library" description="Exports organized by workflow and run.">
+    <Page title="Library" description="Saved assets and workflow exports.">
       <Panel title={title}>
         <div className="section-toolbar">
-          <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
+          <div className="grid min-w-0 gap-[var(--space-3)]">
+            <div className="flex flex-wrap gap-[var(--space-2)]">
+              <button
+                className={libraryView === "assets" ? "primary-button" : "secondary-button"}
+                type="button"
+                onClick={() => {
+                  setLibraryView("assets");
+                  clearSelection();
+                }}
+              >
+                Saved assets
+              </button>
+              <button
+                className={libraryView === "workflows" ? "primary-button" : "secondary-button"}
+                type="button"
+                onClick={() => {
+                  setLibraryView("workflows");
+                  clearSelection();
+                }}
+              >
+                Workflow exports
+              </button>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
             {(selectedFolder || selectedRun) && (
               <button
                 className="secondary-button"
@@ -412,7 +565,10 @@ export function LibraryPage() {
                 ? `${selectedRun.outputs.length} output${selectedRun.outputs.length === 1 ? "" : "s"}`
                 : selectedFolder
                   ? `${selectedFolder.runs.length} run${selectedFolder.runs.length === 1 ? "" : "s"} · ${selectedFolder.outputCount} output${selectedFolder.outputCount === 1 ? "" : "s"}`
-                  : `${folders.length} workflow folder${folders.length === 1 ? "" : "s"} · ${filteredOutputs.length} output${filteredOutputs.length === 1 ? "" : "s"}`}
+                  : libraryView === "assets"
+                    ? `${filteredCreateOutputs.length} saved asset${filteredCreateOutputs.length === 1 ? "" : "s"}`
+                    : `${folders.length} workflow folder${folders.length === 1 ? "" : "s"} · ${filteredWorkflowOutputs.length} output${filteredWorkflowOutputs.length === 1 ? "" : "s"}`}
+            </div>
             </div>
           </div>
           <div className="filter-grid">
@@ -445,17 +601,40 @@ export function LibraryPage() {
             </button>
           </div>
         </div>
+        {libraryStatus ? (
+          <p className="m-0 text-[0.86rem] text-[var(--color-ink-muted)]">{libraryStatus}</p>
+        ) : null}
 
         {loading && <div className="empty-state">Loading library...</div>}
-        {!loading && folders.length === 0 && (
+        {!loading && libraryView === "assets" && filteredCreateOutputs.length === 0 && (
           <div className="empty-state">
-            {outputs.length === 0
+            {createOutputs.length === 0
+              ? "No saved Create assets yet."
+              : "No saved assets match these filters."}
+          </div>
+        )}
+        {!loading && libraryView === "workflows" && folders.length === 0 && (
+          <div className="empty-state">
+            {workflowOutputs.length === 0
               ? "No media library exports yet."
               : "No exports match these filters."}
           </div>
         )}
 
-        {!loading && !selectedFolder && folders.length > 0 && (
+        {!loading && libraryView === "assets" && filteredCreateOutputs.length > 0 && (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
+            {filteredCreateOutputs.map((output) => (
+              <OutputCard
+                isDeleting={deletingArtifactId === String(output.artifactId)}
+                key={output.id}
+                onDelete={() => void removeSavedAsset(output)}
+                output={output}
+              />
+            ))}
+          </div>
+        )}
+
+        {!loading && libraryView === "workflows" && !selectedFolder && folders.length > 0 && (
           <div className="artifact-grid">
             {folders.map((folder) => (
               <FolderButton
@@ -470,7 +649,7 @@ export function LibraryPage() {
           </div>
         )}
 
-        {!loading && selectedFolder && !selectedRun && (
+        {!loading && libraryView === "workflows" && selectedFolder && !selectedRun && (
           <div className="grid gap-[var(--space-3)]">
             {selectedFolder.runs.map((runGroup) => (
               <RunRow
@@ -482,8 +661,8 @@ export function LibraryPage() {
           </div>
         )}
 
-        {!loading && selectedRun && (
-          <div className="artifact-grid">
+        {!loading && libraryView === "workflows" && selectedRun && (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
             {selectedRun.outputs.map((output) => (
               <OutputCard key={output.id} output={output} />
             ))}
