@@ -8,7 +8,6 @@ import {
   FolderKanban,
   GalleryHorizontalEnd,
   MessageSquareText,
-  Play,
   Route,
   ShieldCheck,
   Sparkles,
@@ -105,9 +104,7 @@ function PrimaryCta({ isSignedIn }: { isSignedIn?: boolean }) {
 
 function AccessRequestForm() {
   const requestAccess = useMutation(api.waitlist.requestAccess);
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [intendedUse, setIntendedUse] = useState("");
   const [status, setStatus] = useState("");
 
   const handleSubmit = async (event: FormEvent) => {
@@ -119,13 +116,9 @@ function AccessRequestForm() {
     try {
       await requestAccess({
         email: emailValue,
-        name: name.trim() || undefined,
-        intendedUse: intendedUse.trim() || undefined,
         source: "landing",
       });
-      setName("");
       setEmail("");
-      setIntendedUse("");
       setStatus("Request received. We will follow up when your workspace is ready.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Request failed. Please try again.");
@@ -134,37 +127,23 @@ function AccessRequestForm() {
 
   return (
     <form
-      className="grid w-full max-w-[34rem] gap-3 rounded-[1.1rem] border border-[oklch(100%_0_0_/_0.13)] bg-[oklch(100%_0_0_/_0.06)] p-3 text-left shadow-[0_24px_70px_oklch(0%_0_0_/_0.2)] backdrop-blur"
+      className="grid w-full max-w-[30rem] gap-3 rounded-[1.1rem] border border-[oklch(100%_0_0_/_0.13)] bg-[oklch(100%_0_0_/_0.06)] p-3 text-left shadow-[0_24px_70px_oklch(0%_0_0_/_0.2)] backdrop-blur sm:grid-cols-[minmax(0,1fr)_auto]"
       id="request-access"
       onSubmit={handleSubmit}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input
-          className="min-h-12 rounded-[var(--radius-sm)] border border-[oklch(100%_0_0_/_0.14)] bg-[oklch(96%_0.008_232)] px-3 text-[0.92rem] font-[650] text-[var(--color-ink)] outline-none placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-accent)]"
-          placeholder="Name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <input
-          className="min-h-12 rounded-[var(--radius-sm)] border border-[oklch(100%_0_0_/_0.14)] bg-[oklch(96%_0.008_232)] px-3 text-[0.92rem] font-[650] text-[var(--color-ink)] outline-none placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-accent)]"
-          placeholder="Email"
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </div>
       <input
         className="min-h-12 rounded-[var(--radius-sm)] border border-[oklch(100%_0_0_/_0.14)] bg-[oklch(96%_0.008_232)] px-3 text-[0.92rem] font-[650] text-[var(--color-ink)] outline-none placeholder:text-[var(--color-ink-muted)] focus:border-[var(--color-accent)]"
-        placeholder="What do you want to use it for?"
-        value={intendedUse}
-        onChange={(event) => setIntendedUse(event.target.value)}
+        placeholder="Email address"
+        type="email"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
       />
-      <button className="primary-button min-h-12" disabled={!email.trim()} type="submit">
+      <button className="primary-button min-h-12 px-5" disabled={!email.trim()} type="submit">
         Request access
         <ArrowRight size={16} />
       </button>
       {status ? (
-        <p className="m-0 text-center text-[0.82rem] font-[650] leading-5 text-[oklch(82%_0.018_232)]">
+        <p className="m-0 text-center text-[0.82rem] font-[650] leading-5 text-[oklch(82%_0.018_232)] sm:col-span-2">
           {status}
         </p>
       ) : null}
@@ -336,11 +315,7 @@ export function LandingPage() {
                 Sign in
               </button>
             </SignInButton>
-          ) : (
-            <a className="secondary-button min-h-10 px-3 text-[0.84rem]" href="#request-access">
-              Request access
-            </a>
-          )}
+          ) : null}
         </nav>
       </header>
 
@@ -362,13 +337,6 @@ export function LandingPage() {
             </p>
             <div className="animate-[ce-rise_740ms_cubic-bezier(0.16,1,0.3,1)_240ms_both] flex flex-wrap justify-center gap-3">
               <PrimaryCta isSignedIn={isSignedIn} />
-              <a
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[oklch(76%_0.032_220)] bg-[oklch(99%_0.004_232_/_0.74)] px-5 text-[0.95rem] font-[760] text-[var(--color-ink)] shadow-[var(--shadow-sm)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-[var(--color-surface)]"
-                href="#system"
-              >
-                <Play size={16} />
-                See how it works
-              </a>
             </div>
           </div>
 
