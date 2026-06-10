@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ensureCurrentUser } from "../auth/users";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -52,7 +52,7 @@ async function resolveWorkflowAccess(
 export const list = query({
   args: { workspaceId: v.optional(v.id("workspaces")) },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     if (args.workspaceId) {
@@ -75,7 +75,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("workflows") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return null;
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);
@@ -99,7 +99,7 @@ export const create = mutation({
     graph: workflowGraphValidator,
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
     const brand = await resolveWorkflowBrand(ctx, userId, args.brandId);
 
@@ -123,7 +123,7 @@ export const create = mutation({
         userId,
         args.workspaceId ?? brand?.workspaceId ?? account?.workspaceId
       )
-      : personalWorkspace;
+      : defaultWorkspace;
     if (brand?.workspaceId && brand.workspaceId !== workspace._id) {
       throw new Error("Brand does not belong to this workspace");
     }
@@ -160,7 +160,7 @@ export const updateMetadata = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);
@@ -190,7 +190,7 @@ export const duplicate = mutation({
     name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);
@@ -228,7 +228,7 @@ export const createFromRun = mutation({
     name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const run = await ctx.db.get(args.runId);
@@ -298,7 +298,7 @@ export const updateGraph = mutation({
     graph: workflowGraphValidator,
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);
@@ -330,7 +330,7 @@ export const updateNodePositions = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);
@@ -362,7 +362,7 @@ export const setActive = mutation({
     isActive: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);
@@ -381,7 +381,7 @@ export const setActive = mutation({
 export const remove = mutation({
   args: { id: v.id("workflows") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await resolveWorkflowAccess(ctx, args.id, identity.subject);

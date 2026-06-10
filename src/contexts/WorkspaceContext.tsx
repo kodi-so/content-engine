@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import {
   createContext,
   useContext,
@@ -30,7 +30,6 @@ type WorkspaceContextValue = {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const ensureCurrentUser = useMutation(api.auth.users.ensure);
   const workspaces = useQuery(api.workspaces.workspaces.list);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<Id<"workspaces"> | undefined>(
     () => {
@@ -40,15 +39,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   );
 
-  useEffect(() => {
-    void ensureCurrentUser();
-  }, [ensureCurrentUser]);
-
   const activeItem = useMemo(() => {
     if (!workspaces?.length) return undefined;
     return (
       workspaces.find((item) => item.workspace._id === selectedWorkspaceId) ??
-      workspaces.find((item) => item.workspace.workspaceType === "personal") ??
       workspaces[0]
     );
   }, [selectedWorkspaceId, workspaces]);

@@ -1,6 +1,6 @@
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import { useMutation } from "convex/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -10,7 +10,7 @@ import {
 } from "react-router-dom";
 import { api } from "../convex/_generated/api";
 import { Sidebar } from "./components/AppShell";
-import { LoadingScreen, SignInScreen } from "./components/ui";
+import { LoadingScreen, PrivateBetaScreen, SignInScreen } from "./components/ui";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { AccountsPage } from "./pages/AccountsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -26,22 +26,58 @@ import { WorkflowsPage } from "./pages/WorkflowsPage";
 
 function AppContent() {
   const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
   const location = useLocation();
   const ensureCurrentUser = useMutation(api.auth.users.ensure);
+  const requestAccess = useMutation(api.waitlist.requestAccess);
   const isWorkflowCanvasRoute = /^\/workflows\/[^/]+/.test(location.pathname);
+  const [accessStatus, setAccessStatus] = useState<"checking" | "approved" | "pending">(
+    "checking"
+  );
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    void ensureCurrentUser();
-  }, [ensureCurrentUser, isLoaded, isSignedIn]);
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setAccessStatus("checking");
+      return;
+    }
+
+    let canceled = false;
+    setAccessStatus("checking");
+    void ensureCurrentUser()
+      .then(() => {
+        if (!canceled) setAccessStatus("approved");
+      })
+      .catch(() => {
+        const email = user?.primaryEmailAddress?.emailAddress;
+        if (email) {
+          void requestAccess({
+            email,
+            name: user?.fullName ?? undefined,
+            source: "signed-in-gate",
+          });
+        }
+        if (!canceled) setAccessStatus("pending");
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [ensureCurrentUser, isLoaded, isSignedIn, requestAccess, user]);
 
   if (!isLoaded) return <LoadingScreen />;
 
-  if (location.pathname === "/") {
+  if (location.pathname === "/" && !isSignedIn) {
     return <LandingPage />;
   }
 
   if (!isSignedIn) return <SignInScreen />;
+  if (accessStatus === "checking") return <LoadingScreen />;
+  if (accessStatus === "pending") return <PrivateBetaScreen />;
+
+  if (location.pathname === "/") {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <WorkspaceProvider>

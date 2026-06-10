@@ -7,6 +7,7 @@ import {
   workflowRunProviderJobValidator,
   workflowRunStatusValidator,
 } from "../validators";
+import { requireBetaAccess } from "../auth/users";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
 import { createWorkflowRun } from "./runCreation";
 
@@ -18,7 +19,7 @@ export const list = query({
     workflowId: v.optional(v.id("workflows")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     if (args.workflowId) {
@@ -57,7 +58,7 @@ export const list = query({
 export const getEvents = query({
   args: { workflowRunId: v.id("workflowRuns") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     const run = await ctx.db.get(args.workflowRunId);
@@ -78,7 +79,7 @@ export const getEvents = query({
 export const getNodeStates = query({
   args: { workflowRunId: v.id("workflowRuns") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     const run = await ctx.db.get(args.workflowRunId);
@@ -101,7 +102,7 @@ export const getNodeStates = query({
 export const createManualRun = mutation({
   args: { workflowId: v.id("workflows") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const workflow = await ctx.db.get(args.workflowId);
@@ -124,7 +125,7 @@ export const createManualRun = mutation({
 export const remove = mutation({
   args: { id: v.id("workflowRuns") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const run = await ctx.db.get(args.id);

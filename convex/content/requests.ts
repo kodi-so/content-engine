@@ -9,7 +9,8 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ensureCurrentUser } from "../auth/users";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { storeGeneratedAsset } from "./assetStorage";
 import {
   IMAGE_PROMPT_WRITER_SYSTEM_PROMPT,
@@ -73,7 +74,7 @@ function currentUserId(identity: { subject: string } | null) {
 export const list = query({
   args: { workspaceId: v.optional(v.id("workspaces")) },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     if (args.workspaceId) {
       await requireWorkspaceMember(ctx, args.workspaceId, userId);
       return await ctx.db
@@ -108,7 +109,7 @@ export const createSlideshow = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const prompt = args.prompt.trim();
     if (!prompt) throw new Error("Prompt is required");
 
@@ -140,7 +141,7 @@ export const createSlideshow = mutation({
         userId,
         args.workspaceId ?? brand?.workspaceId ?? account?.workspaceId
       )
-      : personalWorkspace;
+      : defaultWorkspace;
     if (brand?.workspaceId && brand.workspaceId !== workspace._id) {
       throw new Error("Brand does not belong to this workspace");
     }
@@ -191,7 +192,7 @@ export const reviseSlideshow = mutation({
     revisionPrompt: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Content request not found");
     if (request.workspaceId) {
@@ -220,7 +221,7 @@ export const reviseSlideshow = mutation({
 export const save = mutation({
   args: { id: v.id("contentRequests") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Content request not found");
     if (request.workspaceId) {
@@ -270,7 +271,7 @@ export const save = mutation({
 export const discard = mutation({
   args: { id: v.id("contentRequests") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const request = await ctx.db.get(args.id);
     if (!request) throw new Error("Content request not found");
     if (request.workspaceId) {
@@ -389,7 +390,7 @@ export const deleteSlide = mutation({
     slideId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     await deleteSlideForRequest(ctx, { ...args, userId });
   },
 });
@@ -401,7 +402,7 @@ export const moveSlide = mutation({
     direction: v.union(v.literal("left"), v.literal("right")),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     await moveSlideForRequest(ctx, { ...args, userId });
   },
 });
@@ -413,7 +414,7 @@ export const updateSlideText = mutation({
     textBlocks: v.array(v.any()),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     await updateSlideTextForRequest(ctx, { ...args, userId });
   },
 });
@@ -425,7 +426,7 @@ export const updateSlideImagePrompt = mutation({
     prompt: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     await updateSlideImagePromptForRequest(ctx, { ...args, userId });
   },
 });
@@ -456,7 +457,7 @@ export const regenerateSlideImage = action({
     ctx,
     args
   ): Promise<{ artifactId: Id<"artifacts">; storageUrl: string }> => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccessForAction(ctx));
     return await regenerateSlideImageForRequest(ctx, { ...args, userId });
   },
 });

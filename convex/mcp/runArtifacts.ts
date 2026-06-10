@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { action, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { api } from "../_generated/api";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
+import { requireBetaAccess } from "../auth/users";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   distributionStatusValidator,
@@ -197,7 +199,7 @@ export const listRuns = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     return await listRunsForUser(ctx, { ...args, userId });
   },
 });
@@ -217,7 +219,7 @@ export const listRunsForMcp = internalQuery({
 export const inspectRun = query({
   args: { runId: v.id("workflowRuns") },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     return await inspectRunForUser(ctx, { ...args, userId });
   },
 });
@@ -235,7 +237,7 @@ export const inspectNodeOutput = query({
     nodeId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const run = await ctx.db.get(args.runId);
     if (!run || run.userId !== userId) return null;
 
@@ -307,7 +309,7 @@ export const listRunArtifacts = query({
     finalOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const run = await ctx.db.get(args.runId);
     if (!run || run.userId !== userId) return [];
 
@@ -350,7 +352,7 @@ export const listRunArtifactsForMcp = internalQuery({
 export const listDistributionPlans = query({
   args: { runId: v.optional(v.id("workflowRuns")) },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
 
     if (args.runId) {
       const run = await ctx.db.get(args.runId);
@@ -379,7 +381,7 @@ export const setArtifactReviewStatus = mutation({
     reviewStatus: reviewStatusValidator,
   },
   handler: async (ctx, args) => {
-    requireUserId(await ctx.auth.getUserIdentity());
+    requireUserId(await requireBetaAccess(ctx));
     await ctx.runMutation(api.artifacts.records.setReviewStatus, {
       id: args.artifactId,
       reviewStatus: args.reviewStatus,
@@ -394,7 +396,7 @@ export const requestArtifactRevision = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    requireUserId(await ctx.auth.getUserIdentity());
+    requireUserId(await requireBetaAccess(ctx));
     await ctx.runMutation(api.artifacts.records.requestRevision, {
       id: args.artifactId,
       note: args.note,
@@ -416,7 +418,7 @@ export const createDistributionPlan = mutation({
     providerPayload: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const run = await getOwnedRun(ctx, args.runId, userId);
     const artifactIds = args.artifactIds?.length
       ? args.artifactIds
@@ -477,7 +479,7 @@ export const updateDistributionPlanStatus = mutation({
     publishedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    requireUserId(await ctx.auth.getUserIdentity());
+    requireUserId(await requireBetaAccess(ctx));
     await ctx.runMutation(api.publishing.distributionPlans.updateStatus, {
       id: args.distributionPlanId,
       status: args.status,
@@ -495,7 +497,7 @@ export const publishDistributionPlan = action({
     mode: v.union(v.literal("schedule"), v.literal("now")),
   },
   handler: async (ctx, args): Promise<unknown> => {
-    requireUserId(await ctx.auth.getUserIdentity());
+    requireUserId(await requireBetaAccessForAction(ctx));
     return await ctx.runAction(api.publishing.distributionPlans.publish, {
       id: args.distributionPlanId,
       mode: args.mode,

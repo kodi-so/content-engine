@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { query } from "../_generated/server";
+import { requireBetaAccess } from "../auth/users";
 
 type SelectableMediaKind = "image" | "video" | "audio" | "media";
 
@@ -192,7 +193,7 @@ export const listSelectable = query({
     ),
   },
   handler: async (ctx, args): Promise<SelectableLibraryAsset[]> => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     if (args.workspaceId) {

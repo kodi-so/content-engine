@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { action, internalMutation, mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { ensureCurrentUser } from "../auth/users";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { getPublishingProvider } from "../providers";
 import {
   requireWorkspaceMember,
@@ -16,7 +17,7 @@ import {
 export const list = query({
   args: { workspaceId: v.optional(v.id("workspaces")) },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     if (args.workspaceId) {
@@ -39,7 +40,7 @@ export const list = query({
 export const listByBrand = query({
   args: { brandId: v.id("brands") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     const brand = await ctx.db.get(args.brandId);
@@ -92,8 +93,7 @@ export const syncProviderAccounts = action({
     brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccessForAction(ctx);
 
     const provider = getPublishingProvider(args.provider);
     const synced = await provider.listAccounts({});
@@ -148,7 +148,7 @@ export const upsertManual = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
     const brand = args.brandId ? await ctx.db.get(args.brandId) : null;
     if (args.brandId) {
@@ -163,7 +163,7 @@ export const upsertManual = mutation({
     }
     const workspace = args.workspaceId || brand?.workspaceId
       ? await resolveWritableWorkspace(ctx, userId, args.workspaceId ?? brand?.workspaceId)
-      : personalWorkspace;
+      : defaultWorkspace;
     if (brand?.workspaceId && brand.workspaceId !== workspace._id) {
       throw new Error("Brand does not belong to this workspace");
     }
@@ -301,8 +301,7 @@ export const assignBrand = mutation({
     brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     const account = await ctx.db.get(args.id);
     if (!account) {
@@ -339,8 +338,7 @@ export const assignBrand = mutation({
 export const remove = mutation({
   args: { id: v.id("socialAccounts") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     const account = await ctx.db.get(args.id);
     if (!account) {

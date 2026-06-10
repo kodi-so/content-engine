@@ -14,7 +14,7 @@ import {
   modelProviderValidator,
   reviewStatusValidator,
 } from "../validators";
-import { ensureCurrentUser } from "../auth/users";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -202,7 +202,7 @@ export const list = query({
     includeDebug: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
     const userId = identity.subject;
 
@@ -341,7 +341,7 @@ export const create = mutation({
     reviewStatus: v.optional(reviewStatusValidator),
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
     const linkedRun = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
     const linkedWorkflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
@@ -360,7 +360,7 @@ export const create = mutation({
           linkedWorkflow?.workspaceId ??
           linkedBrand?.workspaceId
       )
-      : personalWorkspace;
+      : defaultWorkspace;
 
     const now = Date.now();
     return await ctx.db.insert("artifacts", {

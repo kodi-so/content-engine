@@ -6,6 +6,7 @@ import {
   query,
 } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { requireBetaAccess } from "../auth/users";
 import { publishingProviderValidator, slideshowStatusValidator } from "../validators";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
 
@@ -23,7 +24,7 @@ export const list = query({
     workflowRunId: v.optional(v.id("workflowRuns")),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
 
     if (args.workspaceId) {
       await requireWorkspaceMember(ctx, args.workspaceId, userId);
@@ -166,7 +167,7 @@ export const updateFromRunner = internalMutation({
 export const remove = mutation({
   args: { id: v.id("slideshows") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const slideshow = await ctx.db.get(args.id);
     if (!slideshow) {
       throw new Error("Slideshow not found");
@@ -201,7 +202,7 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
     caption: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Id<"distributionPlans">> => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const slideshow = await ctx.db.get(args.slideshowId);
     if (!slideshow) {
       throw new Error("Slideshow not found");

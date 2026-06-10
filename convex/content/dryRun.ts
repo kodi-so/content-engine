@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { getModelProvider } from "../providers/index";
 import {
   buildFullGraphicPlannerPrompt,
@@ -69,7 +70,8 @@ export const slideshowPromptPlan = action({
       instruction: v.optional(v.string()),
     }))),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    await requireBetaAccessForAction(ctx);
     const requestedRenderingMode = args.requestedRenderingMode;
     const brand = {
       name: args.brand?.name ?? "Contour",

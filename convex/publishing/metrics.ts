@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
+import { requireBetaAccess } from "../auth/users";
 import { metricsValidator, platformValidator } from "../validators";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
 
@@ -9,7 +10,7 @@ export const list = query({
     brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
     const userId = identity.subject;
 
@@ -61,7 +62,7 @@ export const record = mutation({
     capturedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) throw new Error("Not authenticated");
 
     const account = await ctx.db.get(args.socialAccountId);

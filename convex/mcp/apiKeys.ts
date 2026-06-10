@@ -2,6 +2,8 @@ import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { action, mutation, query } from "../_generated/server";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
+import { requireBetaAccess } from "../auth/users";
 
 const KEY_PREFIX = "ce_mcp_";
 const DEFAULT_SCOPES = [
@@ -75,7 +77,7 @@ function publicKeyRecord(key: {
 
 export const list = query({
   handler: async (ctx) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const keys = await ctx.db
       .query("mcpApiKeys")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -92,7 +94,7 @@ export const create = action({
     scopes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccessForAction(ctx));
     const name = args.name.trim();
     if (!name) throw new Error("API key name is required");
 
@@ -123,7 +125,7 @@ export const create = action({
 export const revoke = mutation({
   args: { id: v.id("mcpApiKeys") },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const key = await ctx.db.get(args.id);
     if (!key || key.userId !== userId) throw new Error("MCP API key not found");
 

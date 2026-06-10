@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery, mutation, query } from "../_generated/server";
-import { ensureCurrentUser } from "../auth/users";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -22,7 +22,7 @@ const brandFields = {
 export const list = query({
   args: { workspaceId: v.optional(v.id("workspaces")) },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
     if (args.workspaceId) {
@@ -47,7 +47,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("brands") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await requireBetaAccess(ctx);
     if (!identity) return null;
 
     const brand = await ctx.db.get(args.id);
@@ -75,10 +75,10 @@ export const create = mutation({
     ...brandFields,
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const workspace = args.workspaceId
       ? await resolveWritableWorkspace(ctx, userId, args.workspaceId)
-      : personalWorkspace;
+      : defaultWorkspace;
     const { workspaceId, ...brandArgs } = args;
     void workspaceId;
 
@@ -110,8 +110,7 @@ export const update = mutation({
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     const brand = await ctx.db.get(args.id);
     if (!brand) {
@@ -140,8 +139,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("brands") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     const brand = await ctx.db.get(args.id);
     if (!brand) {

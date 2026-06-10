@@ -18,6 +18,7 @@ import {
 import { validateWorkflowGraph } from "../../src/lib/workflow/workflowGraphValidation";
 import { createWorkflowRun } from "../workflows/runCreation";
 import { nextScheduledRunAt } from "../workflows/scheduling";
+import { requireBetaAccess } from "../auth/users";
 
 type WorkflowDoc = Doc<"workflows">;
 type WorkflowGraphDoc = typeof workflowGraphValidator.type;
@@ -210,7 +211,7 @@ async function patchWorkflowGraph(
 
 export const list = query({
   handler: async (ctx) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflows = await ctx.db
       .query("workflows")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -237,7 +238,7 @@ export const listForMcp = internalQuery({
 export const get = query({
   args: { id: v.id("workflows") },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await ctx.db.get(args.id);
     if (!workflow || workflow.userId !== userId) return null;
 
@@ -279,7 +280,7 @@ export const createBlank = mutation({
     defaultPlatforms: v.optional(v.array(platformValidator)),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
 
     return await createWorkflow(ctx, {
       userId,
@@ -336,7 +337,7 @@ export const updateMetadata = mutation({
     publishingPolicy: v.optional(publishingPolicyValidator),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.id, userId);
 
     if (args.socialAccountId) {
@@ -422,7 +423,7 @@ export const updateGraph = mutation({
     graph: workflowGraphValidator,
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.id, userId);
     await patchWorkflowGraph(ctx, workflow, args.graph);
     return workflow._id;
@@ -448,7 +449,7 @@ export const addNode = mutation({
     node: workflowNodeValidator,
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     const graph = {
       ...workflow.graph,
@@ -491,7 +492,7 @@ export const updateNode = mutation({
     retention: v.optional(v.union(v.any(), v.null())),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     let found = false;
     const nodes = workflow.graph.nodes.map((node) => {
@@ -596,7 +597,7 @@ export const deleteNode = mutation({
     nodeId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     const nodes = workflow.graph.nodes.filter((node) => node.id !== args.nodeId);
     if (nodes.length === workflow.graph.nodes.length) throw new Error("Workflow node not found");
@@ -644,7 +645,7 @@ export const connectNodes = mutation({
     targetPort: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     const edge = {
       id: args.edgeId?.trim() || `${args.sourceNodeId}:${args.sourcePort}->${args.targetNodeId}:${args.targetPort}`,
@@ -712,7 +713,7 @@ export const disconnectEdge = mutation({
     edgeId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     const edges = workflow.graph.edges.filter((edge) => edge.id !== args.edgeId);
     if (edges.length === workflow.graph.edges.length) throw new Error("Workflow edge not found");
@@ -751,7 +752,7 @@ export const replaceEdge = mutation({
     edge: workflowEdgeValidator,
   },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     let found = false;
     const edges = workflow.graph.edges.map((edge) => {
@@ -797,7 +798,7 @@ export const replaceEdgeForMcp = internalMutation({
 export const runWorkflow = mutation({
   args: { workflowId: v.id("workflows") },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     const workflow = await getOwnedWorkflow(ctx, args.workflowId, userId);
     assertValidGraph(workflow.graph);
 

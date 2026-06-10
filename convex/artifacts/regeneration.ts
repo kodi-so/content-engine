@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { storeGeneratedAsset } from "../content/assetStorage";
 import { getModelProvider } from "../providers";
 import type { ModelProviderName } from "../providers/model";
@@ -52,8 +53,7 @@ function getModelProviderName(
 export const regenerate = action({
   args: { id: v.id("artifacts") },
   handler: async (ctx, args): Promise<{ artifactIds: Id<"artifacts">[] }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccessForAction(ctx);
 
     const context = await ctx.runQuery(internal.artifacts.records.getRegenerationContext, {
       artifactId: args.id,

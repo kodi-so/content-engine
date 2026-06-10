@@ -7,9 +7,10 @@ import {
   query,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { getPublishingProvider } from "../providers";
 import type { Doc } from "../_generated/dataModel";
-import { ensureCurrentUser } from "../auth/users";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import {
   distributionStatusValidator,
   publishingProviderValidator,
@@ -29,8 +30,7 @@ import {
 export const list = query({
   args: { workspaceId: v.optional(v.id("workspaces")) },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
+    const identity = await requireBetaAccess(ctx);
 
     if (args.workspaceId) {
       await requireWorkspaceMember(ctx, args.workspaceId, identity.subject);
@@ -95,7 +95,7 @@ export const create = mutation({
     providerPayload: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
     const brand = await ctx.db.get(args.brandId);
     if (!brand) {
@@ -108,7 +108,7 @@ export const create = mutation({
     }
     const workspace = args.workspaceId || brand.workspaceId
       ? await resolveWritableWorkspace(ctx, userId, args.workspaceId ?? brand.workspaceId)
-      : personalWorkspace;
+      : defaultWorkspace;
     if (brand.workspaceId && brand.workspaceId !== workspace._id) {
       throw new Error("Brand does not belong to this workspace");
     }
@@ -195,8 +195,7 @@ export const updateStatus = mutation({
     publishedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     const plan = await ctx.db.get(args.id);
     if (!plan) {
@@ -221,8 +220,7 @@ export const updateStatus = mutation({
 export const remove = mutation({
   args: { id: v.id("distributionPlans") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     const plan = await ctx.db.get(args.id);
     if (!plan) {
@@ -282,8 +280,7 @@ export const replaceArtifact = mutation({
     newArtifactId: v.id("artifacts"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccess(ctx);
 
     return await replaceArtifactInPlan(ctx, args, identity.subject);
   },
@@ -295,8 +292,7 @@ export const publish = action({
     mode: v.union(v.literal("schedule"), v.literal("now")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccessForAction(ctx);
 
     const context = await getDistributionPlanContext(ctx, args.id, identity.subject);
     if (!context) throw new Error("Distribution plan not found");
@@ -379,8 +375,7 @@ export const publish = action({
 export const syncStatus = action({
   args: { id: v.id("distributionPlans") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccessForAction(ctx);
 
     const context = await getDistributionPlanContext(ctx, args.id, identity.subject);
     if (!context) throw new Error("Distribution plan not found");
@@ -419,8 +414,7 @@ export const syncStatus = action({
 export const syncMetrics = action({
   args: { id: v.id("distributionPlans") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    const identity = await requireBetaAccessForAction(ctx);
 
     const context = await getDistributionPlanContext(ctx, args.id, identity.subject);
     if (!context) throw new Error("Distribution plan not found");

@@ -47,14 +47,10 @@
 }
 
 .brand-symbol {
-  display: grid;
+  display: block;
   width: 2rem;
   height: 2rem;
-  place-items: center;
-  border: 1px solid oklch(100% 0 0 / 0.12);
   border-radius: var(--radius-md);
-  background: linear-gradient(145deg, var(--color-accent) 0%, oklch(70% 0.13 150) 100%);
-  color: oklch(17% 0.035 220);
   box-shadow: 0 10px 24px oklch(10% 0.03 220 / 0.28);
 }
 

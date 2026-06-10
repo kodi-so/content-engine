@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { action, internalQuery, mutation, query } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { ensureCurrentUser } from "../auth/users";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { storeGeneratedAsset } from "../content/assetStorage";
 import { getModelProvider } from "../providers";
 import type { GeneratedAsset, ModelProvider } from "../providers/model";
@@ -70,7 +71,7 @@ export const generatePreview = action({
     prompt: v.string(),
   },
   handler: async (ctx, args) => {
-    currentUserId(await ctx.auth.getUserIdentity());
+    currentUserId(await requireBetaAccessForAction(ctx));
     const prompt = args.prompt.trim();
     if (!prompt) throw new Error("Prompt is required");
 
@@ -119,7 +120,7 @@ export const list = query({
     brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
 
     if (args.brandId) {
       const brand = await ctx.db.get(args.brandId);
@@ -173,7 +174,7 @@ export const create = mutation({
     mimeType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const brand = await ctx.db.get(args.brandId);
     if (!brand) throw new Error("Brand not found");
     if (brand.workspaceId) {
@@ -190,7 +191,7 @@ export const create = mutation({
     const now = Date.now();
     return await ctx.db.insert("creativeAssets", {
       userId,
-      workspaceId: brand.workspaceId ?? personalWorkspace._id,
+      workspaceId: brand.workspaceId ?? defaultWorkspace._id,
       brandId: args.brandId,
       name,
       assetKind: args.assetKind ?? "other",
@@ -222,7 +223,7 @@ export const update = mutation({
     usageNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const asset = await ctx.db.get(args.id);
     if (!asset) throw new Error("Reference asset not found");
     if (asset.workspaceId) {
@@ -253,7 +254,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("creativeAssets") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const asset = await ctx.db.get(args.id);
     if (!asset) throw new Error("Reference asset not found");
     if (asset.workspaceId) {

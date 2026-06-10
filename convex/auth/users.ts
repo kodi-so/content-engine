@@ -1,5 +1,7 @@
 import type { UserIdentity } from "convex/server";
+import { v } from "convex/values";
 import {
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -23,15 +25,52 @@ type UserProfilePatch = {
   avatarUrl?: string;
 };
 
+function normalizeEmail(email?: string) {
+  return email?.trim().toLowerCase() ?? "";
+}
+
+function betaAccessEmails() {
+  return (process.env.BETA_ACCESS_EMAILS ?? "")
+    .split(",")
+    .map((email) => normalizeEmail(email))
+    .filter(Boolean);
+}
+
+async function isApprovedForBeta(
+  ctx: { db: QueryCtx["db"] | MutationCtx["db"] },
+  identity: UserIdentity
+) {
+  const email = normalizeEmail(identity.email);
+  if (!email) return false;
+  if (betaAccessEmails().includes(email)) return true;
+
+  const entry = await ctx.db
+    .query("waitlistEntries")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .unique();
+
+  return entry?.status === "approved";
+}
+
 export async function requireCurrentIdentity(ctx: AuthCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Not authenticated");
   return identity;
 }
 
-export async function requireCurrentUserId(ctx: AuthCtx) {
-  const identity = await requireCurrentIdentity(ctx);
+export async function requireCurrentUserId(
+  ctx: AuthCtx & { db: QueryCtx["db"] | MutationCtx["db"] }
+) {
+  const identity = await requireBetaAccess(ctx);
   return identity.subject;
+}
+
+export async function requireBetaAccess(ctx: AuthCtx & { db: QueryCtx["db"] | MutationCtx["db"] }) {
+  const identity = await requireCurrentIdentity(ctx);
+  if (!(await isApprovedForBeta(ctx, identity))) {
+    throw new Error("Content Engine is in private beta");
+  }
+  return identity;
 }
 
 function profileFromIdentity(identity: UserIdentity): UserProfilePatch {
@@ -53,13 +92,6 @@ async function getUserBySubject(ctx: QueryCtx | MutationCtx, subject: string) {
     .unique();
 }
 
-function personalWorkspaceName(identity: UserIdentity) {
-  const name = identity.name?.trim();
-  if (name) return `${name}'s workspace`;
-
-  return "Personal workspace";
-}
-
 async function getActiveWorkspaceMembership(
   ctx: QueryCtx | MutationCtx,
   workspaceId: Id<"workspaces">,
@@ -75,26 +107,39 @@ async function getActiveWorkspaceMembership(
   return membership?.status === "active" ? membership : null;
 }
 
-async function ensurePersonalWorkspace(ctx: MutationCtx, identity: UserIdentity) {
-  const userId = identity.subject;
-  const existingOwnedWorkspaces = await ctx.db
-    .query("workspaces")
-    .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
-    .collect();
-  const existingPersonalWorkspace = existingOwnedWorkspaces.find(
-    (workspace) => workspace.workspaceType === "personal"
+function isLegacyDefaultWorkspaceName(name: string, identity: UserIdentity) {
+  const trimmedName = identity.name?.trim();
+  return (
+    name === "Personal workspace" ||
+    (trimmedName ? name === `${trimmedName}'s workspace` : false)
   );
+}
+
+async function ensureDefaultWorkspace(ctx: MutationCtx, identity: UserIdentity) {
+  const userId = identity.subject;
   const now = Date.now();
 
-  if (existingPersonalWorkspace) {
+  const memberships = await ctx.db
+    .query("workspaceMembers")
+    .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
+    .collect();
+  const existingWorkspaces = await Promise.all(
+    memberships.map((membership) => ctx.db.get(membership.workspaceId))
+  );
+  const existingWorkspace =
+    existingWorkspaces
+      .filter((workspace): workspace is Doc<"workspaces"> => Boolean(workspace))
+      .sort((first, second) => first.createdAt - second.createdAt)[0] ?? null;
+
+  if (existingWorkspace) {
     const membership = await getActiveWorkspaceMembership(
       ctx,
-      existingPersonalWorkspace._id,
+      existingWorkspace._id,
       userId
     );
     if (!membership) {
       await ctx.db.insert("workspaceMembers", {
-        workspaceId: existingPersonalWorkspace._id,
+        workspaceId: existingWorkspace._id,
         userId,
         role: "owner",
         status: "active",
@@ -102,12 +147,18 @@ async function ensurePersonalWorkspace(ctx: MutationCtx, identity: UserIdentity)
         updatedAt: now,
       });
     }
-    return existingPersonalWorkspace;
+    if (isLegacyDefaultWorkspaceName(existingWorkspace.name, identity)) {
+      await ctx.db.patch(existingWorkspace._id, {
+        name: "Personal",
+        updatedAt: now,
+      });
+      return { ...existingWorkspace, name: "Personal", updatedAt: now };
+    }
+    return existingWorkspace;
   }
 
   const workspaceId = await ctx.db.insert("workspaces", {
-    name: personalWorkspaceName(identity),
-    workspaceType: "personal",
+    name: "Personal",
     ownerUserId: userId,
     createdByUserId: userId,
     createdAt: now,
@@ -124,12 +175,15 @@ async function ensurePersonalWorkspace(ctx: MutationCtx, identity: UserIdentity)
   });
 
   const workspace = await ctx.db.get(workspaceId);
-  if (!workspace) throw new Error("Failed to create personal workspace");
+  if (!workspace) throw new Error("Failed to create default workspace");
   return workspace;
 }
 
 export async function ensureCurrentUser(ctx: MutationCtx) {
   const identity = await requireCurrentIdentity(ctx);
+  if (!(await isApprovedForBeta(ctx, identity))) {
+    throw new Error("Content Engine is in private beta");
+  }
   const now = Date.now();
   const profile = profileFromIdentity(identity);
   const existing = await getUserBySubject(ctx, identity.subject);
@@ -143,8 +197,8 @@ export async function ensureCurrentUser(ctx: MutationCtx) {
     });
     const user = await ctx.db.get(docId);
     if (!user) throw new Error("Failed to create user");
-    const personalWorkspace = await ensurePersonalWorkspace(ctx, identity);
-    return { identity, userId: identity.subject, user, personalWorkspace };
+    const defaultWorkspace = await ensureDefaultWorkspace(ctx, identity);
+    return { identity, userId: identity.subject, user, defaultWorkspace };
   }
 
   const patch: Partial<Doc<"users">> = {
@@ -155,8 +209,8 @@ export async function ensureCurrentUser(ctx: MutationCtx) {
   await ctx.db.patch(existing._id, patch);
   const user = await ctx.db.get(existing._id);
   if (!user) throw new Error("Failed to update user");
-  const personalWorkspace = await ensurePersonalWorkspace(ctx, identity);
-  return { identity, userId: identity.subject, user, personalWorkspace };
+  const defaultWorkspace = await ensureDefaultWorkspace(ctx, identity);
+  return { identity, userId: identity.subject, user, defaultWorkspace };
 }
 
 export const me = query({
@@ -164,6 +218,14 @@ export const me = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
+    if (!(await isApprovedForBeta(ctx, identity))) {
+      return {
+        accessStatus: "pending" as const,
+        user: null,
+        memberships: [],
+        workspaces: [],
+      };
+    }
     const user = await getUserBySubject(ctx, identity.subject);
     if (!user) return null;
 
@@ -178,6 +240,7 @@ export const me = query({
     );
 
     return {
+      accessStatus: "approved" as const,
       user,
       memberships,
       workspaces: workspaces.filter(
@@ -190,7 +253,23 @@ export const me = query({
 export const ensure = mutation({
   args: {},
   handler: async (ctx) => {
-    const { personalWorkspace, user } = await ensureCurrentUser(ctx);
-    return { user, personalWorkspace };
+    const { defaultWorkspace, user } = await ensureCurrentUser(ctx);
+    return { user, defaultWorkspace };
+  },
+});
+
+export const hasBetaAccessForEmail = internalQuery({
+  args: { email: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    if (!email) return false;
+    if (betaAccessEmails().includes(email)) return true;
+
+    const entry = await ctx.db
+      .query("waitlistEntries")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+
+    return entry?.status === "approved";
   },
 });

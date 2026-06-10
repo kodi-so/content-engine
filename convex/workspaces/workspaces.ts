@@ -54,15 +54,6 @@ export async function requireWorkspaceMember(
 }
 
 export async function defaultWorkspaceForUser(ctx: QueryCtx | MutationCtx, userId: string) {
-  const ownedWorkspaces = await ctx.db
-    .query("workspaces")
-    .withIndex("by_owner", (q) => q.eq("ownerUserId", userId))
-    .collect();
-  const personalWorkspace = ownedWorkspaces.find(
-    (workspace) => workspace.workspaceType === "personal"
-  );
-  if (personalWorkspace) return personalWorkspace;
-
   const memberships = await ctx.db
     .query("workspaceMembers")
     .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", "active"))
@@ -71,11 +62,9 @@ export async function defaultWorkspaceForUser(ctx: QueryCtx | MutationCtx, userI
     memberships.map((membership) => ctx.db.get(membership.workspaceId))
   );
 
-  return (
-    workspaces.find((workspace) => workspace?.workspaceType === "personal") ??
-    workspaces.find(Boolean) ??
-    null
-  );
+  return workspaces
+    .filter((workspace): workspace is Doc<"workspaces"> => Boolean(workspace))
+    .sort((first, second) => first.createdAt - second.createdAt)[0] ?? null;
 }
 
 export async function resolveWritableWorkspace(
@@ -114,15 +103,12 @@ export const list = query({
           Boolean(item.workspace)
       )
       .sort((first, second) => {
-        if (first.workspace.workspaceType !== second.workspace.workspaceType) {
-          return first.workspace.workspaceType === "personal" ? -1 : 1;
-        }
         return second.workspace.updatedAt - first.workspace.updatedAt;
       });
   },
 });
 
-export const createTeam = mutation({
+export const createWorkspace = mutation({
   args: {
     name: v.string(),
     clerkOrganizationId: v.optional(v.string()),
@@ -135,7 +121,6 @@ export const createTeam = mutation({
     const now = Date.now();
     const workspaceId = await ctx.db.insert("workspaces", {
       name,
-      workspaceType: "team",
       ownerUserId: userId,
       createdByUserId: userId,
       clerkOrganizationId: args.clerkOrganizationId?.trim() || undefined,
@@ -188,10 +173,18 @@ export const upsertMember = mutation({
   },
   handler: async (ctx, args) => {
     const currentUserId = await requireCurrentUserId(ctx);
-    await requireWorkspaceMember(ctx, args.workspaceId, currentUserId, managerRoles);
+    const { workspace } = await requireWorkspaceMember(
+      ctx,
+      args.workspaceId,
+      currentUserId,
+      managerRoles
+    );
 
     if (!args.userId.trim()) throw new Error("User id is required");
     if (args.userId === currentUserId) throw new Error("Use role changes for your own membership");
+    if (workspace.ownerUserId === args.userId) {
+      throw new Error("Transfer ownership before changing the owner role");
+    }
 
     const now = Date.now();
     const existing = await ctx.db
@@ -229,7 +222,12 @@ export const upsertMemberByEmail = mutation({
   },
   handler: async (ctx, args) => {
     const currentUserId = await requireCurrentUserId(ctx);
-    await requireWorkspaceMember(ctx, args.workspaceId, currentUserId, managerRoles);
+    const { workspace } = await requireWorkspaceMember(
+      ctx,
+      args.workspaceId,
+      currentUserId,
+      managerRoles
+    );
 
     const email = args.email.trim().toLowerCase();
     if (!email) throw new Error("Email is required");
@@ -243,6 +241,9 @@ export const upsertMemberByEmail = mutation({
     }
     if (user.subject === currentUserId) {
       throw new Error("Use role changes for your own membership");
+    }
+    if (workspace.ownerUserId === user.subject) {
+      throw new Error("Transfer ownership before changing the owner role");
     }
 
     const now = Date.now();
@@ -293,18 +294,18 @@ export const listMembers = query({
       }))
     );
 
-    return rows.sort((first, second) => {
-      if (first.membership.status !== second.membership.status) {
-        return first.membership.status === "active" ? -1 : 1;
-      }
-      const roleRank: Record<WorkspaceRole, number> = {
-        owner: 0,
-        admin: 1,
-        member: 2,
-        viewer: 3,
-      };
-      return roleRank[first.membership.role] - roleRank[second.membership.role];
-    });
+    const roleRank: Record<WorkspaceRole, number> = {
+      owner: 0,
+      admin: 1,
+      member: 2,
+      viewer: 3,
+    };
+
+    return rows
+      .filter((row) => row.membership.status === "active")
+      .sort((first, second) => {
+        return roleRank[first.membership.role] - roleRank[second.membership.role];
+      });
   },
 });
 
@@ -312,26 +313,55 @@ export const setMemberRole = mutation({
   args: {
     workspaceId: v.id("workspaces"),
     userId: v.string(),
-    role: assignableWorkspaceRoleValidator,
+    role: workspaceRoleValidator,
   },
   handler: async (ctx, args) => {
     const currentUserId = await requireCurrentUserId(ctx);
-    const { workspace } = await requireWorkspaceMember(
+    const { workspace, membership: currentMembership } = await requireWorkspaceMember(
       ctx,
       args.workspaceId,
       currentUserId,
       managerRoles
     );
-    if (workspace.ownerUserId === args.userId) {
-      throw new Error("Workspace owner must keep the owner role");
-    }
-
     const membership = await getActiveMembership(ctx, args.workspaceId, args.userId);
     if (!membership) throw new Error("Workspace member not found");
 
+    const now = Date.now();
+    if (args.role === "owner") {
+      if (currentMembership.role !== "owner") {
+        throw new Error("Only the owner can transfer ownership");
+      }
+      if (workspace.ownerUserId === args.userId) return;
+
+      const currentOwnerMembership = await getActiveMembership(
+        ctx,
+        args.workspaceId,
+        workspace.ownerUserId
+      );
+      if (currentOwnerMembership) {
+        await ctx.db.patch(currentOwnerMembership._id, {
+          role: "admin",
+          updatedAt: now,
+        });
+      }
+      await ctx.db.patch(membership._id, {
+        role: "owner",
+        updatedAt: now,
+      });
+      await ctx.db.patch(workspace._id, {
+        ownerUserId: args.userId,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    if (workspace.ownerUserId === args.userId) {
+      throw new Error("Transfer ownership before changing the owner role");
+    }
+
     await ctx.db.patch(membership._id, {
       role: args.role,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
   },
 });
@@ -349,6 +379,9 @@ export const removeMember = mutation({
       currentUserId,
       managerRoles
     );
+    if (args.userId === currentUserId) {
+      throw new Error("You cannot remove yourself from a workspace");
+    }
     if (workspace.ownerUserId === args.userId) {
       throw new Error("Workspace owner cannot be removed");
     }

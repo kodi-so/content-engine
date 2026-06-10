@@ -1,5 +1,6 @@
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { BULKAPIS_PROVIDER } from "./bulkapisConfig";
 import { bulkApisRequest } from "./bulkapis";
 
@@ -444,8 +445,7 @@ function normalizeProviderModel(value: unknown, syncedAt: number): NormalizedPro
 export const syncBulkApisModels = action({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    await requireBetaAccessForAction(ctx);
 
     const syncedAt = Date.now();
     const response = await bulkApisRequest<unknown>("list_models", "/ai/models", {

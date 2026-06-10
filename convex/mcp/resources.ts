@@ -9,6 +9,7 @@ import {
   WORKFLOW_AGENT_PRESETS,
   type WorkflowAgentPreset,
 } from "../../src/lib/workflow/workflowAgentPresets";
+import { requireBetaAccess } from "../auth/users";
 
 const JSON_MIME_TYPE = "application/json";
 const MARKDOWN_MIME_TYPE = "text/markdown";
@@ -614,7 +615,7 @@ async function creativeAssetSummaries(ctx: QueryCtx, userId: string) {
 
 export const list = query({
   handler: async (ctx) => {
-    requireUserId(await ctx.auth.getUserIdentity());
+    requireUserId(await requireBetaAccess(ctx));
     return RESOURCE_DEFINITIONS.map(resourceDescriptor);
   },
 });
@@ -665,7 +666,7 @@ async function readResourceForUser(ctx: QueryCtx, userId: string, uri: string) {
 export const read = query({
   args: { uri: v.string() },
   handler: async (ctx, args) => {
-    const userId = requireUserId(await ctx.auth.getUserIdentity());
+    const userId = requireUserId(await requireBetaAccess(ctx));
     return await readResourceForUser(ctx, userId, args.uri);
   },
 });

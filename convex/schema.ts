@@ -48,9 +48,26 @@ export default defineSchema({
     .index("by_subject", ["subject"])
     .index("by_token_identifier", ["tokenIdentifier"]),
 
+  waitlistEntries: defineTable({
+    email: v.string(),
+    name: v.optional(v.string()),
+    intendedUse: v.optional(v.string()),
+    source: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("declined")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    approvedAt: v.optional(v.number()),
+    approvedByUserId: v.optional(v.string()),
+  })
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
   workspaces: defineTable({
     name: v.string(),
-    workspaceType: v.union(v.literal("personal"), v.literal("team")),
     ownerUserId: v.string(),
     createdByUserId: v.string(),
     clerkOrganizationId: v.optional(v.string()),

@@ -3,6 +3,8 @@ import { action, mutation } from "../_generated/server";
 import { api } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
+import { requireCurrentUserId } from "../auth/users";
 
 /**
  * Extract storage ID from a Convex storage URL
@@ -28,6 +30,7 @@ export const deleteByUrl = mutation({
     url: v.string(),
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    await requireCurrentUserId(ctx);
     const storageId = extractStorageIdFromUrl(args.url);
     if (!storageId) {
       return { success: false, error: "Could not extract storage ID from URL" };
@@ -55,6 +58,7 @@ export const uploadBase64Image = action({
     filename: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string> => {
+    await requireBetaAccessForAction(ctx);
     try {
       // Extract mime type and base64 data
       const matches = args.base64Data.match(/^data:([^;]+);base64,(.+)$/);
@@ -103,6 +107,7 @@ export const uploadBase64ImageWithMetadata = action({
     mimeType: string;
     byteLength: number;
   }> => {
+    await requireBetaAccessForAction(ctx);
     const matches = args.base64Data.match(/^data:([^;]+);base64,(.+)$/);
     if (!matches) {
       throw new Error("Invalid base64 data URI format");
@@ -140,6 +145,7 @@ export const uploadBase64Images = action({
     base64DataArray: v.array(v.string()),
   },
   handler: async (ctx, args): Promise<string[]> => {
+    await requireBetaAccessForAction(ctx);
     // Upload all images in parallel
     const uploadPromises = args.base64DataArray.map((base64Data, index) =>
       ctx.runAction(api.storage.files.uploadBase64Image, {
@@ -166,7 +172,8 @@ export const fetchReferenceImages = action({
   args: {
     imageUrls: v.array(v.string()),
   },
-  handler: async (_ctx, args): Promise<ReferenceImageData[]> => {
+  handler: async (ctx, args): Promise<ReferenceImageData[]> => {
+    await requireBetaAccessForAction(ctx);
     const results: ReferenceImageData[] = [];
 
     for (const url of args.imageUrls) {

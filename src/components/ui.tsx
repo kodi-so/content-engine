@@ -1,6 +1,8 @@
-import { SignInButton } from "@clerk/clerk-react";
-import { CheckCircle2, BrainCircuit } from "lucide-react";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import { SignInButton, SignOutButton, useUser } from "@clerk/clerk-react";
+import { CheckCircle2 } from "lucide-react";
+import { Children, isValidElement, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { CustomSelect, type CustomSelectOption } from "./CustomSelect";
+import { ContentEngineMark } from "./BrandLogo";
 
 export function Page({
   title,
@@ -123,13 +125,19 @@ export function Select({
   onChange: (value: string) => void;
   children: ReactNode;
 }) {
+  const options = Children.toArray(children)
+    .filter(isValidElement<{ children?: ReactNode; disabled?: boolean; value?: string | number }>)
+    .map((child): CustomSelectOption => ({
+      disabled: child.props.disabled,
+      label: Children.toArray(child.props.children).join(""),
+      value: String(child.props.value ?? ""),
+    }));
+
   return (
-    <label className="field">
+    <div className="field">
       <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {children}
-      </select>
-    </label>
+      <CustomSelect onChange={onChange} options={options} placeholder={label} value={value} />
+    </div>
   );
 }
 
@@ -193,7 +201,7 @@ export function SignInScreen() {
   return (
     <div className="signin-screen">
       <div className="signin-copy">
-        <BrainCircuit size={34} />
+        <ContentEngineMark className="size-12" />
         <h1>Content Engine</h1>
         <p>Define brand memory, create reviewable content, and run repeatable publishing workflows from one focused workspace.</p>
         <SignInButton mode="modal">
@@ -201,6 +209,31 @@ export function SignInScreen() {
             Sign in
           </button>
         </SignInButton>
+      </div>
+    </div>
+  );
+}
+
+export function PrivateBetaScreen() {
+  const { user } = useUser();
+
+  return (
+    <div className="signin-screen">
+      <div className="signin-copy">
+        <ContentEngineMark className="size-12" />
+        <h1>Private beta</h1>
+        <p>
+          Content Engine is invite-only right now. We have your request and will open access as
+          soon as your workspace is approved.
+        </p>
+        <p className="muted">
+          Signed in as {user?.primaryEmailAddress?.emailAddress ?? "this account"}.
+        </p>
+        <SignOutButton signOutOptions={{ redirectUrl: "/" }}>
+          <button className="secondary-button" type="button">
+            Sign out
+          </button>
+        </SignOutButton>
       </div>
     </div>
   );

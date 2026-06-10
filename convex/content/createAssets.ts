@@ -3,6 +3,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { action } from "../_generated/server";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { storeGeneratedAsset } from "./assetStorage";
 import { getModelProvider } from "../providers";
 import type { ReferenceAsset } from "../providers/model";
@@ -87,7 +88,7 @@ export const generateImage = action({
     artifactIds: Id<"artifacts">[];
     assets: Array<{ artifactId: Id<"artifacts">; storageUrl: string; title: string }>;
   }> => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccessForAction(ctx));
     await assertOwnedBrand(ctx, args.brandId, userId);
 
     const prompt = args.prompt.trim();
@@ -208,7 +209,7 @@ export const generateVideo = action({
     storageUrl: string;
     title: string;
   }> => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccessForAction(ctx));
     await assertOwnedBrand(ctx, args.brandId, userId);
 
     const prompt = args.prompt.trim();
@@ -298,7 +299,7 @@ export const generateAudio = action({
     storageUrl: string;
     title: string;
   }> => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccessForAction(ctx));
     await assertOwnedBrand(ctx, args.brandId, userId);
 
     const text = args.text.trim();

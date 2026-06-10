@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ensureCurrentUser } from "../auth/users";
+import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
 import { personaTypeValidator } from "../validators";
 
@@ -99,7 +99,7 @@ export const list = query({
     brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
 
     if (args.brandId) {
       const brand = await ctx.db.get(args.brandId);
@@ -136,7 +136,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("personas") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const persona = await ctx.db.get(args.id);
     if (!persona) return null;
     if (persona.workspaceId) {
@@ -163,9 +163,9 @@ export const create = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const { userId, personalWorkspace } = await ensureCurrentUser(ctx);
+    const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const brand = await assertOwnedBrand(ctx, args.brandId, userId);
-    const workspaceId = brand.workspaceId ?? personalWorkspace._id;
+    const workspaceId = brand.workspaceId ?? defaultWorkspace._id;
 
     const name = args.name.trim();
     if (!name) throw new Error("Persona name is required");
@@ -228,7 +228,7 @@ export const update = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const persona = await ctx.db.get(args.id);
     if (!persona) throw new Error("Persona not found");
     if (persona.workspaceId) {
@@ -290,7 +290,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("personas") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const persona = await ctx.db.get(args.id);
     if (!persona) throw new Error("Persona not found");
     if (persona.workspaceId) {
@@ -305,7 +305,7 @@ export const remove = mutation({
 export const summarize = query({
   args: { id: v.id("personas") },
   handler: async (ctx, args) => {
-    const userId = currentUserId(await ctx.auth.getUserIdentity());
+    const userId = currentUserId(await requireBetaAccess(ctx));
     const persona = await ctx.db.get(args.id);
     if (!persona) return null;
     if (persona.workspaceId) {
