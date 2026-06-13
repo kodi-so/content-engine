@@ -364,7 +364,7 @@ Modified files currently include:
 - `src/pages/create/types.ts`
 - `src/pages/create/useCreateSlideshow.ts`
 - `src/types.ts`
-- `docs/workflow-diagrams.md`
+- `docs/platform-architecture.md`
 - `context.md`
 
 The previous commit before this handoff was:
@@ -667,7 +667,8 @@ The slideshow editor is considered good enough for now. The active product direc
 
 ### Data Ownership Cleanup
 
-We clarified the source-of-truth boundaries and added `docs/data-ownership.md`.
+We clarified the source-of-truth boundaries. The current consolidated reference
+lives in `docs/platform-architecture.md`.
 
 Current intended ownership:
 
