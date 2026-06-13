@@ -475,6 +475,17 @@ export function LibraryPage() {
                 }
                 key={output.id}
                 onOpenMedia={(mediaOutput) => setLightboxMedia(lightboxMediaForOutput(mediaOutput))}
+                onCompose={
+                  output.mimeType?.startsWith("video/") || output.type === "video"
+                    ? () => navigate(`/studio?${
+                        output.artifactId
+                          ? `artifactId=${encodeURIComponent(String(output.artifactId))}`
+                          : output.creativeAssetId
+                            ? `creativeAssetId=${encodeURIComponent(String(output.creativeAssetId))}`
+                            : `outputId=${encodeURIComponent(output.id)}`
+                      }`)
+                    : undefined
+                }
                 onEdit={editableImageOutput(output) ? () => setEditingOutput(output) : undefined}
                 onDelete={() => void removeSavedAsset(output)}
                 onRename={
@@ -521,6 +532,15 @@ export function LibraryPage() {
               <LibraryOutputCard
                 key={output.id}
                 onOpenMedia={(mediaOutput) => setLightboxMedia(lightboxMediaForOutput(mediaOutput))}
+                onCompose={
+                  output.mimeType?.startsWith("video/") || output.type === "video"
+                    ? () => navigate(`/studio?${
+                        output.artifactId
+                          ? `artifactId=${encodeURIComponent(String(output.artifactId))}`
+                          : `outputId=${encodeURIComponent(output.id)}`
+                      }`)
+                    : undefined
+                }
                 onRename={
                   output.artifactId
                     ? () => setRenamingOutput(output)

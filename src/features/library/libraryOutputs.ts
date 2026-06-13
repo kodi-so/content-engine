@@ -69,7 +69,7 @@ function exportedToMediaLibrary(artifact: ArtifactDoc) {
 
 function createPageArtifactOutput(artifact: ArtifactDoc): LibraryOutput | null {
   if (!isRecord(artifact.data)) return null;
-  if (artifact.data.source !== "create_page") return null;
+  if (artifact.data.source !== "create_page" && artifact.data.source !== "video_composer") return null;
   if (!artifact.storageUrl) return null;
   if (artifact.lifecycle && artifact.lifecycle !== "saved") return null;
 

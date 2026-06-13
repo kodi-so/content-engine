@@ -23,6 +23,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { PersonasPage } from "./pages/PersonasPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SlideshowEditorPage } from "./pages/SlideshowEditorPage";
+import { VideoComposerPage } from "./pages/VideoComposerPage";
 import { WorkflowCanvasPage } from "./pages/WorkflowCanvasPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 
@@ -91,6 +92,7 @@ function AppContent() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/create" element={<CreatePage />} />
             <Route path="/analyze" element={<AnalyzePage />} />
+            <Route path="/studio" element={<VideoComposerPage />} />
             <Route path="/brands" element={<BrandsPage />} />
             <Route path="/personas" element={<PersonasPage />} />
             <Route path="/accounts" element={<AccountsPage />} />

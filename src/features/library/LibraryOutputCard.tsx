@@ -1,4 +1,4 @@
-import { ExternalLink, Music, Trash2, Wand2 } from "lucide-react";
+import { Clapperboard, ExternalLink, Music, Trash2, Wand2 } from "lucide-react";
 import { useState } from "react";
 import type { LibraryOutput } from "./libraryTypes";
 import { isImageOutput, isVideoOutput } from "./libraryMedia";
@@ -105,6 +105,7 @@ function OutputTitle({
 
 export function LibraryOutputCard({
   onOpenMedia,
+  onCompose,
   onEdit,
   isDeleting,
   onDelete,
@@ -112,6 +113,7 @@ export function LibraryOutputCard({
   output,
 }: {
   onOpenMedia?: (output: LibraryOutput) => void;
+  onCompose?: () => void;
   onEdit?: () => void;
   isDeleting?: boolean;
   onDelete?: () => void;
@@ -173,6 +175,16 @@ export function LibraryOutputCard({
           >
             <Wand2 size={15} />
             Edit image
+          </button>
+        ) : null}
+        {onCompose ? (
+          <button
+            className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem]"
+            onClick={onCompose}
+            type="button"
+          >
+            <Clapperboard size={15} />
+            Create edit
           </button>
         ) : null}
         {!isImageOutput(output) ? (
