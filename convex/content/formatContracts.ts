@@ -70,8 +70,15 @@ export const slideshowSpecSchema = {
 
 export function defaultStructuredArtifactType(format: ContentFormat): ArtifactType {
   switch (format) {
+    case "image":
+    case "static_image":
+      return "image_prompt";
+    case "video":
+      return "scene_spec";
     case "slideshow":
       return "slide_spec";
+    case "audio":
+      return "script";
     case "hook_demo_video":
     case "ai_ugc_video":
     case "talking_avatar":
@@ -81,8 +88,6 @@ export function defaultStructuredArtifactType(format: ContentFormat): ArtifactTy
       return "text_draft";
     case "caption_set":
       return "caption";
-    case "static_image":
-      return "image_prompt";
   }
 }
 

@@ -106,6 +106,20 @@ function createOpenRouterHttpError(
   });
 }
 
+function createOpenRouterDecodeError(
+  operation: string,
+  details: unknown
+): ProviderError {
+  return new ProviderError(`OpenRouter API response could not be decoded during ${operation}`, {
+    kind: "model",
+    provider: OPENROUTER_PROVIDER,
+    operation,
+    code: "provider",
+    retryable: true,
+    details: details instanceof Error ? details.message : String(details),
+  });
+}
+
 function buildOpenRouterMessages(input: GenerateTextInput): ModelMessage[] {
   if (input.messages && input.messages.length > 0) {
     return input.messages;
@@ -184,6 +198,8 @@ async function openRouterRequest(
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
+    Accept: "application/json",
+    "Accept-Encoding": "identity",
     "Content-Type": "application/json",
   };
   if (process.env.OPENROUTER_SITE_URL) {
@@ -203,15 +219,27 @@ async function openRouterRequest(
       }
     );
 
+    let responseText = "";
+    try {
+      responseText = await response.text();
+    } catch (error) {
+      throw createOpenRouterDecodeError(operation, error);
+    }
+
     if (!response.ok) {
       throw createOpenRouterHttpError(
         operation,
         response.status,
-        await response.text()
+        responseText
       );
     }
 
-    const data = (await response.json()) as OpenRouterResponse;
+    let data: OpenRouterResponse;
+    try {
+      data = JSON.parse(responseText) as OpenRouterResponse;
+    } catch (error) {
+      throw createOpenRouterDecodeError(operation, error);
+    }
     const text = extractOpenRouterText(data);
 
     return {

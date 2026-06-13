@@ -147,13 +147,26 @@ async function falRequest<T>(
   const response = await fetch(url, {
     ...init,
     headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "identity",
       Authorization: `Key ${apiKey}`,
       ...(init?.headers ?? {}),
     },
   });
 
   const contentType = response.headers.get("content-type");
-  const body = await response.text();
+  let body = "";
+  try {
+    body = await response.text();
+  } catch (error) {
+    throw createFalResponseDecodeError(
+      operation,
+      response.status,
+      contentType,
+      "",
+      error
+    );
+  }
 
   if (!response.ok) {
     throw createFalHttpError(operation, response.status, body);

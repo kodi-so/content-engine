@@ -10,6 +10,9 @@ export type ContentRequestId = Id<"contentRequests">;
 export type PublishingProvider = "postiz" | "post_bridge" | "manual";
 export type Platform = "tiktok" | "instagram" | "youtube" | "x" | "linkedin";
 export type ContentFormat =
+  | "image"
+  | "video"
+  | "audio"
   | "slideshow"
   | "hook_demo_video"
   | "ai_ugc_video"
@@ -56,6 +59,7 @@ export type SlideshowTextBlock = {
   x?: number;
   y?: number;
   width?: number;
+  height?: number;
   align?: "left" | "center" | "right";
   fontSize?: number;
   fontWeight?: number;

@@ -60,6 +60,57 @@ export async function deleteSlideForRequest(
   }
 }
 
+export async function createSlideForRequest(
+  ctx: MutationCtx,
+  args: { slideshowId: Id<"slideshows">; afterSlideId: string; userId: string }
+) {
+  const slideshow = await getOwnedSlideshow(ctx, {
+    slideshowId: args.slideshowId,
+    userId: args.userId,
+  });
+  const spec = normalizeCanonicalSpec(slideshow.spec);
+  const slides = activeSlides(spec);
+  const sourceSlide = slides.find((slide) => slide.slideId === args.afterSlideId) ?? slides[slides.length - 1];
+  if (!sourceSlide) throw new Error("A source slide is required");
+
+  const now = Date.now();
+  const newSlideId = `slide-${now}`;
+  const sourceIndex = sourceSlide.index;
+  const copiedTextBlocks = "textBlocks" in sourceSlide && Array.isArray(sourceSlide.textBlocks)
+    ? sourceSlide.textBlocks.map((block, index) => ({
+        ...block,
+        id: `text-${now}-${index + 1}`,
+      }))
+    : undefined;
+  const nextSlide = {
+    ...sourceSlide,
+    slideId: newSlideId,
+    index: sourceIndex + 1,
+    ...(copiedTextBlocks !== undefined ? { textBlocks: copiedTextBlocks } : {}),
+    sourceImageArtifactId: undefined,
+    updatedAt: now,
+  };
+
+  const nextSpec = reindexActiveSlides({
+    ...spec,
+    slides: [
+      ...spec.slides.map((slide) =>
+        slide.status !== "deleted" && slide.index > sourceIndex
+          ? { ...slide, index: slide.index + 1, updatedAt: now }
+          : slide
+      ),
+      nextSlide,
+    ],
+  });
+
+  await ctx.db.patch(slideshow._id, {
+    spec: nextSpec,
+    updatedAt: now,
+  });
+
+  return newSlideId;
+}
+
 export async function moveSlideForRequest(
   ctx: MutationCtx,
   args: {
@@ -101,6 +152,47 @@ export async function moveSlideForRequest(
   });
 }
 
+export async function reorderSlidesForRequest(
+  ctx: MutationCtx,
+  args: {
+    slideshowId: Id<"slideshows">;
+    slideIds: string[];
+    userId: string;
+  }
+) {
+  const slideshow = await getOwnedSlideshow(ctx, {
+    slideshowId: args.slideshowId,
+    userId: args.userId,
+  });
+  const spec = normalizeCanonicalSpec(slideshow.spec);
+  const slides = activeSlides(spec);
+  const activeIds = new Set(slides.map((slide) => slide.slideId));
+  const uniqueIds = [...new Set(args.slideIds)];
+  const hasSameSlides =
+    uniqueIds.length === activeIds.size &&
+    uniqueIds.every((slideId) => activeIds.has(slideId));
+  if (!hasSameSlides) throw new Error("Slide order does not match the active slideshow");
+
+  const now = Date.now();
+  const indexBySlideId = new Map(
+    uniqueIds.map((slideId, index) => [slideId, index + 1])
+  );
+  const nextSpec = {
+    ...spec,
+    slides: spec.slides.map((slide) => {
+      const nextIndex = indexBySlideId.get(slide.slideId);
+      return nextIndex === undefined
+        ? slide
+        : { ...slide, index: nextIndex, updatedAt: now };
+    }),
+  };
+
+  await ctx.db.patch(slideshow._id, {
+    spec: nextSpec,
+    updatedAt: now,
+  });
+}
+
 export async function updateSlideTextForRequest(
   ctx: MutationCtx,
   args: {
@@ -118,13 +210,13 @@ export async function updateSlideTextForRequest(
   const textBlocks = normalizeEditableTextBlocks(args.textBlocks);
   const nextSpec = {
     ...spec,
-    slides: spec.slides.map((slide) =>
-      slide.slideId === args.slideId &&
-      slide.status !== "deleted" &&
-      slide.renderingMode === "background_plus_overlay"
-        ? { ...slide, textBlocks, updatedAt: Date.now() }
-        : slide
-    ),
+    slides: spec.slides.map((slide) => {
+      const canEditText =
+        slide.slideId === args.slideId &&
+        slide.status !== "deleted" &&
+        renderingModeForSlide(spec, slide) === "background_plus_overlay";
+      return canEditText ? { ...slide, textBlocks, updatedAt: Date.now() } : slide;
+    }),
   };
 
   await ctx.db.patch(slideshow._id, {

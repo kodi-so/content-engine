@@ -29,9 +29,13 @@ import { buildCanonicalSlideshowSpec } from "./slideshowAdapter";
 import { getModelProvider } from "../providers/index";
 import type {
   GenerateImageResult,
+  ModelProviderName,
   ModelProvider,
 } from "../providers/model";
-import { contentRequestStatusValidator } from "../validators";
+import {
+  contentRequestStatusValidator,
+  modelProviderValidator,
+} from "../validators";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -59,16 +63,85 @@ import {
 } from "./slideshowRequestEditing";
 import {
   applyRegeneratedSlideImageForRequest,
+  createSlideForRequest,
   deleteSlideForRequest,
   moveSlideForRequest,
+  reorderSlidesForRequest,
   regenerateSlideImageForRequest,
   updateSlideImagePromptForRequest,
   updateSlideTextForRequest,
 } from "./slideshowRequestMutations";
+import {
+  runCreateAudioRequest,
+  runCreateImageRequest,
+  runCreateVideoRequest,
+  type CreateReferenceAsset,
+} from "./createAssetRunner";
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
   return identity.subject;
+}
+
+const createGenerationModeValidator = v.union(
+  v.literal("image"),
+  v.literal("video"),
+  v.literal("audio"),
+  v.literal("slideshow")
+);
+
+const createReferenceAssetValidator = v.object({
+  url: v.string(),
+  mimeType: v.string(),
+  alias: v.optional(v.string()),
+  description: v.optional(v.string()),
+});
+
+type CreateGenerationMode = "image" | "video" | "audio" | "slideshow";
+
+type CreateGenerationPayload = {
+  mode: CreateGenerationMode;
+  provider?: ModelProviderName;
+  model?: string;
+  generationOperation?: string;
+  providerInput?: Record<string, unknown>;
+  aspectRatio?: string;
+  count?: number;
+  durationSeconds?: number;
+  audioMode?: string;
+  referenceImages?: CreateReferenceAsset[];
+  referenceVideos?: CreateReferenceAsset[];
+  voiceReferenceAudios?: CreateReferenceAsset[];
+};
+
+function contentFormatForGenerationMode(mode: CreateGenerationMode) {
+  switch (mode) {
+    case "image":
+      return "image";
+    case "video":
+      return "video";
+    case "audio":
+      return "audio";
+    case "slideshow":
+      return "slideshow";
+  }
+}
+
+function generationPayload(value: unknown): CreateGenerationPayload | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as Partial<CreateGenerationPayload>;
+  if (
+    payload.mode !== "image" &&
+    payload.mode !== "video" &&
+    payload.mode !== "audio" &&
+    payload.mode !== "slideshow"
+  ) {
+    return null;
+  }
+  return {
+    ...payload,
+    mode: payload.mode,
+  };
 }
 
 export const list = query({
@@ -92,13 +165,40 @@ export const list = query({
   },
 });
 
-export const createSlideshow = mutation({
+export const get = query({
+  args: { id: v.id("contentRequests") },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await requireBetaAccess(ctx));
+    const request = await ctx.db.get(args.id);
+    if (!request) return null;
+    if (request.workspaceId) {
+      await requireWorkspaceMember(ctx, request.workspaceId, userId);
+    } else if (request.userId !== userId) {
+      return null;
+    }
+    return request;
+  },
+});
+
+export const createGeneration = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
+    mode: createGenerationModeValidator,
     prompt: v.string(),
-    requestedRenderingMode: requestedRenderingModeValidator(),
+    provider: v.optional(modelProviderValidator),
+    model: v.optional(v.string()),
+    generationOperation: v.optional(v.string()),
+    providerInput: v.optional(v.any()),
+    aspectRatio: v.optional(v.string()),
+    count: v.optional(v.number()),
+    durationSeconds: v.optional(v.number()),
+    audioMode: v.optional(v.string()),
+    referenceImages: v.optional(v.array(createReferenceAssetValidator)),
+    referenceVideos: v.optional(v.array(createReferenceAssetValidator)),
+    voiceReferenceAudios: v.optional(v.array(createReferenceAssetValidator)),
+    requestedRenderingMode: v.optional(requestedRenderingModeValidator()),
     referenceAssets: v.optional(
       v.array(
         v.object({
@@ -172,9 +272,23 @@ export const createSlideshow = mutation({
       workspaceId: workspace._id,
       brandId: args.brandId,
       socialAccountId: args.socialAccountId,
-      contentFormat: "slideshow",
+      contentFormat: contentFormatForGenerationMode(args.mode),
       prompt,
       requestedRenderingMode: args.requestedRenderingMode ?? "background_plus_overlay",
+      generation: {
+        mode: args.mode,
+        provider: args.provider,
+        model: args.model?.trim() || undefined,
+        generationOperation: args.generationOperation?.trim() || undefined,
+        providerInput: args.providerInput,
+        aspectRatio: args.aspectRatio,
+        count: args.count,
+        durationSeconds: args.durationSeconds,
+        audioMode: args.audioMode,
+        referenceImages: args.referenceImages ?? [],
+        referenceVideos: args.referenceVideos ?? [],
+        voiceReferenceAudios: args.voiceReferenceAudios ?? [],
+      },
       referenceAssets,
       status: "queued",
       createdAt: now,
@@ -395,6 +509,17 @@ export const deleteSlide = mutation({
   },
 });
 
+export const createSlide = mutation({
+  args: {
+    slideshowId: v.id("slideshows"),
+    afterSlideId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await requireBetaAccess(ctx));
+    return await createSlideForRequest(ctx, { ...args, userId });
+  },
+});
+
 export const moveSlide = mutation({
   args: {
     slideshowId: v.id("slideshows"),
@@ -404,6 +529,17 @@ export const moveSlide = mutation({
   handler: async (ctx, args) => {
     const userId = currentUserId(await requireBetaAccess(ctx));
     await moveSlideForRequest(ctx, { ...args, userId });
+  },
+});
+
+export const reorderSlides = mutation({
+  args: {
+    slideshowId: v.id("slideshows"),
+    slideIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await requireBetaAccess(ctx));
+    await reorderSlidesForRequest(ctx, { ...args, userId });
   },
 });
 
@@ -472,6 +608,88 @@ export const execute = internalAction({
 
     let costUsd = 0;
     try {
+      const generation = generationPayload(
+        (context.request as Doc<"contentRequests"> & { generation?: unknown }).generation
+      );
+      if (generation && generation.mode !== "slideshow") {
+        await ctx.runMutation(internal.content.requests.transition, {
+          requestId: args.requestId,
+          status: "generating",
+        });
+
+        if (generation.mode === "image") {
+          const result = await runCreateImageRequest(ctx, {
+            userId: context.request.userId,
+            workspaceId: context.request.workspaceId,
+            brandId: context.request.brandId,
+            contentRequestId: context.request._id,
+            prompt: context.request.prompt,
+            provider: generation.provider,
+            model: generation.model,
+            aspectRatio: generation.aspectRatio,
+            count: generation.count,
+            providerInput: generation.providerInput,
+            referenceImages: generation.referenceImages,
+          });
+          await ctx.runMutation(internal.content.requests.transition, {
+            requestId: args.requestId,
+            status: "ready",
+            summary: `${result.assets.length} image${result.assets.length === 1 ? "" : "s"} ready to review.`,
+            costUsd: result.costUsd,
+            completedAt: Date.now(),
+          });
+          return;
+        }
+
+        if (generation.mode === "video") {
+          const result = await runCreateVideoRequest(ctx, {
+            userId: context.request.userId,
+            workspaceId: context.request.workspaceId,
+            brandId: context.request.brandId,
+            contentRequestId: context.request._id,
+            prompt: context.request.prompt,
+            provider: generation.provider,
+            model: generation.model,
+            aspectRatio: generation.aspectRatio,
+            durationSeconds: generation.durationSeconds,
+            providerInput: generation.providerInput,
+            referenceImages: generation.referenceImages,
+            referenceVideos: generation.referenceVideos,
+          });
+          await ctx.runMutation(internal.content.requests.transition, {
+            requestId: args.requestId,
+            status: "ready",
+            summary: "Video ready to review.",
+            costUsd: result.costUsd,
+            completedAt: Date.now(),
+          });
+          return;
+        }
+
+        if (generation.mode === "audio") {
+          const result = await runCreateAudioRequest(ctx, {
+            userId: context.request.userId,
+            workspaceId: context.request.workspaceId,
+            brandId: context.request.brandId,
+            contentRequestId: context.request._id,
+            text: context.request.prompt,
+            provider: generation.provider,
+            model: generation.model,
+            mode: generation.audioMode,
+            providerInput: generation.providerInput,
+            voiceReferenceAudios: generation.voiceReferenceAudios,
+          });
+          await ctx.runMutation(internal.content.requests.transition, {
+            requestId: args.requestId,
+            status: "ready",
+            summary: "Audio ready to review.",
+            costUsd: result.costUsd,
+            completedAt: Date.now(),
+          });
+          return;
+        }
+      }
+
       await ctx.runMutation(internal.content.requests.transition, {
         requestId: args.requestId,
         status: "planning",

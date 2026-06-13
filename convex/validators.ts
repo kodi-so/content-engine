@@ -135,6 +135,9 @@ export const socialAccountStatusValidator = v.union(
 );
 
 export const contentFormatValidator = v.union(
+  v.literal("image"),
+  v.literal("video"),
+  v.literal("audio"),
   v.literal("slideshow"),
   v.literal("hook_demo_video"),
   v.literal("ai_ugc_video"),

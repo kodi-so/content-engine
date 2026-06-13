@@ -96,6 +96,7 @@ export function normalizeEditableTextBlocks(value: unknown): SlideshowTextBlock[
       x: clampNumber(block.x, 10, 0, 96),
       y: clampNumber(block.y, index === 0 ? 42 : 56, 0, 96),
       width: clampNumber(block.width, 80, 12, 100),
+      height: clampNumber(block.height, index === 0 ? 14 : 10, 4, 100),
       align: block.align === "left" || block.align === "right" ? block.align : "center",
       fontSize: clampNumber(block.fontSize, index === 0 ? 72 : 44, 20, 150),
       fontWeight: clampNumber(block.fontWeight, role === "body" ? 700 : 800, 400, 900),
@@ -108,7 +109,6 @@ export function normalizeEditableTextBlocks(value: unknown): SlideshowTextBlock[
     };
   }).filter((block): block is SlideshowTextBlock => Boolean(block));
 
-  if (!blocks.length) throw new Error("At least one text block is required");
   return blocks.slice(0, 12);
 }
 

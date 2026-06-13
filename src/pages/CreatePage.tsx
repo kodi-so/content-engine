@@ -14,16 +14,17 @@ import { CreateGenerationFields } from "../features/create/CreateGenerationField
 import { CreateModeTabs } from "../features/create/CreateModeTabs";
 import { CreateResultPanel } from "../features/create/CreateResultPanel";
 import { RecentWorkflowDrafts } from "../features/create/RecentWorkflowDrafts";
+import { SlideshowEditor } from "../features/create/SlideshowEditor";
 import {
   draftName,
   mediaPreviewTitle,
   numberConfigValue,
   referenceAssetsFromConfig,
   referenceMentionOptionsFromConfig,
-  resultTitle,
   stringConfigValue,
   visibleConfigValues,
 } from "../features/create/createPageHelpers";
+import { resultFromRequest } from "../features/create/createRequestResult";
 import type { CreateResult } from "../features/create/createPageTypes";
 import { useCreateReferenceFiles } from "../features/create/useCreateReferenceFiles";
 import {
@@ -67,13 +68,10 @@ export function CreatePage() {
   const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
   const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
   const createWorkflow = useMutation(api.workflows.definitions.create);
-  const createSlideshow = useMutation(api.content.requests.createSlideshow);
-  const deleteArtifact = useMutation(api.artifacts.records.remove);
-  const saveArtifactToLibrary = useMutation(api.artifacts.records.saveToLibrary);
+  const createGeneration = useMutation(api.content.requests.createGeneration);
+  const saveContentRequest = useMutation(api.content.requests.save);
+  const discardContentRequest = useMutation(api.content.requests.discard);
   const uploadReference = useAction(api.storage.files.uploadBase64ImageWithMetadata);
-  const generateImage = useAction(api.content.createAssets.generateImage);
-  const generateVideo = useAction(api.content.createAssets.generateVideo);
-  const generateAudio = useAction(api.content.createAssets.generateAudio);
 
   const [mode, setMode] = useState<CreateMode>("image");
   const modeDefinition = getCreateModeDefinition(mode);
@@ -101,6 +99,19 @@ export function CreatePage() {
   const [isUploadingReference, setIsUploadingReference] = useState(false);
   const [isReviewActionPending, setIsReviewActionPending] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
+  const [activeRequestId, setActiveRequestId] = useState<Id<"contentRequests"> | null>(null);
+  const activeRequest = useQuery(
+    api.content.requests.get,
+    activeRequestId ? { id: activeRequestId } : "skip"
+  );
+  const activeRequestArtifacts = useQuery(
+    api.artifacts.records.list,
+    activeRequestId ? { contentRequestId: activeRequestId, includeDebug: true } : "skip"
+  );
+  const activeRequestSlideshows = useQuery(
+    api.content.slideshows.list,
+    activeRequestId ? { contentRequestId: activeRequestId } : "skip"
+  );
 
   const selectedWorkflowBrandId = mode === "workflow" ? brandId : "";
   const recentDrafts = useMemo(
@@ -192,6 +203,7 @@ export function CreatePage() {
     setName("");
     setStatus("");
     setResult(null);
+    setActiveRequestId(null);
   };
 
   const handleGenerationConfigChange = (key: string, value: unknown) => {
@@ -226,20 +238,42 @@ export function CreatePage() {
     uploadReference,
   });
 
+  useEffect(() => {
+    if (!activeRequestId || activeRequest === undefined) return;
+    if (activeRequest === null) {
+      setResult(null);
+      return;
+    }
+    const nextResult = resultFromRequest({
+      artifacts: activeRequestArtifacts ?? [],
+      request: activeRequest,
+      selectedModelLabel: selectedProviderModel?.displayName ?? selectedModel,
+      slideshows: activeRequestSlideshows ?? [],
+    });
+    if (nextResult) setResult(nextResult);
+  }, [
+    activeRequest,
+    activeRequestArtifacts,
+    activeRequestId,
+    activeRequestSlideshows,
+    selectedModel,
+    selectedProviderModel,
+  ]);
+
   const saveResultToLibrary = async (currentResult: CreateResult) => {
-    const artifactIds = currentResult.artifactIds ?? [];
-    if (!artifactIds.length || isReviewActionPending) return;
+    if (!currentResult.requestId || isReviewActionPending) return;
 
     setIsReviewActionPending(true);
     setStatus("");
     try {
-      await Promise.all(
-        artifactIds.map((artifactId) => saveArtifactToLibrary({ id: artifactId }))
-      );
+      await saveContentRequest({ id: currentResult.requestId });
       setResult({
         ...currentResult,
         status: "saved",
-        detail: `${artifactIds.length} ${currentResult.kind}${artifactIds.length === 1 ? "" : "s"} saved to the media library.`,
+        detail:
+          currentResult.kind === "slideshow"
+            ? "Slideshow saved to the library."
+            : `${currentResult.artifactIds?.length ?? 0} ${currentResult.kind}${currentResult.artifactIds?.length === 1 ? "" : "s"} saved to the media library.`,
       });
       setStatus("Saved to library");
     } catch (error) {
@@ -250,16 +284,14 @@ export function CreatePage() {
   };
 
   const rejectResult = async (currentResult: CreateResult) => {
-    const artifactIds = currentResult.artifactIds ?? [];
-    if (!artifactIds.length || isReviewActionPending) return;
+    if (!currentResult.requestId || isReviewActionPending) return;
 
     setIsReviewActionPending(true);
     setStatus("");
     try {
-      await Promise.all(
-        artifactIds.map((artifactId) => deleteArtifact({ id: artifactId }))
-      );
+      await discardContentRequest({ id: currentResult.requestId });
       setResult(null);
+      setActiveRequestId(null);
       setStatus("Preview rejected");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to reject preview");
@@ -361,127 +393,82 @@ export function CreatePage() {
         return;
       }
 
-      if (mode === "slideshow") {
-        const requestId = await createSlideshow({
+      if (mode === "image" || mode === "video" || mode === "audio" || mode === "slideshow") {
+        const providerInput = mode === "image"
+          ? providerInputFromCreateConfig(visibleGenerationConfig, [
+              "prompt",
+              "aspectRatio",
+              "count",
+              "localReferenceImages",
+              "generationOperation",
+            ])
+          : mode === "video"
+            ? providerInputFromCreateConfig(visibleGenerationConfig, [
+                "prompt",
+                "aspectRatio",
+                "durationSeconds",
+                "localReferenceImages",
+                "localStartFrameImages",
+                "localEndFrameImages",
+                "localReferenceVideos",
+                "startEndFrameMode",
+                "generationOperation",
+              ])
+            : mode === "audio"
+              ? providerInputFromCreateConfig(visibleGenerationConfig, [
+                  "text",
+                  "prompt",
+                  "mode",
+                  "localReferenceAudios",
+                  "generationOperation",
+                ])
+              : {};
+
+        if (mode === "video") {
+          const startFrameUrl = startFrameImages[0]?.url;
+          const endFrameUrl = endFrameImages[0]?.url;
+          if (generationConfig.startEndFrameMode === true && startFrameUrl) {
+            providerInput.start_frame_url = startFrameUrl;
+            providerInput.start_image_url = startFrameUrl;
+            providerInput.first_frame_url = startFrameUrl;
+          }
+          if (generationConfig.startEndFrameMode === true && endFrameUrl) {
+            providerInput.end_frame_url = endFrameUrl;
+            providerInput.end_image_url = endFrameUrl;
+            providerInput.last_frame_url = endFrameUrl;
+            providerInput.tail_image_url = endFrameUrl;
+          }
+        }
+
+        const requestId = await createGeneration({
           ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
+          mode,
           prompt: creativeRequest,
-          requestedRenderingMode: slideshowMode as
-            | "background_plus_overlay"
-            | "full_graphic_generation",
-        });
-        setResult({
-          kind: "slideshow",
-          status: "saved",
-          title: resultTitle(creativeRequest, "Slideshow queued"),
-          detail: `Slideshow request queued. Request ID: ${requestId}`,
-          prompt: creativeRequest,
-        });
-      }
-
-      if (mode === "image") {
-        const providerInput = providerInputFromCreateConfig(visibleGenerationConfig, [
-          "prompt",
-          "aspectRatio",
-          "count",
-          "localReferenceImages",
-          "generationOperation",
-        ]);
-        const generated = await generateImage({
-          workspaceId: activeWorkspaceId as Id<"workspaces"> | undefined,
-          prompt: creativeRequest,
-          provider: selectedCreateProvider,
-          model: selectedModel || undefined,
-          aspectRatio: stringConfigValue(generationConfig.aspectRatio),
-          count: numberConfigValue(generationConfig.count) ?? 1,
+          provider: mode === "slideshow" ? undefined : selectedCreateProvider,
+          model: mode === "slideshow" ? undefined : selectedModel || undefined,
+          generationOperation: selectedGenerationOperation?.id,
           providerInput,
-          referenceImages: imageReferenceImages,
-        });
-        setResult({
-          kind: "image",
-          status: "review",
-          artifactIds: generated.artifactIds,
-          title: generated.assets[0]?.title ?? resultTitle(creativeRequest, "Generated image"),
-          detail: `${generated.assets.length} image${generated.assets.length === 1 ? "" : "s"} ready to review.`,
-          model: selectedProviderModel?.displayName ?? selectedModel,
-          prompt: creativeRequest,
-          url: generated.assets[0]?.storageUrl,
-        });
-      }
-
-      if (mode === "video") {
-        const providerInput = providerInputFromCreateConfig(visibleGenerationConfig, [
-          "prompt",
-          "aspectRatio",
-          "durationSeconds",
-          "localReferenceImages",
-          "localStartFrameImages",
-          "localEndFrameImages",
-          "localReferenceVideos",
-          "startEndFrameMode",
-          "generationOperation",
-        ]);
-        const startFrameUrl = startFrameImages[0]?.url;
-        const endFrameUrl = endFrameImages[0]?.url;
-        if (generationConfig.startEndFrameMode === true && startFrameUrl) {
-          providerInput.start_frame_url = startFrameUrl;
-          providerInput.start_image_url = startFrameUrl;
-          providerInput.first_frame_url = startFrameUrl;
-        }
-        if (generationConfig.startEndFrameMode === true && endFrameUrl) {
-          providerInput.end_frame_url = endFrameUrl;
-          providerInput.end_image_url = endFrameUrl;
-          providerInput.last_frame_url = endFrameUrl;
-          providerInput.tail_image_url = endFrameUrl;
-        }
-        const generated = await generateVideo({
-          workspaceId: activeWorkspaceId as Id<"workspaces"> | undefined,
-          prompt: creativeRequest,
-          provider: selectedCreateProvider,
-          model: selectedModel || undefined,
           aspectRatio: stringConfigValue(generationConfig.aspectRatio),
+          count: numberConfigValue(generationConfig.count) ?? undefined,
           durationSeconds: numberConfigValue(generationConfig.durationSeconds),
-          providerInput,
-          referenceImages: videoReferenceImages,
+          audioMode: stringConfigValue(generationConfig.mode),
+          referenceImages: mode === "image" ? imageReferenceImages : videoReferenceImages,
           referenceVideos: videoReferenceVideos,
-        });
-        setResult({
-          kind: "video",
-          status: "review",
-          artifactIds: [generated.artifactId],
-          title: generated.title,
-          detail: "Video ready to review.",
-          model: selectedProviderModel?.displayName ?? selectedModel,
-          prompt: creativeRequest,
-          url: generated.storageUrl,
-        });
-      }
-
-      if (mode === "audio") {
-        const providerInput = providerInputFromCreateConfig(visibleGenerationConfig, [
-          "text",
-          "prompt",
-          "mode",
-          "localReferenceAudios",
-          "generationOperation",
-        ]);
-        const generated = await generateAudio({
-          workspaceId: activeWorkspaceId as Id<"workspaces"> | undefined,
-          text: creativeRequest,
-          provider: selectedCreateProvider,
-          model: selectedModel || undefined,
-          mode: stringConfigValue(generationConfig.mode),
-          providerInput,
           voiceReferenceAudios: audioReferenceAudios,
+          requestedRenderingMode:
+            mode === "slideshow"
+              ? slideshowMode as "background_plus_overlay" | "full_graphic_generation"
+              : undefined,
         });
+        setActiveRequestId(requestId);
         setResult({
-          kind: "audio",
-          status: "review",
-          artifactIds: [generated.artifactId],
-          title: generated.title,
-          detail: "Audio ready to review.",
+          kind: mode,
+          status: "pending",
+          requestId,
+          title: mediaPreviewTitle(mode),
+          detail: mode === "slideshow" ? "Planning the slideshow." : "Generating a preview.",
           model: selectedProviderModel?.displayName ?? selectedModel,
           prompt: creativeRequest,
-          url: generated.storageUrl,
         });
       }
 
@@ -506,6 +493,8 @@ export function CreatePage() {
       setIsSubmitting(false);
     }
   };
+
+  const activeSlideshow = activeRequestSlideshows?.[0];
 
   return (
     <Page
@@ -608,6 +597,18 @@ export function CreatePage() {
               <ArrowRight size={16} />
             </button>
             {status && <p className="muted">{status}</p>}
+
+            {activeSlideshow && activeRequest?.status === "ready" ? (
+              <SlideshowEditor
+                onDiscard={() => {
+                  if (result) void rejectResult(result);
+                }}
+                onSave={() => {
+                  if (result) void saveResultToLibrary(result);
+                }}
+                slideshow={activeSlideshow}
+              />
+            ) : null}
           </section>
 
           {result ? (

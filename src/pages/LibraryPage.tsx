@@ -1,6 +1,7 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Plus } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { MediaLightbox, type MediaLightboxItem } from "../components/MediaLightbox";
@@ -15,6 +16,7 @@ import {
   LibraryFolderButton,
   LibraryRunRow,
 } from "../features/library/LibraryWorkflowBrowser";
+import { LibrarySlideshowCard } from "../features/library/LibrarySlideshowCard";
 import {
   createOutputsFromArtifacts,
   creativeAssetOutputsFromAssets,
@@ -40,6 +42,7 @@ import {
 } from "../lib/providers/aiGenerationDefaults";
 
 export function LibraryPage() {
+  const navigate = useNavigate();
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
   const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
   const artifacts = useQuery(api.artifacts.records.list, {
@@ -50,12 +53,14 @@ export function LibraryPage() {
   const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
   const runs = useQuery(api.workflows.runs.list, workspaceArgs);
   const creativeAssets = useQuery(api.accounts.creativeAssets.list, workspaceArgs);
+  const slideshows = useQuery(api.content.slideshows.list, workspaceArgs);
   const generateImage = useAction(api.content.createAssets.generateImage);
   const uploadMedia = useAction(api.storage.files.uploadBase64ImageWithMetadata);
   const createCreativeAsset = useMutation(api.accounts.creativeAssets.create);
   const updateCreativeAsset = useMutation(api.accounts.creativeAssets.update);
   const deleteCreativeAsset = useMutation(api.accounts.creativeAssets.remove);
   const deleteArtifact = useMutation(api.artifacts.records.remove);
+  const deleteSlideshow = useMutation(api.content.slideshows.remove);
   const updateArtifactTitle = useMutation(api.artifacts.records.updateTitle);
   const approveImageReplacement = useMutation(api.artifacts.records.approveImageReplacement);
   const [libraryView, setLibraryView] = useState<"assets" | "workflows">("assets");
@@ -64,6 +69,7 @@ export function LibraryPage() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [deletingArtifactId, setDeletingArtifactId] = useState<string | null>(null);
+  const [deletingSlideshowId, setDeletingSlideshowId] = useState<string | null>(null);
   const [libraryStatus, setLibraryStatus] = useState("");
   const [renamingOutput, setRenamingOutput] = useState<LibraryOutput | null>(null);
   const [isAddMediaOpen, setIsAddMediaOpen] = useState(false);
@@ -100,6 +106,13 @@ export function LibraryPage() {
       ].sort((first, second) => second.createdAt - first.createdAt),
     [artifacts, creativeAssets]
   );
+  const savedSlideshows = useMemo(
+    () =>
+      (slideshows ?? [])
+        .filter((slideshow) => slideshow.status === "saved")
+        .sort((first, second) => second.updatedAt - first.updatedAt),
+    [slideshows]
+  );
 
   const filteredCreateOutputs = useMemo(
     () => createOutputs.filter((output) => {
@@ -108,6 +121,14 @@ export function LibraryPage() {
       return true;
     }),
     [brandFilter, createOutputs, typeFilter]
+  );
+  const filteredSlideshows = useMemo(
+    () => savedSlideshows.filter((slideshow) => {
+      if (brandFilter && String(slideshow.brandId ?? "") !== brandFilter) return false;
+      if (typeFilter && typeFilter !== "slideshow") return false;
+      return true;
+    }),
+    [brandFilter, savedSlideshows, typeFilter]
   );
 
   const filteredWorkflowOutputs = useMemo(
@@ -133,7 +154,11 @@ export function LibraryPage() {
       ).sort(),
     [createOutputs, workflowOutputs]
   );
-  const loading = !artifacts || !runs || !workflows || !creativeAssets;
+  const visibleOutputTypes = useMemo(
+    () => Array.from(new Set([...outputTypes, "slideshow"])).sort(),
+    [outputTypes]
+  );
+  const loading = !artifacts || !runs || !workflows || !creativeAssets || !slideshows;
 
   const clearSelection = () => {
     setSelectedWorkflowId(null);
@@ -158,6 +183,22 @@ export function LibraryPage() {
       setLibraryStatus(error instanceof Error ? error.message : "Unable to delete asset");
     } finally {
       setDeletingArtifactId(null);
+    }
+  };
+
+  const removeSavedSlideshow = async (slideshowId: Id<"slideshows">, title: string) => {
+    const confirmed = window.confirm(`Delete "${title}" from the library?`);
+    if (!confirmed) return;
+
+    setDeletingSlideshowId(String(slideshowId));
+    setLibraryStatus("");
+    try {
+      await deleteSlideshow({ id: slideshowId });
+      setLibraryStatus("Slideshow deleted");
+    } catch (error) {
+      setLibraryStatus(error instanceof Error ? error.message : "Unable to delete slideshow");
+    } finally {
+      setDeletingSlideshowId(null);
     }
   };
 
@@ -343,7 +384,7 @@ export function LibraryPage() {
                   : selectedFolder
                     ? `${selectedFolder.runs.length} run${selectedFolder.runs.length === 1 ? "" : "s"} · ${selectedFolder.outputCount} output${selectedFolder.outputCount === 1 ? "" : "s"}`
                     : libraryView === "assets"
-                      ? `${filteredCreateOutputs.length} saved asset${filteredCreateOutputs.length === 1 ? "" : "s"}`
+                      ? `${filteredCreateOutputs.length + filteredSlideshows.length} saved asset${filteredCreateOutputs.length + filteredSlideshows.length === 1 ? "" : "s"}`
                       : `${folders.length} workflow folder${folders.length === 1 ? "" : "s"} · ${filteredWorkflowOutputs.length} output${filteredWorkflowOutputs.length === 1 ? "" : "s"}`}
               </div>
             </div>
@@ -359,7 +400,7 @@ export function LibraryPage() {
             </Select>
             <Select label="Type" value={typeFilter} onChange={setTypeFilter}>
               <option value="">All output types</option>
-              {outputTypes.map((type) => (
+              {visibleOutputTypes.map((type) => (
                 <option key={type} value={type}>
                   {type.replace(/_/g, " ")}
                 </option>
@@ -401,9 +442,9 @@ export function LibraryPage() {
             title="Loading library"
           />
         )}
-        {!loading && libraryView === "assets" && filteredCreateOutputs.length === 0 && (
+        {!loading && libraryView === "assets" && filteredCreateOutputs.length === 0 && filteredSlideshows.length === 0 && (
           <div className="empty-state">
-            {createOutputs.length === 0
+            {createOutputs.length === 0 && savedSlideshows.length === 0
               ? "No saved assets yet. Add reusable media or save a generated result here."
               : "No saved assets match these filters."}
           </div>
@@ -416,8 +457,17 @@ export function LibraryPage() {
           </div>
         )}
 
-        {!loading && libraryView === "assets" && filteredCreateOutputs.length > 0 && (
+        {!loading && libraryView === "assets" && (filteredCreateOutputs.length > 0 || filteredSlideshows.length > 0) && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
+            {filteredSlideshows.map((slideshow) => (
+              <LibrarySlideshowCard
+                isDeleting={deletingSlideshowId === String(slideshow._id)}
+                key={slideshow._id}
+                onDelete={() => void removeSavedSlideshow(slideshow._id, slideshow.title)}
+                onOpen={() => navigate(`/slideshows/${slideshow._id}`)}
+                slideshow={slideshow}
+              />
+            ))}
             {filteredCreateOutputs.map((output) => (
               <LibraryOutputCard
                 isDeleting={

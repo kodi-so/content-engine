@@ -82,6 +82,39 @@ function createGeminiHttpError(
   });
 }
 
+function createGeminiDecodeError(
+  operation: string,
+  details: unknown
+): ProviderError {
+  return new ProviderError(`Gemini API response could not be decoded during ${operation}`, {
+    kind: "model",
+    provider: GEMINI_PROVIDER,
+    operation,
+    code: "provider",
+    retryable: true,
+    details: details instanceof Error ? details.message : String(details),
+  });
+}
+
+async function readGeminiJson(response: Response, operation: string) {
+  let responseText = "";
+  try {
+    responseText = await response.text();
+  } catch (error) {
+    throw createGeminiDecodeError(operation, error);
+  }
+
+  if (!response.ok) {
+    throw createGeminiHttpError(operation, response.status, responseText);
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch (error) {
+    throw createGeminiDecodeError(operation, error);
+  }
+}
+
 function buildGeminiContents(input: GenerateTextInput): Array<{
   role: "user" | "model";
   parts: Array<{ text: string }>;
@@ -134,21 +167,15 @@ async function generateGeminiText(
       {
         method: "POST",
         headers: {
+          Accept: "application/json",
+          "Accept-Encoding": "identity",
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
       }
     );
 
-    if (!response.ok) {
-      throw createGeminiHttpError(
-        "generate_text",
-        response.status,
-        await response.text()
-      );
-    }
-
-    const data = await response.json();
+    const data = await readGeminiJson(response, "generate_text");
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const usageMetadata = data.usageMetadata || {};
     const inputTokens = usageMetadata.promptTokenCount || 0;
@@ -220,6 +247,8 @@ async function generateGeminiImage(
           {
             method: "POST",
             headers: {
+              Accept: "application/json",
+              "Accept-Encoding": "identity",
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
@@ -232,15 +261,7 @@ async function generateGeminiImage(
           }
         );
 
-        if (!response.ok) {
-          throw createGeminiHttpError(
-            "generate_image",
-            response.status,
-            await response.text()
-          );
-        }
-
-        const data = await response.json();
+        const data = await readGeminiJson(response, "generate_image");
         const responseParts = data.candidates?.[0]?.content?.parts || [];
         for (const part of responseParts) {
           if (part.inlineData?.mimeType?.startsWith("image/")) {

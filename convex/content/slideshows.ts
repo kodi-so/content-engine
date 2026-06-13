@@ -88,6 +88,21 @@ export const getForRunner = internalQuery({
   },
 });
 
+export const get = query({
+  args: { id: v.id("slideshows") },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await requireBetaAccess(ctx));
+    const slideshow = await ctx.db.get(args.id);
+    if (!slideshow) return null;
+    if (slideshow.workspaceId) {
+      await requireWorkspaceMember(ctx, slideshow.workspaceId, userId);
+    } else if (slideshow.userId !== userId) {
+      return null;
+    }
+    return slideshow;
+  },
+});
+
 export const listForContentRequest = internalQuery({
   args: {
     requestId: v.id("contentRequests"),

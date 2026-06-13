@@ -22,6 +22,7 @@ export type SlideshowTextBlock = {
   x?: number;
   y?: number;
   width?: number;
+  height?: number;
   align?: TextBlockAlign;
   fontSize?: number;
   fontWeight?: number;
@@ -241,6 +242,7 @@ const overlayTextBlockSchema = {
     x: { type: "number", description: "Left position as a percentage of slide width, 0-100." },
     y: { type: "number", description: "Top position as a percentage of slide height, 0-100." },
     width: { type: "number", description: "Text box width as a percentage of slide width, 12-96." },
+    height: { type: "number", description: "Text box height as a percentage of slide height, 4-96." },
     align: { type: "string", enum: ["left", "center", "right"] },
     fontSize: { type: "number", description: "Font size in pixels for a 1080x1920 export canvas." },
     fontWeight: { type: "number", enum: [400, 500, 600, 700, 800, 900] },

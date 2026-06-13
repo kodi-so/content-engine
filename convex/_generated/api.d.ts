@@ -19,6 +19,7 @@ import type * as artifacts_regeneration from "../artifacts/regeneration.js";
 import type * as auth_actionAccess from "../auth/actionAccess.js";
 import type * as auth_users from "../auth/users.js";
 import type * as content_assetStorage from "../content/assetStorage.js";
+import type * as content_createAssetRunner from "../content/createAssetRunner.js";
 import type * as content_createAssets from "../content/createAssets.js";
 import type * as content_dryRun from "../content/dryRun.js";
 import type * as content_formatContracts from "../content/formatContracts.js";
@@ -114,6 +115,7 @@ declare const fullApi: ApiFromModules<{
   "auth/actionAccess": typeof auth_actionAccess;
   "auth/users": typeof auth_users;
   "content/assetStorage": typeof content_assetStorage;
+  "content/createAssetRunner": typeof content_createAssetRunner;
   "content/createAssets": typeof content_createAssets;
   "content/dryRun": typeof content_dryRun;
   "content/formatContracts": typeof content_formatContracts;

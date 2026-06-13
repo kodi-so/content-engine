@@ -22,6 +22,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { PersonasPage } from "./pages/PersonasPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SlideshowEditorPage } from "./pages/SlideshowEditorPage";
 import { WorkflowCanvasPage } from "./pages/WorkflowCanvasPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 
@@ -95,6 +96,7 @@ function AppContent() {
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/workflows" element={<WorkflowsPage />} />
             <Route path="/workflows/:workflowId" element={<WorkflowCanvasPage />} />
+            <Route path="/slideshows/:slideshowId" element={<SlideshowEditorPage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

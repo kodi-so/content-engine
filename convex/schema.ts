@@ -335,6 +335,7 @@ export default defineSchema({
         v.literal("full_graphic_generation")
       )
     ),
+    generation: v.optional(v.any()),
     referenceAssets: v.optional(
       v.array(
         v.object({
