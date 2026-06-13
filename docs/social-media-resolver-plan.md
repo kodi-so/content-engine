@@ -1,5 +1,24 @@
 # Social Media Resolver Plan
 
+## Status
+
+Implemented locally:
+
+- `services/media-resolver/` contains the Railway-ready Python/FastAPI resolver.
+- `convex/analyze/mediaResolver.ts` contains the Convex adapter.
+- Analyze URL execution now routes TikTok, Instagram, Facebook, and direct media
+  URLs through the resolver/direct-download path before Gemini upload.
+- The exact TikTok test URL resolves locally through the HTTP resolver and the
+  returned media URL downloads as `video/mp4`.
+
+Still needed:
+
+- Create/deploy the Railway service.
+- Set `MEDIA_RESOLVER_URL` and `MEDIA_RESOLVER_API_KEY` in Convex.
+- Run an end-to-end deployed Analyze job after those env vars are configured.
+- Test live Instagram and Facebook examples; initial support uses the same
+  resolver interface via `yt-dlp`.
+
 ## Decision
 
 Use a small Railway-hosted Python resolver service for social media URL ingestion.
@@ -148,18 +167,58 @@ Resolver must validate URLs before download:
 
 ## Implementation Steps
 
-1. Create `services/media-resolver/` with FastAPI, `yt-dlp`, `curl_cffi`, and optional `ffmpeg`.
-2. Add `/health` and `/resolve`.
-3. Implement TikTok regular video resolution first using `yt-dlp`.
-4. Add TikTok fallback via TikWM only if `yt-dlp` fails.
-5. Add Instagram and Facebook through the same resolver interface.
-6. Deploy to Railway with `MEDIA_RESOLVER_API_KEY`.
-7. Update Convex Analyze URL flow:
+1. Create `services/media-resolver/` with FastAPI, `yt-dlp`, `curl_cffi`, and optional `ffmpeg`. Done.
+2. Add `/health` and `/resolve`. Done.
+3. Implement TikTok regular video resolution first using TikWM fast path and `yt-dlp` fallback. Done.
+4. Add Instagram and Facebook through the same resolver interface. Initial `yt-dlp` support added; needs live URL testing.
+5. Deploy to Railway with `MEDIA_RESOLVER_API_KEY`.
+6. Update Convex Analyze URL flow:
    - YouTube: keep direct Gemini URL path.
    - Direct media file URL: keep current fetch/upload path.
    - TikTok/Instagram/Facebook: call resolver, then reuse upload-to-Gemini analysis.
-8. Update Analyze UI copy only after backend success is verified.
-9. Test with the known TikTok URL above before shipping.
+   Done.
+7. Update Analyze UI copy. Done.
+8. Test with the known TikTok URL above before shipping. Local resolver and media download verified; deployed Analyze job still pending.
+
+## Deployment Checklist
+
+Railway CLI is installed locally, but this repo was not linked to a Railway
+project and the CLI was not authenticated during implementation. To deploy:
+
+1. Log in or provide a Railway token:
+
+   ```sh
+   railway login
+   ```
+
+2. Create or link a Railway project/service for the resolver:
+
+   ```sh
+   railway link
+   ```
+
+3. Set the resolver secret on Railway:
+
+   ```sh
+   railway variables --set "MEDIA_RESOLVER_API_KEY=<shared-secret>"
+   railway variables --set "MAX_MEDIA_BYTES=104857600"
+   ```
+
+4. Deploy the service from its subdirectory:
+
+   ```sh
+   railway up services/media-resolver --path-as-root
+   ```
+
+5. Copy the deployed Railway URL and configure Convex:
+
+   ```sh
+   npx convex env set MEDIA_RESOLVER_URL "https://<resolver>.up.railway.app"
+   npx convex env set MEDIA_RESOLVER_API_KEY "<shared-secret>"
+   ```
+
+6. Run an Analyze job with the known TikTok URL in production/staging and confirm
+   the job completes.
 
 ## Acceptance Tests
 

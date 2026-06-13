@@ -1,8 +1,11 @@
 import type { Doc } from "../_generated/dataModel";
+import { fetchRemoteMediaForAnalysis } from "./mediaResolver";
 
 export const DEFAULT_ANALYSIS_MODEL = "gemini-2.5-flash";
 export const GEMINI_PROVIDER = "gemini";
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const GEMINI_FILE_ACTIVE_TIMEOUT_MS = 60_000;
+const GEMINI_FILE_POLL_INTERVAL_MS = 1_500;
 
 export type VideoAnalysisJob = Doc<"videoAnalysisJobs">;
 export type VideoAnalysisResult = {
@@ -94,6 +97,8 @@ function buildAnalysisPrompt(job: VideoAnalysisJob) {
     "If details are not visible or audible, use an empty string or empty array instead of guessing.",
     "For transcript text, preserve meaningful wording but remove filler only when it improves readability.",
     "For scene timestamps, use approximate mm:ss timestamps.",
+    "Every reuseBrief field must be grounded in the observed source. Preserve the source's actual category, transformation, setting, subjects, timing, text, and audio cues unless the user explicitly asks for a different domain.",
+    "Do not invent unrelated example concepts. If a reusable generation prompt would require details not present in the source, return an empty string for that field.",
     job.customPrompt ? `User focus: ${job.customPrompt}` : "",
     "",
     "JSON shape:",
@@ -173,6 +178,53 @@ export function analysisSummary(result: VideoAnalysisResult) {
 
 export function analysisTranscript(result: VideoAnalysisResult) {
   return cleanOptionalText(result.transcript?.text);
+}
+
+async function analyzeMediaBytes(args: {
+  bytes: ArrayBuffer;
+  displayName: string;
+  job: VideoAnalysisJob;
+  metadata?: Record<string, unknown>;
+  mimeType: string;
+}) {
+  const geminiFile = await uploadFileToGemini({
+    bytes: args.bytes,
+    displayName: args.displayName,
+    mimeType: args.mimeType,
+  });
+  const prompt = buildAnalysisPrompt(args.job);
+  const analysis = await geminiGenerateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            fileData: {
+              fileUri: geminiFile.uri,
+              mimeType: geminiFile.mimeType,
+            },
+          },
+          { text: prompt },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.25,
+      maxOutputTokens: 8192,
+    },
+    model: args.job.model,
+  });
+
+  return {
+    raw: analysis.data,
+    result: args.metadata
+      ? {
+        ...parseAnalysisResult(analysis.text),
+        resolverMetadata: args.metadata,
+      }
+      : parseAnalysisResult(analysis.text),
+  };
 }
 
 export async function geminiGenerateContent(args: {
@@ -255,12 +307,60 @@ async function uploadFileToGemini(args: {
 
   const data = await uploadResponse.json();
   const file = data.file;
-  if (!file?.uri) throw new Error("Gemini file upload returned no file URI");
+  if (!file?.name || !file?.uri) throw new Error("Gemini file upload returned no file URI");
+
+  const activeFile = await waitForGeminiFileActive({
+    apiKey,
+    fallbackMimeType: args.mimeType,
+    file,
+  });
 
   return {
-    mimeType: file.mimeType ?? args.mimeType,
-    uri: file.uri as string,
+    mimeType: activeFile.mimeType ?? args.mimeType,
+    uri: activeFile.uri as string,
   };
+}
+
+async function waitForGeminiFileActive(args: {
+  apiKey: string;
+  fallbackMimeType: string;
+  file: {
+    error?: { message?: string };
+    mimeType?: string;
+    name: string;
+    state?: string;
+    uri: string;
+  };
+}) {
+  let file = args.file;
+  const startedAt = Date.now();
+
+  while (file.state && file.state !== "ACTIVE") {
+    if (file.state === "FAILED") {
+      throw new Error(`Gemini file processing failed: ${file.error?.message ?? "unknown error"}`);
+    }
+    if (Date.now() - startedAt > GEMINI_FILE_ACTIVE_TIMEOUT_MS) {
+      throw new Error("Gemini file processing timed out. Try again with a shorter clip.");
+    }
+
+    await sleep(GEMINI_FILE_POLL_INTERVAL_MS);
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${args.apiKey}`
+    );
+    if (!response.ok) {
+      throw new Error(`Gemini file status check failed: ${await response.text()}`);
+    }
+
+    file = await response.json();
+    file.uri = file.uri ?? args.file.uri;
+    file.mimeType = file.mimeType ?? args.fallbackMimeType;
+  }
+
+  return file;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function analyzeYoutubeUrl(job: VideoAnalysisJob) {
@@ -290,6 +390,23 @@ export async function analyzeYoutubeUrl(job: VideoAnalysisJob) {
   };
 }
 
+export async function analyzeRemoteUrlSource(job: VideoAnalysisJob) {
+  if (!job.sourceUrl) throw new Error("Source URL is missing");
+  const media = await fetchRemoteMediaForAnalysis({
+    maxBytes: MAX_UPLOAD_BYTES,
+    sourcePlatform: job.sourcePlatform,
+    sourceUrl: job.sourceUrl,
+  });
+
+  return await analyzeMediaBytes({
+    bytes: media.bytes,
+    displayName: media.fileName,
+    job,
+    metadata: media.metadata,
+    mimeType: media.mimeType,
+  });
+}
+
 export async function analyzeUploadedSource(job: VideoAnalysisJob, storageUrl: string) {
   const response = await fetch(storageUrl);
   if (!response.ok) {
@@ -302,37 +419,10 @@ export async function analyzeUploadedSource(job: VideoAnalysisJob, storageUrl: s
   }
 
   const mimeType = job.mimeType ?? response.headers.get("content-type") ?? "video/mp4";
-  const geminiFile = await uploadFileToGemini({
+  return await analyzeMediaBytes({
     bytes,
     displayName: job.fileName ?? "Content Engine analysis upload",
+    job,
     mimeType,
   });
-  const prompt = buildAnalysisPrompt(job);
-  const analysis = await geminiGenerateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            fileData: {
-              fileUri: geminiFile.uri,
-              mimeType: geminiFile.mimeType,
-            },
-          },
-          { text: prompt },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.25,
-      maxOutputTokens: 8192,
-    },
-    model: job.model,
-  });
-
-  return {
-    raw: analysis.data,
-    result: parseAnalysisResult(analysis.text),
-  };
 }

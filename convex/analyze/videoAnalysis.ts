@@ -29,6 +29,7 @@ import {
   analysisSummary,
   analysisTitle,
   analysisTranscript,
+  analyzeRemoteUrlSource,
   analyzeUploadedSource,
   analyzeYoutubeUrl,
   cleanOptionalText,
@@ -277,15 +278,11 @@ export const executeJob = internalAction({
     });
 
     try {
-      if (job.sourceType === "url" && job.sourcePlatform !== "youtube") {
-        throw new Error(
-          "Direct URL analysis currently supports YouTube. Upload the TikTok, Instagram, Facebook, YouTube, or source clip for full transcript and visual analysis."
-        );
-      }
-
       const analysis = job.sourceType === "upload"
         ? await analyzeUploadedSource(job, job.storageUrl ?? "")
-        : await analyzeYoutubeUrl(job);
+        : job.sourcePlatform === "youtube"
+          ? await analyzeYoutubeUrl(job)
+          : await analyzeRemoteUrlSource(job);
       const fallbackTitle = job.fileName ?? job.sourceUrl ?? "Video analysis";
 
       await ctx.runMutation(internal.analyze.videoAnalysis.patchJob, {

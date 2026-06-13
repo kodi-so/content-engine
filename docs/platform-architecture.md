@@ -106,6 +106,7 @@ Convex/server variables:
   `OPENROUTER_DRY_RUN`, `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME`
 - fal: `FAL_API_KEY`, optional `FAL_QUEUE_BASE_URL`, `FAL_DRY_RUN`
 - Postiz: `POSTIZ_API_KEY`, optional `POSTIZ_BASE_URL`, `POSTIZ_DRY_RUN`
+- Analyze resolver: `MEDIA_RESOLVER_URL`, `MEDIA_RESOLVER_API_KEY`
 - Create defaults: `CONTENT_ENGINE_TEXT_MODEL`,
   `CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL`, `CONTENT_ENGINE_IMAGE_PROVIDER`,
   `CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER`, `CONTENT_ENGINE_IMAGE_MODEL`,
@@ -119,6 +120,7 @@ the browser.
 
 ## Analyze Social URL Direction
 
-YouTube can continue using Gemini's direct URL path. TikTok, Instagram, and
-Facebook need a resolver/downloader step before Gemini. The planned resolver is
+YouTube can continue using Gemini's direct URL path. Direct video/audio file URLs
+are downloaded by Convex and uploaded to Gemini. TikTok, Instagram, and Facebook
+use the media resolver before Gemini. Deployment status and next steps are
 tracked in [Social Media Resolver Plan](./social-media-resolver-plan.md).

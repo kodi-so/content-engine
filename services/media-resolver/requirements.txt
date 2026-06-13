@@ -1,0 +1,5 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+yt-dlp>=2026.3.17
+curl_cffi>=0.14,<1
+pydantic>=2.10,<3

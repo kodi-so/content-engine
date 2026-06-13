@@ -100,6 +100,7 @@ export function sourcePlatformForUrl(value: string): AnalysisJob["sourcePlatform
     if (hostname.includes("tiktok.com")) return "tiktok";
     if (hostname.includes("instagram.com")) return "instagram";
     if (hostname.includes("facebook.com") || hostname.includes("fb.watch")) return "facebook";
+    if (/\.(mp4|mov|webm|m4v|mp3|wav|m4a)(\?|$)/i.test(value)) return "direct_file";
     return "unknown";
   } catch {
     return "unknown";

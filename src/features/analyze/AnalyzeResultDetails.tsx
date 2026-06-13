@@ -7,7 +7,6 @@ import {
   HelpCircle,
   Layers3,
   MessageSquare,
-  Save,
   Sparkles,
 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
@@ -200,7 +199,7 @@ function CompletedAnalysis({
         </div>
       </AnalysisSection>
 
-      <AnalysisSection icon={Clipboard} title="Reusable brief">
+      <AnalysisSection icon={Clipboard} title="Reusable pattern">
         <div className="grid gap-[var(--space-3)]">
           <TextPanel>{textOrFallback(result.reuseBrief?.copyablePattern)}</TextPanel>
           <TextPanel>{textOrFallback(result.reuseBrief?.scriptTemplate)}</TextPanel>
@@ -270,26 +269,18 @@ function CompletedAnalysis({
 
 export function AnalyzeResultDetails({
   isAsking,
-  isSaving,
-  onCopyBrief,
   onQuestionChange,
-  onSave,
   onSubmitQuestion,
   question,
   result,
-  reusePrompt,
   selectedJob,
   sortedQuestions,
 }: {
   isAsking: boolean;
-  isSaving: boolean;
-  onCopyBrief: () => void;
   onQuestionChange: (value: string) => void;
-  onSave: () => void;
   onSubmitQuestion: (event: FormEvent) => void;
   question: string;
   result: AnalysisResult;
-  reusePrompt: string;
   selectedJob: AnalysisJob;
   sortedQuestions: AnalysisQuestion[];
 }) {
@@ -308,26 +299,6 @@ export function AnalyzeResultDetails({
             <p className="mt-[var(--space-2)] max-w-[52rem] text-[0.94rem] leading-[1.58] text-[var(--color-muted)]">
               {selectedJob.summary ?? "Analysis is being prepared."}
             </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-[var(--space-2)]">
-            <button
-              className="secondary-button"
-              disabled={!reusePrompt}
-              type="button"
-              onClick={onCopyBrief}
-            >
-              <Clipboard size={16} />
-              Copy brief
-            </button>
-            <button
-              className="primary-button"
-              disabled={selectedJob.status !== "completed" || isSaving}
-              type="button"
-              onClick={onSave}
-            >
-              {isSaving ? <LoadingSignal label="Saving" size="sm" /> : <Save size={16} />}
-              {selectedJob.savedAt ? "Saved" : "Save source"}
-            </button>
           </div>
         </div>
 

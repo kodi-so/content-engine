@@ -36,7 +36,6 @@ export function AnalyzePage() {
   const generateUploadUrl = useMutation(api.analyze.videoAnalysis.generateUploadUrl);
   const createFromUrl = useMutation(api.analyze.videoAnalysis.createFromUrl);
   const createFromUpload = useMutation(api.analyze.videoAnalysis.createFromUpload);
-  const saveAsInspiration = useMutation(api.analyze.videoAnalysis.saveAsInspiration);
   const askQuestion = useAction(api.analyze.videoAnalysis.askQuestion);
 
   const [selectedJobId, setSelectedJobId] = useState<Id<"videoAnalysisJobs"> | null>(null);
@@ -56,7 +55,6 @@ export function AnalyzePage() {
   const [question, setQuestion] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
 
   const result = useMemo(() => resultFromJob(selectedJob), [selectedJob]);
@@ -128,24 +126,6 @@ export function AnalyzePage() {
     }
   };
 
-  const copyText = async (value: string, label = "Copied.") => {
-    await navigator.clipboard.writeText(value);
-    setStatusMessage(label);
-  };
-
-  const saveSelectedJob = async () => {
-    if (!selectedJob || isSaving) return;
-    setIsSaving(true);
-    try {
-      await saveAsInspiration({ id: selectedJob._id });
-      setStatusMessage("Saved as inspiration.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Save failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const submitQuestion = async (event: FormEvent) => {
     event.preventDefault();
     const trimmedQuestion = question.trim();
@@ -165,18 +145,19 @@ export function AnalyzePage() {
     }
   };
 
-  const reusePrompt = result.reuseBrief?.generationPrompt
-    || result.reuseBrief?.originalVersionPrompt
-    || "";
-  const nonYoutubeUrl =
+  const pastedUrlPlatform = url.trim() ? sourcePlatformForUrl(url.trim()) : "unknown";
+  const socialUrl =
+    sourceMode === "url" &&
+    ["tiktok", "instagram", "facebook"].includes(pastedUrlPlatform);
+  const unsupportedUrl =
     sourceMode === "url" &&
     url.trim() &&
-    !["youtube"].includes(sourcePlatformForUrl(url.trim()));
+    pastedUrlPlatform === "unknown";
 
   return (
     <Page
       title="Analyze"
-      description="Paste a video link or upload clips from TikTok, Instagram, Facebook, YouTube, and other sources."
+      description="Paste a TikTok, Instagram, Facebook, YouTube, or direct media link, or upload a source clip."
     >
       <div className="grid gap-[var(--space-6)] xl:grid-cols-[minmax(20rem,25rem)_minmax(0,1fr)]">
         <div className="grid content-start gap-[var(--space-5)]">
@@ -214,9 +195,13 @@ export function AnalyzePage() {
                   value={url}
                   onChange={(event) => setUrl(event.target.value)}
                 />
-                {nonYoutubeUrl ? (
+                {socialUrl ? (
                   <span className="text-[0.78rem] leading-[1.45] text-[var(--color-muted)]">
-                    YouTube links analyze directly. For TikTok, Instagram, Facebook, or other platforms, upload the clip for full analysis.
+                    Social links use the media resolver first, then Analyze reads transcript, frames, scenes, and audio cues.
+                  </span>
+                ) : unsupportedUrl ? (
+                  <span className="text-[0.78rem] leading-[1.45] text-[var(--color-muted)]">
+                    Direct URL analysis supports TikTok, Instagram, Facebook, YouTube, and direct video or audio file links. Upload this source for full analysis.
                   </span>
                 ) : null}
               </label>
@@ -321,7 +306,7 @@ export function AnalyzePage() {
                   Add a reference source
                 </h2>
                 <p className="m-0 text-[0.9rem] leading-[1.55] text-[var(--color-muted)]">
-                  Paste a video link, or upload a clip from TikTok, Instagram, Facebook, YouTube, or another source.
+                  Paste a TikTok, Instagram, Facebook, YouTube, or direct media link, or upload a source clip.
                 </p>
               </div>
             </div>
@@ -332,20 +317,12 @@ export function AnalyzePage() {
           ) : (
             <AnalyzeResultDetails
               isAsking={isAsking}
-              isSaving={isSaving}
-              onCopyBrief={() => {
-                void copyText(reusePrompt, "Brief copied.");
-              }}
               onQuestionChange={setQuestion}
-              onSave={() => {
-                void saveSelectedJob();
-              }}
               onSubmitQuestion={(event) => {
                 void submitQuestion(event);
               }}
               question={question}
               result={result}
-              reusePrompt={reusePrompt}
               selectedJob={selectedJob}
               sortedQuestions={sortedQuestions}
             />

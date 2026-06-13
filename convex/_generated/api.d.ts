@@ -12,6 +12,7 @@ import type * as accounts_brands from "../accounts/brands.js";
 import type * as accounts_creativeAssets from "../accounts/creativeAssets.js";
 import type * as accounts_personas from "../accounts/personas.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
+import type * as analyze_mediaResolver from "../analyze/mediaResolver.js";
 import type * as analyze_videoAnalysis from "../analyze/videoAnalysis.js";
 import type * as analyze_videoAnalysisModel from "../analyze/videoAnalysisModel.js";
 import type * as artifacts_records from "../artifacts/records.js";
@@ -108,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   "accounts/creativeAssets": typeof accounts_creativeAssets;
   "accounts/personas": typeof accounts_personas;
   "accounts/socialAccounts": typeof accounts_socialAccounts;
+  "analyze/mediaResolver": typeof analyze_mediaResolver;
   "analyze/videoAnalysis": typeof analyze_videoAnalysis;
   "analyze/videoAnalysisModel": typeof analyze_videoAnalysisModel;
   "artifacts/records": typeof artifacts_records;
