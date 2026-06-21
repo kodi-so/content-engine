@@ -253,6 +253,7 @@ const toolDefinitions = [
       aspectRatio: "Optional output aspect ratio.",
       durationSeconds: "Optional target duration.",
       references: "Optional image or video references.",
+      priorImageOutputIndex: "Optional zero-based index of the prior ready image output to use as the image-to-video source.",
       provider: "Optional provider override.",
       model: "Optional model override.",
     }),
@@ -412,7 +413,7 @@ const toolDefinitions = [
   agentRuntimeTool({
     name: "studio.render",
     label: "Render Studio Video",
-    description: "Create a Studio render request that can be completed through the in-house Studio browser renderer.",
+    description: "Create a Studio render request for the server render worker. If the worker is not configured, this reports that automatic chat rendering is unavailable instead of producing a final video.",
     category: "studio",
     inputSchema: fieldsSchema("Studio render request.", {
       projectId: "Studio project id.",

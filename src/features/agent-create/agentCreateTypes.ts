@@ -79,6 +79,7 @@ export type AgentCreateArtifact = {
 export type AgentCreateToolStatus =
   | "queued"
   | "running"
+  | "blocked"
   | "succeeded"
   | "failed"
   | "canceled";

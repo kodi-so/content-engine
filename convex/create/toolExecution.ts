@@ -32,7 +32,10 @@ import { buildCreateAgentStudioDraft } from "./studioComposition";
 import { createStudioRenderRequest } from "./studioRenderRequests";
 import { createWorkflowDraftFromThread } from "./workflowExport";
 
-type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
+export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
+
+const STUDIO_RENDER_NOT_CONFIGURED_MESSAGE =
+  "Automatic Studio rendering is not configured yet. Set STUDIO_RENDER_WORKER_URL and STUDIO_RENDER_WORKER_API_KEY so Create can render the final video in chat.";
 
 function providerForMediaMode(
   workspace: Doc<"workspaces"> | null,
@@ -271,6 +274,30 @@ function positiveIntegerFromInput(value: unknown) {
   return number ? Math.floor(number) : undefined;
 }
 
+function zeroBasedIndexFromInput(value: unknown) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return undefined;
+  return value;
+}
+
+function selectedPriorArtifacts<T>(artifacts: T[], input: Record<string, unknown>, key: string) {
+  const index = zeroBasedIndexFromInput(input[key]);
+  if (index === undefined) return artifacts;
+  const artifact = artifacts[index];
+  return artifact ? [artifact] : [];
+}
+
+function defaultCreateVideoModel(args: {
+  mode: MediaGenerationMode;
+  model?: string;
+  provider: ModelProviderName;
+  referenceImageCount: number;
+}) {
+  if (args.model || args.mode !== "video" || args.provider !== "fal") return args.model;
+  return args.referenceImageCount > 0
+    ? "fal-ai/kling-video/v3/pro/image-to-video"
+    : "fal-ai/kling-video/v3/pro/text-to-video";
+}
+
 function uniqueReferenceAssets(assets: ToolReferenceAsset[]) {
   const seen = new Set<string>();
   return assets.filter((asset) => {
@@ -436,6 +463,7 @@ export const completeTextGeneration = internalMutation({
     const thread = await ctx.db.get(args.threadId);
     const toolCall = await ctx.db.get(args.toolCallId);
     if (!thread || !toolCall || toolCall.createThreadId !== thread._id) return;
+    if (toolCall.status === "canceled") return;
 
     const now = Date.now();
     await ctx.db.patch(toolCall._id, {
@@ -719,6 +747,7 @@ export const completeVideoRender = internalMutation({
     const thread = await ctx.db.get(args.threadId);
     const toolCall = await ctx.db.get(args.toolCallId);
     if (!thread || !toolCall || toolCall.createThreadId !== thread._id) return;
+    if (toolCall.status === "canceled") return;
 
     const now = Date.now();
     await ctx.db.patch(toolCall._id, {
@@ -1094,7 +1123,7 @@ async function createGenerationRequestForToolCall(
 
   const workspace = thread.workspaceId ? await ctx.db.get(thread.workspaceId) : null;
   const provider = modelProviderFromInput(input.provider) ?? providerForMediaMode(workspace, mode);
-  const model = cleanOptionalStringFromRecord(input, "model");
+  let model = cleanOptionalStringFromRecord(input, "model");
   const aspectRatio = cleanOptionalStringFromRecord(input, "aspectRatio");
   const durationSeconds = finitePositiveNumber(input.durationSeconds);
   const audioMode = cleanOptionalStringFromRecord(input, "mode");
@@ -1121,11 +1150,15 @@ async function createGenerationRequestForToolCall(
     );
   }
   if (mode === "video") {
-    const previousImages = await readyArtifactsForThreadToolOutputs(
-      ctx,
-      thread,
-      toolCall._id,
-      "image"
+    const previousImages = selectedPriorArtifacts(
+      await readyArtifactsForThreadToolOutputs(
+        ctx,
+        thread,
+        toolCall._id,
+        "image"
+      ),
+      input,
+      "priorImageOutputIndex"
     );
     references.imageReferences.push(
       ...previousImages.flatMap((artifact) => {
@@ -1205,6 +1238,12 @@ async function createGenerationRequestForToolCall(
     references.imageReferences.length +
     references.videoReferences.length +
     references.audioReferences.length;
+  model = defaultCreateVideoModel({
+    mode,
+    model,
+    provider,
+    referenceImageCount: references.imageReferences.length,
+  });
   const effectiveModel = effectiveQueuedModelForToolOutput({
     mode,
     model,
@@ -1514,6 +1553,9 @@ async function asyncFailureMessageForToolCall(
       (thread.workspaceId ? request.workspaceId === thread.workspaceId : request.userId === thread.userId) &&
       (request.status === "failed" || request.status === "discarded")
     ) {
+      if (request.status === "discarded" && request.errorMessage === "Stopped by user.") {
+        return null;
+      }
       return request.errorMessage ?? "The queued generation request failed.";
     }
   }
@@ -2083,7 +2125,7 @@ async function createStudioRenderRequestForToolCall(
   await appendAgentMessage(ctx, thread, {
     content: result.status === "queued"
       ? "Studio render is queued on the server render worker. I will attach the final video here when it finishes."
-      : "Studio render is ready for the in-house browser renderer. Open the Studio project and export it to complete the Create render request.",
+      : STUDIO_RENDER_NOT_CONFIGURED_MESSAGE,
     kind: "status",
   });
   await ctx.db.patch(thread._id, {

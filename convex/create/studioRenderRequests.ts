@@ -15,7 +15,7 @@ import { requireBetaAccess } from "../auth/users";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
 
 const STUDIO_RENDER_BLOCKER_MESSAGE =
-  "Studio render is waiting for the in-house Studio browser exporter. Open the Studio project with this render request attached and export to complete it.";
+  "Automatic Studio rendering is not configured yet. Set STUDIO_RENDER_WORKER_URL and STUDIO_RENDER_WORKER_API_KEY so Create can render the final video in chat.";
 const STUDIO_RENDER_QUEUED_MESSAGE =
   "Studio render is queued on the server render worker. I will attach the final video here when it finishes.";
 
@@ -357,7 +357,7 @@ export const requestForProject = mutation({
         kind: "status",
         content: request.status === "queued"
           ? STUDIO_RENDER_QUEUED_MESSAGE
-          : "Studio render is ready for the in-house browser renderer. Open the Studio project and export it to complete the Create render request.",
+          : STUDIO_RENDER_BLOCKER_MESSAGE,
         createdAt: now,
       });
       await ctx.db.patch(args.createThreadId!, {

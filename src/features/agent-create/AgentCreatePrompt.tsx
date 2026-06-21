@@ -5,6 +5,7 @@ import {
   Mic,
   Paperclip,
   Send,
+  Square,
   UserRound,
   Video,
   X,
@@ -92,11 +93,14 @@ export function AgentCreatePrompt({
   checkpointMode = "debug",
   disabled = false,
   isSubmitting = false,
+  isStopping = false,
+  isWorking = false,
   mentionOptions = [],
   onChange,
   onCheckpointModeChange,
   onMentionRemove,
   onMentionSelect,
+  onStop,
   onSubmit,
   placeholder = "Describe what you want to create",
   selectedMentions = [],
@@ -107,11 +111,14 @@ export function AgentCreatePrompt({
   checkpointMode?: AgentCreateCheckpointMode;
   disabled?: boolean;
   isSubmitting?: boolean;
+  isStopping?: boolean;
+  isWorking?: boolean;
   mentionOptions?: AgentCreateMentionOption[];
   onChange: (value: string) => void;
   onCheckpointModeChange?: (mode: AgentCreateCheckpointMode) => void;
   onMentionRemove?: (mention: AgentCreateSelectedMention) => void;
   onMentionSelect?: (selection: MentionSelection) => void;
+  onStop?: () => void;
   onSubmit?: () => void;
   placeholder?: string;
   selectedMentions?: AgentCreateSelectedMention[];
@@ -130,7 +137,8 @@ export function AgentCreatePrompt({
     [activeMention, availableOptions]
   );
   const showMentionMenu = Boolean(activeMention && filteredOptions.length);
-  const canSubmit = Boolean(value.trim()) && !disabled && !isSubmitting;
+  const canStop = isWorking && !isStopping && Boolean(onStop);
+  const canSubmit = Boolean(value.trim()) && !disabled && !isSubmitting && !isWorking;
   const debugMode = checkpointMode === "debug";
 
   useEffect(() => {
@@ -367,14 +375,27 @@ export function AgentCreatePrompt({
           )}
         </div>
 
-        <button
-          aria-label={isSubmitting ? "Sending" : submitLabel}
-          className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--color-primary)] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!canSubmit}
-          type="submit"
-        >
-          <Send size={16} />
-        </button>
+        {isWorking ? (
+          <button
+            aria-label={isStopping ? "Stopping" : "Stop generation"}
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--color-ink)] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canStop}
+            onClick={onStop}
+            title="Stop generation"
+            type="button"
+          >
+            <Square size={13} fill="currentColor" />
+          </button>
+        ) : (
+          <button
+            aria-label={isSubmitting ? "Sending" : submitLabel}
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--color-primary)] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={!canSubmit}
+            type="submit"
+          >
+            <Send size={16} />
+          </button>
+        )}
       </div>
     </form>
   );

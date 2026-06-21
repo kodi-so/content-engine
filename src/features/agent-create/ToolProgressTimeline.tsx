@@ -11,6 +11,8 @@ function statusTone(status: AgentCreateToolStatus) {
       return "border-[var(--color-danger)] bg-[var(--color-danger-soft)] text-[var(--color-danger)]";
     case "running":
       return "border-[var(--color-accent)] bg-[var(--color-primary-soft)] text-[var(--color-primary)]";
+    case "blocked":
+      return "border-[var(--color-border)] bg-[var(--color-page-quiet)] text-[var(--color-ink-muted)]";
     case "canceled":
       return "border-[var(--color-border)] bg-[var(--color-page-quiet)] text-[var(--color-ink-muted)]";
     case "queued":
@@ -22,6 +24,7 @@ function ToolStatusIcon({ status }: { status: AgentCreateToolStatus }) {
   if (status === "running") return <LoadingSignal label="Running" size="sm" />;
   if (status === "succeeded") return <CheckCircle2 size={16} />;
   if (status === "failed") return <AlertCircle size={16} />;
+  if (status === "blocked") return <PauseCircle size={16} />;
   if (status === "canceled") return <PauseCircle size={16} />;
   return <Circle size={14} />;
 }

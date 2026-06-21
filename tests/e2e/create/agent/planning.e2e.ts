@@ -159,6 +159,168 @@ assert.match(multiToolCallDecision.toolCalls[0].prompt ?? "", /start of her fitn
 assert.match(multiToolCallDecision.toolCalls[1].prompt ?? "", /six months later/);
 assert.equal(multiToolCallDecision.toolCalls[1].input?.usePriorImageOutputs, true);
 
+const multiClipReferenceVideoDecision = normalizeAgentDecision(JSON.stringify({
+  kind: "create",
+  response: "I'll animate each product still as its own clip, then assemble and render the launch video.",
+  outputType: "video",
+  brief: "Create a launch video from two product stills: first the closed box, then the product opened on a desk.",
+  productionPlan: {
+    finalArtifact: "Finished vertical product launch video.",
+    sourceRoles: [
+      "Prior image 0 is the closed-box product moment.",
+      "Prior image 1 is the opened-product desk moment.",
+    ],
+    units: [
+      "Closed-box reveal clip.",
+      "Opened-product detail clip.",
+    ],
+    assembly: "Sequence the two clips with a clean reveal cut.",
+    render: "Render the Studio composition as the final video.",
+  },
+  toolCalls: [
+    {
+      tool: "media.generateVideo",
+      prompt: "Animate the closed-box product still as a short premium reveal clip with a slow push-in camera move and soft studio light.",
+      planStep: "Create the closed-box reveal clip.",
+      input: {
+        aspectRatio: "9:16",
+        durationSeconds: 4,
+        provider: "fal",
+        model: "fal-ai/kling-video/v3/pro/image-to-video",
+        priorImageOutputIndex: 0,
+      },
+    },
+    {
+      tool: "media.generateVideo",
+      prompt: "Animate the opened-product desk still as a short detail clip with a gentle parallax move and polished product-lighting shimmer.",
+      planStep: "Create the opened-product detail clip.",
+      input: {
+        aspectRatio: "9:16",
+        durationSeconds: 4,
+        provider: "fal",
+        model: "fal-ai/kling-video/v3/pro/image-to-video",
+        priorImageOutputIndex: 1,
+      },
+    },
+    {
+      tool: "studio.compose",
+      prompt: "Sequence the closed-box clip, then the opened-product detail clip, with a clean reveal cut.",
+      planStep: "Stitch the clips in Studio.",
+      input: { aspectRatio: "9:16" },
+    },
+    {
+      tool: "studio.render",
+      prompt: "Render the stitched Studio composition as the final vertical product launch video.",
+      planStep: "Render the final video.",
+      input: { renderSettings: { aspectRatio: "9:16" } },
+    },
+  ],
+}));
+
+assert.equal(multiClipReferenceVideoDecision.kind, "create");
+assert.equal(multiClipReferenceVideoDecision.productionPlan?.finalArtifact, "Finished vertical product launch video.");
+assert.equal(multiClipReferenceVideoDecision.toolCalls.length, 4);
+assert.deepEqual(
+  multiClipReferenceVideoDecision.toolCalls.map((toolCall) => toolCall.toolName),
+  ["media.generateVideo", "media.generateVideo", "studio.compose", "studio.render"]
+);
+assert.equal(multiClipReferenceVideoDecision.toolCalls[0].input?.priorImageOutputIndex, 0);
+assert.equal(multiClipReferenceVideoDecision.toolCalls[1].input?.priorImageOutputIndex, 1);
+assert.equal(
+  multiClipReferenceVideoDecision.toolCalls[0].input?.model,
+  "fal-ai/kling-video/v3/pro/image-to-video"
+);
+
+const generatedContinuityVideoDecision = normalizeAgentDecision(JSON.stringify({
+  kind: "create",
+  response: "I'll create reference stills for the two moments, animate each still, then assemble the finished video.",
+  outputType: "video",
+  brief: "Create a casual phone-style transformation video with the same woman before and after a fitness journey.",
+  productionPlan: {
+    finalArtifact: "Finished vertical transformation video.",
+    sourceRoles: [
+      "Generated image 0 is the before moment.",
+      "Generated image 1 is the after moment and uses image 0 for identity continuity.",
+    ],
+    units: [
+      "Before reference still.",
+      "After reference still.",
+      "Before image-to-video clip.",
+      "After image-to-video clip.",
+    ],
+    assembly: "Sequence the before clip, then the after clip.",
+    render: "Render the Studio composition as the final video.",
+  },
+  toolCalls: [
+    {
+      tool: "media.generateImage",
+      prompt: "Create a realistic casual iPhone-style gym mirror selfie of a woman at the beginning of a fitness journey.",
+      planStep: "Create the before reference still.",
+      input: { aspectRatio: "9:16" },
+    },
+    {
+      tool: "media.generateImage",
+      prompt: "Using the previous reference image for identity and gym continuity, create the later progress moment: the woman is stronger, leaner, more muscular, and confident in the same mirror selfie style.",
+      planStep: "Create the after reference still.",
+      input: { aspectRatio: "9:16", usePriorImageOutputs: true },
+    },
+    {
+      tool: "media.generateVideo",
+      prompt: "Animate the provided reference image as casual handheld iPhone gym mirror selfie footage with subtle phone movement, natural lighting, slight softness, and mild motion blur.",
+      planStep: "Animate the before clip.",
+      input: {
+        aspectRatio: "9:16",
+        durationSeconds: 4,
+        provider: "fal",
+        model: "fal-ai/kling-video/v3/pro/image-to-video",
+        priorImageOutputIndex: 0,
+      },
+    },
+    {
+      tool: "media.generateVideo",
+      prompt: "Animate the provided reference image as casual handheld iPhone gym mirror selfie footage with subtle phone movement, natural lighting, slight softness, and mild motion blur.",
+      planStep: "Animate the after clip.",
+      input: {
+        aspectRatio: "9:16",
+        durationSeconds: 4,
+        provider: "fal",
+        model: "fal-ai/kling-video/v3/pro/image-to-video",
+        priorImageOutputIndex: 1,
+      },
+    },
+    {
+      tool: "studio.compose",
+      prompt: "Sequence the before clip followed by the after clip with a simple cut.",
+      planStep: "Combine the clips.",
+      input: { aspectRatio: "9:16" },
+    },
+    {
+      tool: "studio.render",
+      prompt: "Render the combined vertical video.",
+      planStep: "Render the final video.",
+      input: { renderSettings: { aspectRatio: "9:16" } },
+    },
+  ],
+}));
+
+assert.equal(generatedContinuityVideoDecision.kind, "create");
+assert.deepEqual(
+  generatedContinuityVideoDecision.toolCalls.map((toolCall) => toolCall.toolName),
+  [
+    "media.generateImage",
+    "media.generateImage",
+    "media.generateVideo",
+    "media.generateVideo",
+    "studio.compose",
+    "studio.render",
+  ]
+);
+assert.equal(generatedContinuityVideoDecision.toolCalls[1].input?.usePriorImageOutputs, true);
+assert.equal(generatedContinuityVideoDecision.toolCalls[2].input?.priorImageOutputIndex, 0);
+assert.equal(generatedContinuityVideoDecision.toolCalls[3].input?.priorImageOutputIndex, 1);
+assert.doesNotMatch(generatedContinuityVideoDecision.toolCalls[2].prompt ?? "", /same woman|six months later|previous/i);
+assert.doesNotMatch(generatedContinuityVideoDecision.toolCalls[3].prompt ?? "", /same woman|six months later|previous/i);
+
 const legacyToolsDecision = normalizeAgentDecision(JSON.stringify({
   kind: "create",
   response: "I'll create this.",

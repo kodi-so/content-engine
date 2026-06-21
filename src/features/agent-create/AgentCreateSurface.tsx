@@ -28,6 +28,14 @@ import type {
 import {
   buildAgentCreateOutputArtifacts,
 } from "./agentCreateOutputArtifacts";
+import {
+  pendingAnalysisStatus,
+  pendingContentStatus,
+  pendingStudioRenderStatus,
+  toolProgressStepsForCall,
+  type AgentCreateToolCallRecord,
+  type AsyncToolState,
+} from "./agentCreateToolProgress";
 import { agentCreateClassNames } from "./agentCreateUi";
 
 type CreateThreadId = Id<"createThreads">;
@@ -134,53 +142,6 @@ function outputId(output: unknown, key: string) {
   return typeof value === "string" ? value : undefined;
 }
 
-function defaultModelForProviderMode(
-  provider: string | undefined,
-  mode: string | undefined,
-  usesReferences: boolean
-) {
-  if (provider === "fal" && mode === "image") {
-    return usesReferences
-      ? "fal-ai/gemini-3.1-flash-image-preview/edit"
-      : "fal-ai/gemini-3.1-flash-image-preview";
-  }
-  if (provider === "bulkapis" && mode === "image") return "nano-banana-2";
-  if (provider === "gemini" && mode === "image") return "gemini-3-pro-image-preview";
-  return undefined;
-}
-
-function modelDisplayLabel(provider: string | undefined, model: string | undefined) {
-  if (model?.trim()) {
-    const cleanModel = model.trim();
-    return cleanModel.includes("/") || !provider ? cleanModel : `${provider} / ${cleanModel}`;
-  }
-  return provider;
-}
-
-function toolStepDetail(inputValue: unknown, outputValue: unknown, fallback: string, resolvedModel?: string) {
-  const input = recordFromUnknown(inputValue);
-  const output = recordFromUnknown(outputValue);
-  const provider = typeof input.provider === "string" ? input.provider : outputId(output, "provider");
-  const outputMode = outputId(output, "mode") ?? (typeof input.inferredOutputType === "string" ? input.inferredOutputType : undefined);
-  const referenceCount = typeof output.referenceCount === "number" ? output.referenceCount : 0;
-  const usesReferences = referenceCount > 0 || input.usePriorImageOutputs === true;
-  const model = resolvedModel ??
-    outputId(output, "effectiveModel") ??
-    (typeof input.model === "string" ? input.model : outputId(output, "model")) ??
-    defaultModelForProviderMode(provider, outputMode, usesReferences);
-  const prompt = typeof input.prompt === "string"
-    ? input.prompt
-    : typeof input.brief === "string"
-      ? input.brief
-      : typeof input.text === "string"
-        ? input.text
-        : undefined;
-  const modelLabel = modelDisplayLabel(provider, model);
-  const promptLabel = prompt?.trim().replace(/\s+/g, " ");
-  if (modelLabel && promptLabel) return `${modelLabel} - ${promptLabel}`;
-  return modelLabel || promptLabel || fallback;
-}
-
 function uniqueArtifacts(artifacts: AgentCreateArtifact[]) {
   const seen = new Set<string>();
   return artifacts.filter((artifact) => {
@@ -215,6 +176,7 @@ export function AgentCreateSurface() {
   const continueThread = useMutation(api.create.agent.continueThread);
   const exportThreadOutputs = useMutation(api.create.agent.exportThreadOutputs);
   const saveThreadOutputs = useMutation(api.create.agent.saveThreadOutputs);
+  const stopThread = useMutation(api.create.agent.stopThread);
   const submitAgentMessage = useMutation(api.create.agent.submit);
   const updateCheckpoint = useMutation(api.create.threads.updateCheckpoint);
 
@@ -228,6 +190,7 @@ export function AgentCreateSurface() {
   const [selectedMentions, setSelectedMentions] = useState<AgentCreateSelectedMention[]>([]);
   const [checkpointRevisionNotes, setCheckpointRevisionNotes] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [deletingThreadId, setDeletingThreadId] = useState<CreateThreadId | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState<CreateThreadId | null>(null);
   const [isContinuing, setIsContinuing] = useState(false);
@@ -273,31 +236,43 @@ export function AgentCreateSurface() {
     return mapped;
   }, [threadOutputs]);
 
-  const asyncFailureLookup = useMemo(() => {
-    const contentRequests = new Map<string, string>();
-    const analysisJobs = new Map<string, string>();
-    const studioRenderRequests = new Map<string, string>();
+  const asyncStateLookup = useMemo(() => {
+    const contentRequests = new Map<string, AsyncToolState>();
+    const analysisJobs = new Map<string, AsyncToolState>();
+    const studioRenderRequests = new Map<string, AsyncToolState>();
 
     for (const entry of threadOutputs?.contentRequests ?? []) {
-      if (entry.request.status === "failed" || entry.request.status === "discarded") {
-        contentRequests.set(
-          String(entry.request._id),
-          entry.request.errorMessage ?? "Generation request failed"
-        );
-      }
+      const status = pendingContentStatus(entry.request.status);
+      if (!status) continue;
+      contentRequests.set(String(entry.request._id), {
+        status,
+        completedAt: entry.request.completedAt,
+        errorMessage: status === "failed"
+          ? entry.request.errorMessage ?? "Generation request failed"
+          : undefined,
+      });
     }
     for (const job of threadOutputs?.analysisJobs ?? []) {
-      if (job.status === "failed") {
-        analysisJobs.set(String(job._id), job.errorMessage ?? "Source analysis failed");
-      }
+      const status = pendingAnalysisStatus(job.status);
+      if (!status) continue;
+      analysisJobs.set(String(job._id), {
+        status,
+        completedAt: job.completedAt,
+        errorMessage: status === "failed"
+          ? job.errorMessage ?? "Source analysis failed"
+          : undefined,
+      });
     }
     for (const request of threadOutputs?.studioRenderRequests ?? []) {
-      if (request.status === "failed" || request.status === "canceled") {
-        studioRenderRequests.set(
-          String(request._id),
-          request.errorMessage ?? "Studio render request failed"
-        );
-      }
+      const status = pendingStudioRenderStatus(request.status);
+      if (!status) continue;
+      studioRenderRequests.set(String(request._id), {
+        status,
+        completedAt: request.completedAt,
+        errorMessage: status === "failed" || status === "canceled"
+          ? request.errorMessage ?? "Studio render request failed"
+          : request.errorMessage,
+      });
     }
 
     return { analysisJobs, contentRequests, studioRenderRequests };
@@ -330,32 +305,25 @@ export function AgentCreateSurface() {
 
   const progressSteps = useMemo<AgentCreateToolProgressStep[]>(
     () =>
-      (toolCalls ?? []).map((toolCall) => {
+      (toolCalls ?? []).flatMap((toolCall) => {
         const contentRequestId = outputId(toolCall.output, "contentRequestId");
-        const asyncFailure =
-          asyncFailureLookup.contentRequests.get(contentRequestId ?? "") ??
-          asyncFailureLookup.analysisJobs.get(outputId(toolCall.output, "analysisJobId") ?? "") ??
-          asyncFailureLookup.studioRenderRequests.get(
+        const asyncState =
+          asyncStateLookup.contentRequests.get(contentRequestId ?? "") ??
+          asyncStateLookup.analysisJobs.get(outputId(toolCall.output, "analysisJobId") ?? "") ??
+          asyncStateLookup.studioRenderRequests.get(
             outputId(toolCall.output, "studioRenderRequestId") ?? ""
           );
         const resolvedModel = contentRequestId
           ? resolvedModelByContentRequestId.get(contentRequestId)
           : undefined;
 
-        return {
-          id: toolCall._id,
-          label: toolCall.label,
-          status: asyncFailure ? "failed" : toolCall.status,
-          detail: toolStepDetail(toolCall.input, toolCall.output, toolCall.toolName, resolvedModel),
-          artifactIds: toolCall.artifactIds?.map(String),
-          costLabel: typeof toolCall.costUsd === "number" ? `$${toolCall.costUsd.toFixed(2)}` : undefined,
-          errorMessage: asyncFailure ?? toolCall.errorMessage,
-          createdAt: toolCall.createdAt,
-          startedAt: toolCall.startedAt,
-          completedAt: toolCall.completedAt,
-        };
+        return toolProgressStepsForCall({
+          asyncState,
+          resolvedModel,
+          toolCall: toolCall as AgentCreateToolCallRecord,
+        });
       }),
-    [asyncFailureLookup, resolvedModelByContentRequestId, toolCalls]
+    [asyncStateLookup, resolvedModelByContentRequestId, toolCalls]
   );
 
   const outputArtifacts = useMemo<AgentCreateArtifact[]>(
@@ -439,10 +407,10 @@ export function AgentCreateSurface() {
       if (!toolCall.messageId) continue;
       const messageId = String(toolCall.messageId);
       const contentRequestId = outputId(toolCall.output, "contentRequestId");
-      const asyncFailure =
-        asyncFailureLookup.contentRequests.get(contentRequestId ?? "") ??
-        asyncFailureLookup.analysisJobs.get(outputId(toolCall.output, "analysisJobId") ?? "") ??
-        asyncFailureLookup.studioRenderRequests.get(
+      const asyncState =
+        asyncStateLookup.contentRequests.get(contentRequestId ?? "") ??
+        asyncStateLookup.analysisJobs.get(outputId(toolCall.output, "analysisJobId") ?? "") ??
+        asyncStateLookup.studioRenderRequests.get(
           outputId(toolCall.output, "studioRenderRequestId") ?? ""
         );
       const resolvedModel = contentRequestId
@@ -451,22 +419,15 @@ export function AgentCreateSurface() {
 
       mapped.set(messageId, [
         ...(mapped.get(messageId) ?? []),
-        {
-          id: toolCall._id,
-          label: toolCall.label,
-          status: asyncFailure ? "failed" : toolCall.status,
-          detail: toolStepDetail(toolCall.input, toolCall.output, toolCall.toolName, resolvedModel),
-          artifactIds: toolCall.artifactIds?.map(String),
-          costLabel: typeof toolCall.costUsd === "number" ? `$${toolCall.costUsd.toFixed(2)}` : undefined,
-          errorMessage: asyncFailure ?? toolCall.errorMessage,
-          createdAt: toolCall.createdAt,
-          startedAt: toolCall.startedAt,
-          completedAt: toolCall.completedAt,
-        },
+        ...toolProgressStepsForCall({
+          asyncState,
+          resolvedModel,
+          toolCall: toolCall as AgentCreateToolCallRecord,
+        }),
       ]);
     }
     return mapped;
-  }, [asyncFailureLookup, resolvedModelByContentRequestId, toolCalls]);
+  }, [asyncStateLookup, resolvedModelByContentRequestId, toolCalls]);
   const renderedMessages = useMemo<AgentCreateMessage[]>(
     () =>
       (messages ?? [])
@@ -506,13 +467,12 @@ export function AgentCreateSurface() {
   const hasQueuedTools = progressSteps.some((step) => step.status === "queued");
   const hasUnreadyOutputs = outputArtifacts.some((artifact) =>
     artifact.status === "generating" ||
-    artifact.status === "placeholder" ||
     artifact.status === "failed"
   );
   const activeProgressStep = progressSteps.find((step) => step.status === "running") ??
     progressSteps.find((step) => step.status === "queued");
   const activeWorkingArtifact = outputArtifacts.find((artifact) =>
-    artifact.status === "generating" || artifact.status === "placeholder"
+    artifact.status === "generating"
   );
   const showActivity = Boolean(
     isSubmitting ||
@@ -577,6 +537,20 @@ export function AgentCreateSurface() {
       setStatusMessage(error instanceof Error ? error.message : "Unable to send message");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const stopActiveThread = async () => {
+    if (!activeThreadId || isStopping) return;
+
+    setIsStopping(true);
+    setStatusMessage("");
+    try {
+      await stopThread({ threadId: activeThreadId });
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to stop generation");
+    } finally {
+      setIsStopping(false);
     }
   };
 
@@ -713,7 +687,7 @@ export function AgentCreateSurface() {
     if (checkpointMode !== "auto") return;
     if (threadOutputs === undefined) return;
     if (!hasQueuedTools || hasUnreadyOutputs || openCheckpoints.length) return;
-    if (isContinuing || isSubmitting) return;
+    if (isContinuing || isSubmitting || isStopping) return;
 
     void continueQueuedTools();
   }, [
@@ -723,6 +697,7 @@ export function AgentCreateSurface() {
     hasUnreadyOutputs,
     isContinuing,
     isSubmitting,
+    isStopping,
     openCheckpoints.length,
     threadOutputs,
   ]);
@@ -1019,11 +994,16 @@ export function AgentCreateSurface() {
               checkpointMode={checkpointMode}
               disabled={isSubmitting}
               isSubmitting={isSubmitting}
+              isStopping={isStopping}
+              isWorking={Boolean(activeThreadId && showActivity)}
               mentionOptions={mentionOptions}
               onChange={handlePromptChange}
               onCheckpointModeChange={setCheckpointMode}
               onMentionRemove={removeMention}
               onMentionSelect={(selection) => handleMentionSelect(selection.mention)}
+              onStop={() => {
+                void stopActiveThread();
+              }}
               onSubmit={() => {
                 void submitMessage();
               }}

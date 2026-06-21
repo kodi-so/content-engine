@@ -49,6 +49,7 @@ type CreateDecisionIntent = {
   kind: "create";
   outputType: Exclude<InferredOutputType, "unknown">;
   planSteps: string[];
+  productionPlan?: Record<string, unknown>;
   summary: string;
   toolCalls: CreatePlannedToolCall[];
 };
@@ -145,6 +146,27 @@ function outputId(output: unknown, key: string) {
   return typeof value === "string" ? value : undefined;
 }
 
+function createProductionPlanningPolicy() {
+  return [
+    "Before selecting tools for a create request, make a concise production plan. Think in terms of: final artifact, source/reference roles, atomic assets, shots/clips/scenes, assembly, render/export.",
+    "Return that plan as productionPlan in the JSON. Keep it brief and structured; do not include hidden reasoning or long prose.",
+    "Map each semantic production unit to the smallest appropriate tool call. Image tools create individual images/assets. Video tools create one coherent shot or clip. Studio tools sequence, stitch, overlay, transition, and render multi-part videos.",
+    "If the user asks for multiple distinct assets, scenes, options, states, products, moments, or story beats, create separate toolCalls with distinct prompts instead of one call with count or one broad prompt.",
+    "If multiple references represent different states or moments in the final output, do not pass them all as generic references to a single generation. Use them as separate source units, generate separate clips/assets as needed, then assemble.",
+    "If a final video requires the same generated person, character, product, room, or object across multiple states/moments and the user has not supplied concrete visual references for those states, first create image reference stills for each state/moment. Then animate those stills with image-to-video clips.",
+    "Do not use text-to-video as the first production step for newly imagined continuity-sensitive subjects. Use text-to-video only for standalone shots where identity/object continuity across generated outputs does not matter, or when the user explicitly asks for prompt-only video.",
+    "Use one video generation call only when the desired output is one coherent shot, a deliberate blend/morph/interpolation, or the user explicitly asks for a single model-generated transition.",
+    "Video generation prompts should describe the action, motion, performance, camera movement, and atmosphere of that exact shot or clip. They should not summarize the whole final edited video.",
+    "Each tool call prompt must be local to that tool call's actual inputs. Do not say \"same person\", \"previous image\", \"six months later\", or similar cross-step references inside a generation prompt unless that tool call also receives the relevant reference asset. If it receives a reference image, describe it as the provided/reference image and only include the motion/action needed for that clip.",
+    "For multi-state continuity, use prior image outputs deliberately: create the first state image, create later state images with input.usePriorImageOutputs=true when identity continuity matters, then create video clips with input.priorImageOutputIndex pointing at the exact still for that clip.",
+    "For multi-clip final videos, call studio.compose after generating or selecting the clips. If the user asks to create a finished video rather than only a Studio draft, call studio.render after studio.compose.",
+    "When a generated clip should use one specific prior image, set input.priorImageOutputIndex to the zero-based prior image index for that clip. Use input.usePriorImageOutputs=true only when all prior images should act as continuity/style references.",
+    "For image-to-video, default to Kling through fal unless the user explicitly asks for another video model. Use model=\"fal-ai/kling-video/v3/pro/image-to-video\" when animating image references and model=\"fal-ai/kling-video/v3/pro/text-to-video\" for prompt-only video.",
+    "When the requested artifact includes text, decide semantically where that text belongs: use Studio composition for video overlays/captions/lower thirds, slideshow tools for slide text, and image generation only when the artifact itself is a text-bearing graphic such as a poster, flyer, infographic, meme, title card, thumbnail, ad graphic, packaging, or specifically requested visible words.",
+    "Do not add text, labels, captions, or UI-like annotations to ordinary photo/image assets or video clips unless the user's requested artifact calls for rendered text.",
+  ];
+}
+
 function createAgentSystemPrompt() {
   const tools = [...toolDescriptorMap().values()].map((tool) => ({
     name: tool.name,
@@ -165,10 +187,9 @@ function createAgentSystemPrompt() {
     "In Debug Mode the runtime will pause after the plan before spending generation or render resources.",
     "For create decisions, write planSteps as plain-English user-visible actions. Do not expose internal tool labels. Example: \"Create an image of an apple.\"",
     "For create decisions, toolCalls is required. It is an ordered list of exact tool invocations you want the runtime to make.",
-    "You may call the same tool multiple times. If the user asks for multiple distinct assets or scenes, create separate toolCalls with distinct prompts instead of one call with a count.",
-    "Example: if the user asks for a before image and an after image, return two media.generateImage toolCalls: one prompt for the before image and one prompt for the after image.",
+    ...createProductionPlanningPolicy(),
+    "You may call the same tool multiple times.",
     "If a later image/video must preserve the identity, setting, pose, or style of an earlier generated image, set input.usePriorImageOutputs=true on that later toolCall and write the prompt as an edit/continuity instruction that uses the prior image as reference.",
-    "For example, the after image in a fitness transformation should reference the before image and ask to keep the same person/location while changing the fitness progress.",
     "Only use count > 1 when the user wants variations/options of the same prompt, not separate semantic outputs.",
     "Available tools:",
     JSON.stringify(tools),
@@ -186,6 +207,13 @@ function createAgentSystemPrompt() {
         },
       ],
       planSteps: ["Plain-English user-visible steps; required only for create"],
+      productionPlan: {
+        finalArtifact: "The final thing the user wants.",
+        sourceRoles: ["How provided or prior references should be used."],
+        units: ["Atomic assets, shots, clips, scenes, or sections to produce."],
+        assembly: "How generated units should be combined, if needed.",
+        render: "Whether a finished render/export is needed.",
+      },
       brief: "Concise effective brief/instructions for the selected tools; required only for create",
     }),
   ].join("\n");
@@ -226,6 +254,19 @@ function outputTypeFromDecision(value: unknown): Exclude<InferredOutputType, "un
 
 function inputFromDecision(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
+}
+
+function productionPlanFromDecision(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function formatStoppedDuration(ms: number) {
+  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  if (seconds === 0) return `${minutes}m`;
+  return `${minutes}m ${seconds}s`;
 }
 
 function toolCallToolNameFromDecision(value: unknown): CreateToolName | null {
@@ -295,6 +336,7 @@ export function normalizeAgentDecision(text: string): AgentDecision {
     const brief = stringFromDecision(parsed.brief);
     const toolCalls = toolCallsFromDecision(parsed.toolCalls, brief);
     const planSteps = planStepsFromDecision(parsed.planSteps);
+    const productionPlan = productionPlanFromDecision(parsed.productionPlan);
     if (!outputType || !toolCalls.length || !brief) {
       return {
         kind: "clarify",
@@ -308,6 +350,7 @@ export function normalizeAgentDecision(text: string): AgentDecision {
       kind: "create",
       outputType,
       planSteps,
+      ...(productionPlan ? { productionPlan } : {}),
       summary: response || `I will treat this as a ${outputType} request and choose the right creation tools.`,
       toolCalls,
     };
@@ -1043,6 +1086,155 @@ export const continueThread = mutation({
   },
 });
 
+export const stopThread = mutation({
+  args: { threadId: v.id("createThreads") },
+  handler: async (ctx, args) => {
+    const { userId } = await ensureCurrentUser(ctx);
+    const thread = await requireThreadAccess(ctx, args.threadId, userId);
+    const now = Date.now();
+    const toolCalls = await ctx.db
+      .query("createToolCalls")
+      .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
+      .collect();
+    const activeToolCalls = toolCalls.filter((toolCall) =>
+      toolCall.status === "queued" ||
+      toolCall.status === "running" ||
+      toolCall.status === "blocked"
+    );
+    const activeContentRequestIds = [
+      ...new Set(
+        toolCalls.flatMap((toolCall) => {
+          const requestId = contentRequestIdFromToolOutput(toolCall.output);
+          return requestId ? [requestId] : [];
+        })
+      ),
+    ];
+    const activeStudioRenderRequestIds = [
+      ...new Set(
+        toolCalls.flatMap((toolCall) => {
+          const requestId = studioRenderRequestIdFromToolOutput(toolCall.output);
+          return requestId ? [requestId] : [];
+        })
+      ),
+    ];
+    const activeContentRequests: Doc<"contentRequests">[] = [];
+    for (const requestId of activeContentRequestIds) {
+      const request = await ctx.db.get(requestId);
+      if (
+        request &&
+        createThreadScopeMatchesRecord(thread, request) &&
+        (
+          request.status === "queued" ||
+          request.status === "planning" ||
+          request.status === "generating"
+        )
+      ) {
+        activeContentRequests.push(request);
+      }
+    }
+    const activeContentRequestIdSet = new Set(activeContentRequests.map((request) => String(request._id)));
+    const stoppedToolCalls = [
+      ...new Map(
+        [
+          ...activeToolCalls,
+          ...toolCalls.filter((toolCall) => {
+            if (toolCall.status !== "succeeded") return false;
+            const requestId = contentRequestIdFromToolOutput(toolCall.output);
+            return requestId ? activeContentRequestIdSet.has(String(requestId)) : false;
+          }),
+        ].map((toolCall) => [String(toolCall._id), toolCall])
+      ).values(),
+    ];
+    const activeStudioRenderRequests: Doc<"studioRenderRequests">[] = [];
+    for (const requestId of activeStudioRenderRequestIds) {
+      const request = await ctx.db.get(requestId);
+      if (
+        request &&
+        createThreadScopeMatchesRecord(thread, request) &&
+        (
+          request.status === "queued" ||
+          request.status === "rendering" ||
+          request.status === "blocked"
+        )
+      ) {
+        activeStudioRenderRequests.push(request);
+      }
+    }
+
+    if (
+      !activeToolCalls.length &&
+      !activeContentRequests.length &&
+      !activeStudioRenderRequests.length &&
+      (thread.status === "idle" || thread.status === "ready" || thread.status === "canceled")
+    ) {
+      return {
+        canceledContentRequestCount: 0,
+        canceledStudioRenderRequestCount: 0,
+        canceledToolCallCount: 0,
+        elapsedMs: 0,
+      };
+    }
+
+    const startTimestamps = [
+      ...stoppedToolCalls.flatMap((toolCall) => [
+        toolCall.startedAt,
+        toolCall.createdAt,
+      ]),
+      ...activeContentRequests.flatMap((request) => [
+        request.startedAt,
+        request.createdAt,
+      ]),
+      ...activeStudioRenderRequests.map((request) => request.createdAt),
+      thread.updatedAt,
+      thread.createdAt,
+    ].filter((value): value is number => typeof value === "number");
+    const elapsed = startTimestamps.length ? now - Math.min(...startTimestamps) : 0;
+
+    await Promise.all([
+      ...stoppedToolCalls.map((toolCall) =>
+        ctx.db.patch(toolCall._id, {
+          status: "canceled" as const,
+          completedAt: now,
+          updatedAt: now,
+        })
+      ),
+      ...activeContentRequests.map((request) =>
+        ctx.db.patch(request._id, {
+          status: "discarded" as const,
+          errorMessage: "Stopped by user.",
+          completedAt: now,
+          updatedAt: now,
+        })
+      ),
+      ...activeStudioRenderRequests.map((request) =>
+        ctx.db.patch(request._id, {
+          status: "canceled" as const,
+          errorMessage: "Stopped by user.",
+          completedAt: now,
+          updatedAt: now,
+        })
+      ),
+    ]);
+
+    await appendMessage(ctx, thread, {
+      role: "agent",
+      content: `You stopped after ${formatStoppedDuration(elapsed)}.`,
+      kind: "status",
+    });
+    await ctx.db.patch(thread._id, {
+      status: "idle",
+      updatedAt: now,
+    });
+
+    return {
+      canceledContentRequestCount: activeContentRequests.length,
+      canceledStudioRenderRequestCount: activeStudioRenderRequests.length,
+      canceledToolCallCount: stoppedToolCalls.length,
+      elapsedMs: Math.max(0, elapsed),
+    };
+  },
+});
+
 export const continueAfterAsyncResult = internalMutation({
   args: {
     contentRequestId: v.optional(v.id("contentRequests")),
@@ -1109,6 +1301,31 @@ export const continueAfterAsyncResult = internalMutation({
       if (!belongsToSource) continue;
 
       continuedThreadIds.add(String(thread._id));
+      const readySource = sourceRecords.find((source) =>
+        (
+          ("status" in source && (source.status === "ready" || source.status === "completed"))
+        ) &&
+        (
+          contentRequestIdFromToolOutput(toolCall.output) === source._id ||
+          analysisJobIdFromToolOutput(toolCall.output) === source._id ||
+          studioRenderRequestIdFromToolOutput(toolCall.output) === source._id
+        )
+      );
+      if (readySource) {
+        const remainingQueued = await ctx.db
+          .query("createToolCalls")
+          .withIndex("by_thread_status", (q) =>
+            q.eq("createThreadId", thread._id).eq("status", "queued")
+          )
+          .collect();
+        await appendMessage(ctx, thread, {
+          role: "agent",
+          content: remainingQueued.length
+            ? `Finished ${toolCall.label}. Continuing to the next step.`
+            : `Finished ${toolCall.label}.`,
+          kind: "status",
+        });
+      }
       await executeRunnableQueuedTools(ctx, thread);
       continuedThreadCount += 1;
     }

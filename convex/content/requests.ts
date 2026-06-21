@@ -556,6 +556,15 @@ export const transition = internalMutation({
     completedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const current = await ctx.db.get(args.requestId);
+    if (!current) return;
+    if (
+      current.status === "discarded" &&
+      (args.status === "ready" || args.status === "saved")
+    ) {
+      return;
+    }
+
     const patch: Partial<Doc<"contentRequests">> = {
       status: args.status,
       updatedAt: Date.now(),
