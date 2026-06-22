@@ -236,9 +236,19 @@ function createAgentSystemPrompt() {
 }
 
 function messageForModel(message: Doc<"createMessages">): ModelMessage {
+  const references = message.referenceMentions?.length
+    ? [
+        "",
+        "Referenced assets in this message:",
+        ...message.referenceMentions.map((reference) =>
+          `- ${reference.token}: ${reference.label} (${reference.entityType}:${reference.entityId}${reference.mediaType ? `, ${reference.mediaType}` : ""}${reference.instruction ? `, instruction: ${reference.instruction}` : ""})`
+        ),
+      ].join("\n")
+    : "";
+
   return {
     role: message.role === "user" ? "user" : "assistant",
-    content: message.content,
+    content: `${message.content}${references}`,
   };
 }
 
@@ -378,7 +388,7 @@ export function normalizeAgentDecision(text: string): AgentDecision {
   };
 }
 
-function planMessageForCreateDecision(intent: CreateDecisionIntent, usedConversationContext: boolean) {
+function planMessageForCreateDecision(intent: CreateDecisionIntent) {
   const descriptors = toolDescriptorMap();
   const steps = intent.planSteps.length
     ? intent.planSteps
@@ -391,14 +401,10 @@ function planMessageForCreateDecision(intent: CreateDecisionIntent, usedConversa
     ? steps
     : steps.map((step, index) => `${index + 1}. ${step}`);
   if (steps.length <= 1) {
-    return [
-      ...(usedConversationContext ? ["I will use the recent conversation as the brief for this creation."] : []),
-      intent.summary,
-    ].join("\n");
+    return intent.summary;
   }
 
   return [
-    ...(usedConversationContext ? ["I will use the recent conversation as the brief for this creation."] : []),
     intent.summary,
     "Plan:",
     ...formattedSteps,
@@ -854,7 +860,6 @@ export const applyAgentDecision = internalMutation({
     effectiveContent: v.string(),
     referenceMentions: v.optional(v.array(createReferenceMentionValidator)),
     threadId: v.id("createThreads"),
-    usedConversationContext: v.boolean(),
     userMessageId: v.id("createMessages"),
   },
   handler: async (ctx, args) => {
@@ -896,7 +901,7 @@ export const applyAgentDecision = internalMutation({
 
     const planMessageId = await appendMessage(ctx, thread, {
       role: "agent",
-      content: planMessageForCreateDecision(decision, args.usedConversationContext),
+      content: planMessageForCreateDecision(decision),
       kind: "plan",
     });
     await recordPlannedTools(
@@ -972,17 +977,9 @@ export const decideAgentTurn = internalAction({
       });
       if (!context) return;
 
-      const previousUserMessages = context.messages.filter(
-        (message) =>
-          message.role === "user" &&
-          message._id !== context.userMessage._id &&
-          message.createdAt < context.userMessage.createdAt
-      );
       const effectiveBrief = buildEffectiveBrief({
         content: context.userMessage.content,
         currentMentions: context.userMessage.referenceMentions,
-        previousMessages: previousUserMessages,
-        thread: context.thread,
       });
 
       const provider = getModelProvider(createAgentProvider);
@@ -994,7 +991,7 @@ export const decideAgentTurn = internalAction({
           content: [
             "Decide the next assistant action for the latest user message.",
             `Effective brief for creation, if relevant: ${effectiveBrief.content}`,
-            `Use conversation context for creation: ${effectiveBrief.usedConversationContext ? "yes" : "no"}`,
+            "Use the conversation messages and prior tool results above as normal chat context. Do not rely on hard-coded phrases to infer follow-up intent.",
           ].join("\n"),
         },
       ];
@@ -1020,7 +1017,6 @@ export const decideAgentTurn = internalAction({
           : effectiveBrief.content,
         referenceMentions: effectiveBrief.referenceMentions,
         threadId: args.threadId,
-        usedConversationContext: effectiveBrief.usedConversationContext,
         userMessageId: args.userMessageId,
       });
     } catch (error) {
