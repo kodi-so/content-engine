@@ -28,7 +28,10 @@ import {
   briefWithAnalysisContext,
   hasPendingAnalysisContextForThreadToolOutputs,
 } from "./sourceAnalysisContext";
-import { buildCreateAgentStudioDraft } from "./studioComposition";
+import {
+  buildCreateAgentStudioDraft,
+  selectCreateAgentStudioVisualArtifacts,
+} from "./studioComposition";
 import { createStudioRenderRequest } from "./studioRenderRequests";
 import { createWorkflowDraftFromThread } from "./workflowExport";
 
@@ -36,6 +39,8 @@ export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
 
 const STUDIO_RENDER_NOT_CONFIGURED_MESSAGE =
   "Automatic Studio rendering is not configured yet. Set STUDIO_RENDER_WORKER_URL and STUDIO_RENDER_WORKER_API_KEY so Create can render the final video in chat.";
+const FAL_KLING_V3_MIN_DURATION_SECONDS = 3;
+const FAL_KLING_V3_MAX_DURATION_SECONDS = 15;
 
 function providerForMediaMode(
   workspace: Doc<"workspaces"> | null,
@@ -296,6 +301,22 @@ function defaultCreateVideoModel(args: {
   return args.referenceImageCount > 0
     ? "fal-ai/kling-video/v3/pro/image-to-video"
     : "fal-ai/kling-video/v3/pro/text-to-video";
+}
+
+function normalizedCreateDurationSeconds(args: {
+  durationSeconds?: number;
+  mode: MediaGenerationMode;
+  model?: string;
+  provider: ModelProviderName;
+}) {
+  if (args.mode !== "video" || !args.durationSeconds) return undefined;
+  if (args.provider === "fal" && args.model?.includes("kling-video/v3")) {
+    return Math.max(
+      FAL_KLING_V3_MIN_DURATION_SECONDS,
+      Math.min(FAL_KLING_V3_MAX_DURATION_SECONDS, Math.round(args.durationSeconds))
+    );
+  }
+  return args.durationSeconds;
 }
 
 function uniqueReferenceAssets(assets: ToolReferenceAsset[]) {
@@ -1125,7 +1146,7 @@ async function createGenerationRequestForToolCall(
   const provider = modelProviderFromInput(input.provider) ?? providerForMediaMode(workspace, mode);
   let model = cleanOptionalStringFromRecord(input, "model");
   const aspectRatio = cleanOptionalStringFromRecord(input, "aspectRatio");
-  const durationSeconds = finitePositiveNumber(input.durationSeconds);
+  const requestedDurationSeconds = finitePositiveNumber(input.durationSeconds);
   const audioMode = cleanOptionalStringFromRecord(input, "mode");
   const count = mode === "image"
     ? Math.max(1, Math.min(4, Math.floor(finitePositiveNumber(input.count) ?? 1)))
@@ -1243,6 +1264,12 @@ async function createGenerationRequestForToolCall(
     model,
     provider,
     referenceImageCount: references.imageReferences.length,
+  });
+  const durationSeconds = normalizedCreateDurationSeconds({
+    durationSeconds: requestedDurationSeconds,
+    mode,
+    model,
+    provider,
   });
   const effectiveModel = effectiveQueuedModelForToolOutput({
     mode,
@@ -2008,6 +2035,11 @@ async function createStudioProjectForToolCall(
   }
 
   const now = Date.now();
+  const selectedVisualArtifacts = selectCreateAgentStudioVisualArtifacts({
+    imageArtifacts,
+    input,
+    videoArtifacts,
+  });
   const draft = buildCreateAgentStudioDraft({
     audioArtifacts,
     aspectRatio: input.aspectRatio,
@@ -2031,10 +2063,10 @@ async function createStudioProjectForToolCall(
     output: {
       projectId,
       audioArtifactIds: audioArtifacts.map((artifact) => artifact._id),
-      imageArtifactIds: imageArtifacts.map((artifact) => artifact._id),
-      clipArtifactIds: videoArtifacts.map((artifact) => artifact._id),
+      imageArtifactIds: selectedVisualArtifacts.imageArtifacts.map((artifact) => artifact._id),
+      clipArtifactIds: selectedVisualArtifacts.videoArtifacts.map((artifact) => artifact._id),
       audioTrackCount: draft.audioTracks.length,
-      imageClipCount: imageArtifacts.length,
+      imageClipCount: selectedVisualArtifacts.imageArtifacts.length,
       textOverlayCount: draft.textOverlays.length,
       status: "ready",
     },
@@ -2043,7 +2075,7 @@ async function createStudioProjectForToolCall(
   });
 
   await appendAgentMessage(ctx, thread, {
-    content: `Created a Studio project with ${videoArtifacts.length} video clip${videoArtifacts.length === 1 ? "" : "s"}${imageArtifacts.length ? `, ${imageArtifacts.length} image clip${imageArtifacts.length === 1 ? "" : "s"}` : ""}${audioArtifacts.length ? `, and ${audioArtifacts.length} audio track${audioArtifacts.length === 1 ? "" : "s"}` : ""}.`,
+    content: `Created a Studio project with ${selectedVisualArtifacts.videoArtifacts.length} video clip${selectedVisualArtifacts.videoArtifacts.length === 1 ? "" : "s"}${selectedVisualArtifacts.imageArtifacts.length ? `, ${selectedVisualArtifacts.imageArtifacts.length} image clip${selectedVisualArtifacts.imageArtifacts.length === 1 ? "" : "s"}` : ""}${audioArtifacts.length ? `, and ${audioArtifacts.length} audio track${audioArtifacts.length === 1 ? "" : "s"}` : ""}.`,
     kind: "tool_result",
   });
 

@@ -179,6 +179,44 @@ export function buildStudioTextOverlaysFromInput(
   );
 }
 
+function artifactIdSetFromInput(input: Record<string, unknown>) {
+  if (!Array.isArray(input.artifactIds)) return null;
+  const ids = input.artifactIds
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+  return ids.length ? new Set(ids) : null;
+}
+
+export function selectCreateAgentStudioVisualArtifacts(args: {
+  imageArtifacts?: StudioImageArtifact[];
+  input: Record<string, unknown>;
+  videoArtifacts: StudioVideoArtifact[];
+}) {
+  const explicitArtifactIds = artifactIdSetFromInput(args.input);
+  if (explicitArtifactIds) {
+    return {
+      imageArtifacts: (args.imageArtifacts ?? []).filter((artifact) =>
+        explicitArtifactIds.has(String(artifact._id))
+      ),
+      videoArtifacts: args.videoArtifacts.filter((artifact) =>
+        explicitArtifactIds.has(String(artifact._id))
+      ),
+    };
+  }
+
+  if (args.videoArtifacts.length) {
+    return {
+      imageArtifacts: [],
+      videoArtifacts: args.videoArtifacts,
+    };
+  }
+
+  return {
+    imageArtifacts: args.imageArtifacts ?? [],
+    videoArtifacts: args.videoArtifacts,
+  };
+}
+
 export function buildCreateAgentStudioDraft(args: {
   audioArtifacts?: StudioAudioArtifact[];
   aspectRatio?: unknown;
@@ -186,14 +224,19 @@ export function buildCreateAgentStudioDraft(args: {
   input: Record<string, unknown>;
   videoArtifacts: StudioVideoArtifact[];
 }) {
+  const selectedVisualArtifacts = selectCreateAgentStudioVisualArtifacts({
+    imageArtifacts: args.imageArtifacts,
+    input: args.input,
+    videoArtifacts: args.videoArtifacts,
+  });
   const visualArtifacts = [
-    ...args.videoArtifacts.map((artifact) => ({ artifact, mediaKind: "video" as const })),
-    ...(args.imageArtifacts ?? []).map((artifact) => ({ artifact, mediaKind: "image" as const })),
+    ...selectedVisualArtifacts.videoArtifacts.map((artifact) => ({ artifact, mediaKind: "video" as const })),
+    ...selectedVisualArtifacts.imageArtifacts.map((artifact) => ({ artifact, mediaKind: "image" as const })),
   ];
-  const totalDurationSeconds = args.videoArtifacts.reduce(
+  const totalDurationSeconds = selectedVisualArtifacts.videoArtifacts.reduce(
     (total, artifact) => total + (artifactDurationSeconds(artifact as Doc<"artifacts">) || 4),
     0
-  ) + (args.imageArtifacts?.length ?? 0) * 4;
+  ) + selectedVisualArtifacts.imageArtifacts.length * 4;
   const aspectRatio = args.aspectRatio === "4:5" ||
     args.aspectRatio === "1:1" ||
     args.aspectRatio === "16:9"

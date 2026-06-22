@@ -1,6 +1,11 @@
-import { AlertCircle, CheckCircle2, Circle, PauseCircle, RotateCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronRight, Circle, PauseCircle, RotateCcw } from "lucide-react";
 import { LoadingSignal } from "../../components/ui";
-import type { AgentCreateToolProgressStep, AgentCreateToolStatus } from "./agentCreateTypes";
+import { AgentCreateMediaResultGrid } from "./AgentCreateArtifactCard";
+import type {
+  AgentCreateArtifact,
+  AgentCreateToolProgressStep,
+  AgentCreateToolStatus,
+} from "./agentCreateTypes";
 import { agentCreateClassNames } from "./agentCreateUi";
 
 function statusTone(status: AgentCreateToolStatus) {
@@ -42,12 +47,16 @@ function splitModelDetail(detail: string) {
 export function ToolProgressTimeline({
   className,
   isRetrying,
+  onArtifactOpen,
+  onArtifactPreview,
   onRetry,
   steps,
   title = "Production timeline",
 }: {
   className?: string;
   isRetrying?: (step: AgentCreateToolProgressStep) => boolean;
+  onArtifactOpen?: (artifact: AgentCreateArtifact) => void;
+  onArtifactPreview?: (artifact: AgentCreateArtifact) => void;
   onRetry?: (step: AgentCreateToolProgressStep) => void;
   steps: AgentCreateToolProgressStep[];
   title?: string;
@@ -66,6 +75,12 @@ export function ToolProgressTimeline({
       <ol className="grid min-w-0 gap-[var(--space-2)]">
         {steps.map((step, index) => {
           const detail = step.detail ? splitModelDetail(step.detail) : null;
+          const resultArtifacts = (step.artifacts ?? []).filter((artifact) =>
+            artifact.status === "ready" &&
+            !artifact.id.startsWith("studio:") &&
+            artifact.url !== undefined &&
+            !artifact.url.startsWith("/studio")
+          );
 
           return (
             <li
@@ -131,6 +146,23 @@ export function ToolProgressTimeline({
                   )}
                   Retry
                 </button>
+              ) : null}
+              {resultArtifacts.length ? (
+                <details className="group/result mt-2 grid min-w-0 justify-items-start">
+                  <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[0.72rem] font-[780] text-[var(--color-ink-soft)] transition hover:bg-[var(--color-page-quiet)] marker:hidden">
+                    <ChevronRight
+                      className="transition-transform group-open/result:rotate-90"
+                      size={13}
+                    />
+                    Result
+                  </summary>
+                  <div className="mt-2 w-full max-w-[min(24rem,100%)]">
+                    <AgentCreateMediaResultGrid
+                      artifacts={resultArtifacts}
+                      onPreview={onArtifactPreview ?? onArtifactOpen}
+                    />
+                  </div>
+                </details>
               ) : null}
             </div>
             </li>

@@ -25,6 +25,7 @@ import type { CreateToolName } from "./tools";
 import {
   buildPlannedToolInput,
   buildEffectiveBrief,
+  normalizePlannedToolInputForToolCall,
   threadTitleFromMessage,
   toolDescriptorMap,
   urlPattern,
@@ -110,6 +111,20 @@ async function requireThreadAccess(
   return thread;
 }
 
+async function findThreadForReadAccess(
+  ctx: QueryCtx,
+  threadId: Id<"createThreads">,
+  userId: string
+) {
+  const thread = await ctx.db.get(threadId);
+  if (!thread) return null;
+  if (!(await hasRecordAccess(ctx, thread, userId))) {
+    throw new Error("Create thread not found");
+  }
+
+  return thread;
+}
+
 function normalizeOptionalText(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed || undefined;
@@ -158,6 +173,7 @@ function createProductionPlanningPolicy() {
     "Use one video generation call only when the desired output is one coherent shot, a deliberate blend/morph/interpolation, or the user explicitly asks for a single model-generated transition.",
     "Video generation prompts should describe the action, motion, performance, camera movement, and atmosphere of that exact shot or clip. They should not summarize the whole final edited video.",
     "Each tool call prompt must be local to that tool call's actual inputs. Do not say \"same person\", \"previous image\", \"six months later\", or similar cross-step references inside a generation prompt unless that tool call also receives the relevant reference asset. If it receives a reference image, describe it as the provided/reference image and only include the motion/action needed for that clip.",
+    "Image edit/reference-image prompts should be instructions grounded in the actual provided image: say what should change and what important identity, composition, setting, lighting, camera quality, and style details should be preserved. Do not write them as free-floating scene descriptions.",
     "For multi-state continuity, use prior image outputs deliberately: create the first state image, create later state images with input.usePriorImageOutputs=true when identity continuity matters, then create video clips with input.priorImageOutputIndex pointing at the exact still for that clip.",
     "For multi-clip final videos, call studio.compose after generating or selecting the clips. If the user asks to create a finished video rather than only a Studio draft, call studio.render after studio.compose.",
     "When a generated clip should use one specific prior image, set input.priorImageOutputIndex to the zero-based prior image index for that clip. Use input.usePriorImageOutputs=true only when all prior images should act as continuity/style references.",
@@ -544,7 +560,19 @@ export const listThreadOutputs = query({
   args: { threadId: v.id("createThreads") },
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
-    const thread = await requireThreadAccess(ctx, args.threadId, identity.subject);
+    const thread = await findThreadForReadAccess(ctx, args.threadId, identity.subject);
+    if (!thread) {
+      return {
+        contentRequests: [],
+        analysisJobs: [],
+        directArtifacts: [],
+        videoProjects: [],
+        distributionPlans: [],
+        studioRenderRequests: [],
+        referenceResults: [],
+      };
+    }
+
     const toolCalls = await ctx.db
       .query("createToolCalls")
       .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
@@ -719,6 +747,7 @@ async function recordPlannedTools(
 ) {
   const descriptors = toolDescriptorMap();
   const now = Date.now();
+  const siblingToolNames = intent.toolCalls.map((toolCall) => toolCall.toolName);
 
   for (const plannedCall of intent.toolCalls) {
     const tool = descriptors.get(plannedCall.toolName);
@@ -729,6 +758,17 @@ async function recordPlannedTools(
       referenceMentions,
       toolName: plannedCall.toolName,
     });
+    const input = normalizePlannedToolInputForToolCall({
+      input: {
+        ...inferredInput,
+        ...(plannedCall.input ?? {}),
+        ...(plannedCall.prompt ? { prompt: plannedCall.prompt, brief: callContent } : {}),
+      },
+      planStep: plannedCall.planStep,
+      prompt: plannedCall.prompt,
+      siblingToolNames,
+      toolName: plannedCall.toolName,
+    });
     await ctx.db.insert("createToolCalls", {
       userId: thread.userId,
       workspaceId: thread.workspaceId,
@@ -737,11 +777,7 @@ async function recordPlannedTools(
       toolName: plannedCall.toolName,
       status: "queued",
       label: plannedCall.planStep || tool?.label || plannedCall.toolName,
-      input: {
-        ...inferredInput,
-        ...(plannedCall.input ?? {}),
-        ...(plannedCall.prompt ? { prompt: plannedCall.prompt, brief: callContent } : {}),
-      },
+      input,
       createdAt: now,
       updatedAt: now,
     });

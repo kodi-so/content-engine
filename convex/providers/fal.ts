@@ -56,6 +56,8 @@ const DEFAULT_FAL_IMAGE_RESOLUTION = "2K";
 const DEFAULT_FAL_VIDEO_MODEL = "fal-ai/ltx-video";
 const DEFAULT_FAL_AUDIO_MODEL = "fal-ai/xai/tts/v1";
 const DEFAULT_FAL_LIPSYNC_MODEL = "fal-ai/bytedance/seedance-2.0/reference-to-video";
+const FAL_KLING_V3_MIN_DURATION_SECONDS = 3;
+const FAL_KLING_V3_MAX_DURATION_SECONDS = 15;
 
 function isFalDryRunEnabled(): boolean {
   const value = process.env.FAL_DRY_RUN?.trim().toLowerCase();
@@ -374,6 +376,32 @@ function falVideoReferencePayload(
   return payload;
 }
 
+function finiteDurationValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+export function normalizeFalVideoDurationForModel(
+  model: string,
+  value: unknown
+): number | string | undefined {
+  const duration = finiteDurationValue(value);
+  if (!duration) return undefined;
+
+  if (model.includes("kling-video/v3")) {
+    return String(Math.max(
+      FAL_KLING_V3_MIN_DURATION_SECONDS,
+      Math.min(FAL_KLING_V3_MAX_DURATION_SECONDS, Math.round(duration))
+    ));
+  }
+
+  return duration;
+}
+
 function addIfDefined(
   payload: Record<string, unknown>,
   key: string,
@@ -680,13 +708,18 @@ async function generateFalVideo(
   }
 
   try {
-    const payload = {
+    const argumentOverrides = providerArgumentOverrides(input.metadata);
+    const payload: Record<string, unknown> = {
       prompt: input.prompt,
       ...falVideoAspectRatioPayload(model, input),
-      duration: input.durationSeconds,
       ...falVideoReferencePayload(model, input),
-      ...providerArgumentOverrides(input.metadata),
+      ...argumentOverrides,
     };
+    addIfDefined(
+      payload,
+      "duration",
+      normalizeFalVideoDurationForModel(model, payload.duration ?? input.durationSeconds)
+    );
 
     const submitted = await submitFalJob("generate_video", model, payload);
 

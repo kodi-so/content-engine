@@ -49,6 +49,20 @@ async function requireThreadAccess(
   return thread;
 }
 
+async function findThreadForReadAccess(
+  ctx: QueryCtx,
+  threadId: Id<"createThreads">,
+  userId: string
+) {
+  const thread = await ctx.db.get(threadId);
+  if (!thread) return null;
+  if (!(await hasRecordAccess(ctx, thread, userId))) {
+    throw new Error("Create thread not found");
+  }
+
+  return thread;
+}
+
 function artifactBelongsToThread(
   artifact: Doc<"artifacts">,
   thread: ThreadDoc
@@ -287,11 +301,12 @@ export const listMessages = query({
   args: { threadId: v.id("createThreads") },
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
-    await requireThreadAccess(ctx, args.threadId, identity.subject);
+    const thread = await findThreadForReadAccess(ctx, args.threadId, identity.subject);
+    if (!thread) return [];
 
     return await ctx.db
       .query("createMessages")
-      .withIndex("by_thread", (q) => q.eq("createThreadId", args.threadId))
+      .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
       .collect();
   },
 });
@@ -393,11 +408,12 @@ export const listToolCalls = query({
   args: { threadId: v.id("createThreads") },
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
-    await requireThreadAccess(ctx, args.threadId, identity.subject);
+    const thread = await findThreadForReadAccess(ctx, args.threadId, identity.subject);
+    if (!thread) return [];
 
     return await ctx.db
       .query("createToolCalls")
-      .withIndex("by_thread", (q) => q.eq("createThreadId", args.threadId))
+      .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
       .collect();
   },
 });
@@ -490,11 +506,12 @@ export const listCheckpoints = query({
   args: { threadId: v.id("createThreads") },
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
-    await requireThreadAccess(ctx, args.threadId, identity.subject);
+    const thread = await findThreadForReadAccess(ctx, args.threadId, identity.subject);
+    if (!thread) return [];
 
     return await ctx.db
       .query("createCheckpoints")
-      .withIndex("by_thread", (q) => q.eq("createThreadId", args.threadId))
+      .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
       .collect();
   },
 });

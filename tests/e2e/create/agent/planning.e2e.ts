@@ -4,7 +4,9 @@ import { normalizeAgentDecision } from "../../../../convex/create/agent";
 import {
   buildEffectiveBrief,
   buildPlannedToolInput,
+  normalizePlannedToolInputForToolCall,
 } from "../../../../convex/create/planning";
+import { normalizeFalVideoDurationForModel } from "../../../../convex/providers/fal";
 
 function userMessage(
   content: string,
@@ -229,6 +231,59 @@ assert.equal(multiClipReferenceVideoDecision.toolCalls[1].input?.priorImageOutpu
 assert.equal(
   multiClipReferenceVideoDecision.toolCalls[0].input?.model,
   "fal-ai/kling-video/v3/pro/image-to-video"
+);
+
+const accidentalBatchBeforeImageInput = normalizePlannedToolInputForToolCall({
+  input: {
+    prompt: "Create the before gym mirror selfie image.",
+    count: 2,
+  },
+  planStep: "Create the before reference still.",
+  prompt: "Create the before gym mirror selfie image.",
+  siblingToolNames: ["media.generateImage", "media.generateImage"],
+  toolName: "media.generateImage",
+});
+assert.equal(accidentalBatchBeforeImageInput.count, undefined);
+
+const variationImageInput = normalizePlannedToolInputForToolCall({
+  input: {
+    prompt: "Create four color options for the product package.",
+    count: 4,
+  },
+  planStep: "Create four product color options.",
+  prompt: "Create four color options for the product package.",
+  siblingToolNames: ["media.generateImage", "media.generateImage"],
+  toolName: "media.generateImage",
+});
+assert.equal(variationImageInput.count, 4);
+
+const imageEditContinuityInput = normalizePlannedToolInputForToolCall({
+  input: {
+    prompt: "Edit the provided image so the man appears stronger, leaner, more muscular, and confident while preserving his identity, gym mirror selfie pose, setting, and casual iPhone realism.",
+    usePriorImageOutputs: true,
+  },
+  planStep: "Create the after reference still.",
+  prompt: "Edit the provided image so the man appears stronger, leaner, more muscular, and confident while preserving his identity, gym mirror selfie pose, setting, and casual iPhone realism.",
+  siblingToolNames: ["media.generateImage", "media.generateImage"],
+  toolName: "media.generateImage",
+});
+assert.equal(
+  imageEditContinuityInput.prompt,
+  "Edit the provided image so the man appears stronger, leaner, more muscular, and confident while preserving his identity, gym mirror selfie pose, setting, and casual iPhone realism."
+);
+assert.equal(imageEditContinuityInput.usePriorImageOutputs, true);
+
+assert.equal(
+  normalizeFalVideoDurationForModel("fal-ai/kling-video/v3/pro/image-to-video", 2),
+  "3"
+);
+assert.equal(
+  normalizeFalVideoDurationForModel("fal-ai/kling-video/v3/pro/image-to-video", 16),
+  "15"
+);
+assert.equal(
+  normalizeFalVideoDurationForModel("fal-ai/ltx-video", 2),
+  2
 );
 
 const generatedContinuityVideoDecision = normalizeAgentDecision(JSON.stringify({

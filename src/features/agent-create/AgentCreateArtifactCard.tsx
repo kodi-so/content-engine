@@ -7,6 +7,7 @@ import {
   Image,
   Music,
   Pencil,
+  Play,
   Video,
 } from "lucide-react";
 import type { AgentCreateArtifact, AgentCreateArtifactKind } from "./agentCreateTypes";
@@ -27,6 +28,7 @@ export function AgentCreateArtifactCard({
   onDownload,
   onOpen,
   onOpenStudio,
+  onPreview,
   onSave,
 }: {
   artifact: AgentCreateArtifact;
@@ -34,12 +36,19 @@ export function AgentCreateArtifactCard({
   onDownload?: (artifact: AgentCreateArtifact) => void;
   onOpen?: (artifact: AgentCreateArtifact) => void;
   onOpenStudio?: (artifact: AgentCreateArtifact) => void;
+  onPreview?: (artifact: AgentCreateArtifact) => void;
   onSave?: (artifact: AgentCreateArtifact) => void;
 }) {
   const Icon = artifactIcons[artifact.kind];
   const isReady = artifact.status === "ready";
   const isWorking = artifact.status === "generating" || artifact.status === "placeholder";
   const mediaUrl = artifact.url ?? artifact.thumbnailUrl;
+  const canPreview = Boolean(
+    onPreview &&
+      isReady &&
+      mediaUrl &&
+      (artifact.kind === "image" || artifact.kind === "video")
+  );
   const isDirectGeneratedArtifact = isReady && !artifact.id.includes(":");
   const canOpenInStudio = artifact.id.startsWith("studio:") ||
     (isDirectGeneratedArtifact && (artifact.kind === "image" || artifact.kind === "video"));
@@ -136,24 +145,59 @@ export function AgentCreateArtifactCard({
       <figure className="m-0 grid min-w-0 max-w-[26rem] gap-[var(--space-2)]">
         {artifact.kind === "image" ? (
           <>
-            <img
-              alt={artifact.title}
-              className="max-h-[26rem] max-w-full rounded-[0.9rem] object-contain shadow-[var(--shadow-sm)]"
+            <button
+              aria-label={`Open ${artifact.title}`}
+              className={agentCreateClassNames(
+                "relative w-fit max-w-full overflow-hidden rounded-[0.9rem] p-0 text-left shadow-[var(--shadow-sm)]",
+                canPreview
+                  ? "cursor-zoom-in transition hover:brightness-[0.98] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-2 focus:ring-offset-[var(--color-page)]"
+                  : "cursor-default"
+              )}
+              onClick={() => {
+                if (canPreview) onPreview?.(artifact);
+              }}
               onContextMenu={openContextMenu}
-              src={mediaUrl}
-            />
+              type="button"
+            >
+              <img
+                alt={artifact.title}
+                className="max-h-[26rem] max-w-full object-contain"
+                src={mediaUrl}
+              />
+            </button>
             {contextMenu}
           </>
         ) : (
           <>
-            <video
-              className="max-h-[26rem] max-w-full rounded-[0.9rem] bg-black shadow-[var(--shadow-sm)]"
-              controls
+            <button
+              aria-label={`Open ${artifact.title}`}
+              className={agentCreateClassNames(
+                "group/final-video relative w-fit max-w-full overflow-hidden rounded-[0.9rem] bg-black p-0 text-left shadow-[var(--shadow-sm)]",
+                canPreview
+                  ? "cursor-zoom-in transition hover:brightness-[0.98] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-2 focus:ring-offset-[var(--color-page)]"
+                  : "cursor-default"
+              )}
+              onClick={() => {
+                if (canPreview) onPreview?.(artifact);
+              }}
               onContextMenu={openContextMenu}
-              playsInline
-              preload="metadata"
-              src={mediaUrl}
-            />
+              type="button"
+            >
+              <video
+                className="max-h-[26rem] max-w-full object-contain"
+                muted
+                playsInline
+                preload="metadata"
+                src={mediaUrl}
+              />
+              {canPreview ? (
+                <span className="absolute inset-0 grid place-items-center bg-[oklch(8%_0.018_220_/_0.08)] text-white opacity-95 transition group-hover/final-video:bg-[oklch(8%_0.018_220_/_0.16)]">
+                  <span className="grid size-11 place-items-center rounded-full bg-[oklch(8%_0.018_220_/_0.54)] shadow-[var(--shadow-sm)]">
+                    <Play size={19} fill="currentColor" strokeWidth={0} />
+                  </span>
+                </span>
+              ) : null}
+            </button>
             {contextMenu}
           </>
         )}
@@ -271,17 +315,21 @@ export function AgentCreateArtifactCard({
 
 export function AgentCreateArtifactGrid({
   artifacts,
+  compact = false,
   emptyLabel = "Artifacts will appear here as the agent creates them.",
   onDownload,
   onOpen,
   onOpenStudio,
+  onPreview,
   onSave,
 }: {
   artifacts: AgentCreateArtifact[];
+  compact?: boolean;
   emptyLabel?: string;
   onDownload?: (artifact: AgentCreateArtifact) => void;
   onOpen?: (artifact: AgentCreateArtifact) => void;
   onOpenStudio?: (artifact: AgentCreateArtifact) => void;
+  onPreview?: (artifact: AgentCreateArtifact) => void;
   onSave?: (artifact: AgentCreateArtifact) => void;
 }) {
   if (!artifacts.length) {
@@ -297,13 +345,76 @@ export function AgentCreateArtifactGrid({
       {artifacts.map((artifact) => (
         <AgentCreateArtifactCard
           artifact={artifact}
+          compact={compact}
           key={artifact.id}
           onDownload={onDownload}
           onOpen={onOpen}
           onOpenStudio={onOpenStudio}
+          onPreview={onPreview}
           onSave={onSave}
         />
       ))}
+    </div>
+  );
+}
+
+function workLogMediaArtifacts(artifacts: AgentCreateArtifact[]) {
+  return artifacts.filter((artifact) =>
+    artifact.status === "ready" &&
+    Boolean(artifact.url ?? artifact.thumbnailUrl) &&
+    (artifact.kind === "image" || artifact.kind === "video")
+  );
+}
+
+export function AgentCreateMediaResultGrid({
+  artifacts,
+  onPreview,
+}: {
+  artifacts: AgentCreateArtifact[];
+  onPreview?: (artifact: AgentCreateArtifact) => void;
+}) {
+  const mediaArtifacts = workLogMediaArtifacts(artifacts);
+  if (!mediaArtifacts.length) return null;
+
+  return (
+    <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(6rem,9rem))] gap-2">
+      {mediaArtifacts.map((artifact) => {
+        const mediaUrl = artifact.thumbnailUrl ?? artifact.url;
+        if (!mediaUrl) return null;
+
+        return (
+          <button
+            aria-label={`Open ${artifact.title}`}
+            className="group/media relative grid aspect-[4/5] min-w-0 cursor-zoom-in overflow-hidden rounded-[0.65rem] border border-[var(--color-border)] bg-[var(--color-page-quiet)] p-0 text-left transition hover:border-[var(--color-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-2 focus:ring-offset-[var(--color-page)]"
+            key={artifact.id}
+            onClick={() => onPreview?.(artifact)}
+            type="button"
+          >
+            {artifact.kind === "video" ? (
+              <>
+                <video
+                  className="absolute inset-0 size-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                  src={mediaUrl}
+                />
+                <span className="absolute inset-0 grid place-items-center bg-[oklch(8%_0.018_220_/_0.16)] text-white">
+                  <span className="grid size-9 place-items-center rounded-full bg-[oklch(8%_0.018_220_/_0.52)] shadow-[var(--shadow-sm)]">
+                    <Play size={17} fill="currentColor" strokeWidth={0} />
+                  </span>
+                </span>
+              </>
+            ) : (
+              <img
+                alt={artifact.title}
+                className="size-full object-cover transition duration-200 group-hover/media:scale-[1.02]"
+                src={mediaUrl}
+              />
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

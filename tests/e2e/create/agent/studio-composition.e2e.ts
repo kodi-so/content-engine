@@ -3,6 +3,7 @@ import type { Doc } from "../../../../convex/_generated/dataModel";
 import {
   buildCreateAgentStudioDraft,
   buildStudioTextOverlaysFromInput,
+  selectCreateAgentStudioVisualArtifacts,
 } from "../../../../convex/create/studioComposition";
 
 const overlayInput = {
@@ -74,13 +75,54 @@ const draft = buildCreateAgentStudioDraft({
 });
 
 assert.equal(draft.aspectRatio, "16:9");
-assert.equal(draft.clips.length, 3);
+assert.equal(draft.clips.length, 2);
 assert.equal(draft.audioTracks.length, 1);
 assert.equal(draft.audioTracks[0].title, "Voiceover");
 assert.equal(draft.clips[0].trimStartSeconds, 0);
-assert.equal(draft.clips[2].mediaKind, "image");
-assert.equal(draft.clips[2].durationSeconds, 4);
-assert.equal(draft.clips[2].trimEndSeconds, 4);
 assert.equal(draft.textOverlays.length, 2);
+
+const selectedByDefault = selectCreateAgentStudioVisualArtifacts({
+  imageArtifacts: [
+    {
+      _id: "artifact_image_1",
+      data: { kind: "image", mimeType: "image/png" },
+      storageUrl: "https://example.com/character.png",
+      title: "Character Still",
+    },
+  ] as unknown as Doc<"artifacts">[],
+  input: {},
+  videoArtifacts: [
+    {
+      _id: "artifact_video_1",
+      data: { durationSeconds: 2.5, mimeType: "video/mp4" },
+      storageUrl: "https://example.com/clip-1.mp4",
+      title: "Clip 1",
+    },
+  ] as unknown as Doc<"artifacts">[],
+});
+assert.equal(selectedByDefault.videoArtifacts.length, 1);
+assert.equal(selectedByDefault.imageArtifacts.length, 0);
+
+const explicitlySelected = selectCreateAgentStudioVisualArtifacts({
+  imageArtifacts: [
+    {
+      _id: "artifact_image_1",
+      data: { kind: "image", mimeType: "image/png" },
+      storageUrl: "https://example.com/character.png",
+      title: "Character Still",
+    },
+  ] as unknown as Doc<"artifacts">[],
+  input: { artifactIds: ["artifact_video_1", "artifact_image_1"] },
+  videoArtifacts: [
+    {
+      _id: "artifact_video_1",
+      data: { durationSeconds: 2.5, mimeType: "video/mp4" },
+      storageUrl: "https://example.com/clip-1.mp4",
+      title: "Clip 1",
+    },
+  ] as unknown as Doc<"artifacts">[],
+});
+assert.equal(explicitlySelected.videoArtifacts.length, 1);
+assert.equal(explicitlySelected.imageArtifacts.length, 1);
 
 console.log("Agent Create Studio composition contract passed");

@@ -160,6 +160,29 @@ function isTransientQueuedMessage(message: {
     /^Queued slideshow rendering as a preview request\./.test(message.content);
 }
 
+function isRoutineProgressMessage(message: {
+  content: string;
+  kind?: string;
+}) {
+  if (message.kind !== "status" && message.kind !== "tool_result") return false;
+  return (
+    /^Finished .+\. Continuing to the next step\.$/.test(message.content) ||
+    /^Finished .+\.$/.test(message.content) ||
+    /^Waiting for .+ before .+\.$/.test(message.content) ||
+    /^Started .+\.$/.test(message.content) ||
+    /^Created a Studio project with /.test(message.content) ||
+    /^Studio render is queued on the server render worker\./.test(message.content)
+  );
+}
+
+function shouldAttachToolArtifactsToChat(toolName: string) {
+  return (
+    toolName === "artifact.export" ||
+    toolName === "publishing.prepare" ||
+    toolName === "workflow.createDraft"
+  );
+}
+
 export function AgentCreateSurface() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
   const workspaceArgs = useMemo(
@@ -303,29 +326,6 @@ export function AgentCreateSurface() {
     [personas, selectableLibraryAssets]
   );
 
-  const progressSteps = useMemo<AgentCreateToolProgressStep[]>(
-    () =>
-      (toolCalls ?? []).flatMap((toolCall) => {
-        const contentRequestId = outputId(toolCall.output, "contentRequestId");
-        const asyncState =
-          asyncStateLookup.contentRequests.get(contentRequestId ?? "") ??
-          asyncStateLookup.analysisJobs.get(outputId(toolCall.output, "analysisJobId") ?? "") ??
-          asyncStateLookup.studioRenderRequests.get(
-            outputId(toolCall.output, "studioRenderRequestId") ?? ""
-          );
-        const resolvedModel = contentRequestId
-          ? resolvedModelByContentRequestId.get(contentRequestId)
-          : undefined;
-
-        return toolProgressStepsForCall({
-          asyncState,
-          resolvedModel,
-          toolCall: toolCall as AgentCreateToolCallRecord,
-        });
-      }),
-    [asyncStateLookup, resolvedModelByContentRequestId, toolCalls]
-  );
-
   const outputArtifacts = useMemo<AgentCreateArtifact[]>(
     () => buildAgentCreateOutputArtifacts(threadOutputs),
     [threadOutputs]
@@ -348,12 +348,8 @@ export function AgentCreateSurface() {
     }
     return mapped;
   }, [threadOutputs]);
-  const artifactsByMessageId = useMemo(() => {
+  const artifactsByToolCallId = useMemo(() => {
     const mapped = new Map<string, AgentCreateArtifact[]>();
-    const addArtifacts = (messageId: string | undefined, artifacts: AgentCreateArtifact[]) => {
-      if (!messageId || !artifacts.length) return;
-      mapped.set(messageId, uniqueArtifacts([...(mapped.get(messageId) ?? []), ...artifacts]));
-    };
 
     for (const toolCall of toolCalls ?? []) {
       const artifacts: AgentCreateArtifact[] = [];
@@ -396,11 +392,51 @@ export function AgentCreateSurface() {
         : undefined;
       if (distributionArtifact) artifacts.push(distributionArtifact);
 
-      addArtifacts(toolCall.messageId, artifacts);
+      if (artifacts.length) mapped.set(String(toolCall._id), uniqueArtifacts(artifacts));
     }
 
     return mapped;
   }, [artifactById, artifactIdsByContentRequestId, toolCalls]);
+  const progressSteps = useMemo<AgentCreateToolProgressStep[]>(
+    () =>
+      (toolCalls ?? []).flatMap((toolCall) => {
+        const contentRequestId = outputId(toolCall.output, "contentRequestId");
+        const asyncState =
+          asyncStateLookup.contentRequests.get(contentRequestId ?? "") ??
+          asyncStateLookup.analysisJobs.get(outputId(toolCall.output, "analysisJobId") ?? "") ??
+          asyncStateLookup.studioRenderRequests.get(
+            outputId(toolCall.output, "studioRenderRequestId") ?? ""
+          );
+        const resolvedModel = contentRequestId
+          ? resolvedModelByContentRequestId.get(contentRequestId)
+          : undefined;
+
+        return toolProgressStepsForCall({
+          asyncState,
+          resolvedModel,
+          toolCall: toolCall as AgentCreateToolCallRecord,
+        }).map((step) =>
+          step.id === String(toolCall._id)
+            ? { ...step, artifacts: artifactsByToolCallId.get(String(toolCall._id)) }
+            : step
+        );
+      }),
+    [artifactsByToolCallId, asyncStateLookup, resolvedModelByContentRequestId, toolCalls]
+  );
+  const artifactsByMessageId = useMemo(() => {
+    const mapped = new Map<string, AgentCreateArtifact[]>();
+    const addArtifacts = (messageId: string | undefined, artifacts: AgentCreateArtifact[]) => {
+      if (!messageId || !artifacts.length) return;
+      mapped.set(messageId, uniqueArtifacts([...(mapped.get(messageId) ?? []), ...artifacts]));
+    };
+
+    for (const toolCall of toolCalls ?? []) {
+      if (!shouldAttachToolArtifactsToChat(toolCall.toolName)) continue;
+      addArtifacts(toolCall.messageId, artifactsByToolCallId.get(String(toolCall._id)) ?? []);
+    }
+
+    return mapped;
+  }, [artifactsByToolCallId, toolCalls]);
   const toolStepsByMessageId = useMemo(() => {
     const mapped = new Map<string, AgentCreateToolProgressStep[]>();
     for (const toolCall of toolCalls ?? []) {
@@ -423,15 +459,19 @@ export function AgentCreateSurface() {
           asyncState,
           resolvedModel,
           toolCall: toolCall as AgentCreateToolCallRecord,
-        }),
+        }).map((step) =>
+          step.id === String(toolCall._id)
+            ? { ...step, artifacts: artifactsByToolCallId.get(String(toolCall._id)) }
+            : step
+        ),
       ]);
     }
     return mapped;
-  }, [asyncStateLookup, resolvedModelByContentRequestId, toolCalls]);
+  }, [artifactsByToolCallId, asyncStateLookup, resolvedModelByContentRequestId, toolCalls]);
   const renderedMessages = useMemo<AgentCreateMessage[]>(
     () =>
       (messages ?? [])
-        .filter((message) => !isTransientQueuedMessage(message))
+        .filter((message) => !isTransientQueuedMessage(message) && !isRoutineProgressMessage(message))
         .map((message) => {
           const explicitArtifacts = (message.artifactIds ?? [])
             .flatMap((artifactId) => artifactById.get(String(artifactId)) ?? []);
@@ -614,15 +654,19 @@ export function AgentCreateSurface() {
     if (deletingThreadId) return;
 
     const nextThreadId = threads?.find((thread) => thread._id !== threadId)?._id ?? null;
+    const wasActiveThread = activeThreadId === threadId;
     setDeletingThreadId(threadId);
     setStatusMessage("");
+    if (wasActiveThread) {
+      setActiveThreadId(nextThreadId);
+    }
     try {
       await deleteThread({ threadId });
-      if (activeThreadId === threadId) {
-        setActiveThreadId(nextThreadId);
-      }
       setConfirmingDeleteThreadId(null);
     } catch (error) {
+      if (wasActiveThread && threads?.some((thread) => thread._id === threadId)) {
+        setActiveThreadId(threadId);
+      }
       setStatusMessage(error instanceof Error ? error.message : "Unable to delete chat");
     } finally {
       setDeletingThreadId(null);

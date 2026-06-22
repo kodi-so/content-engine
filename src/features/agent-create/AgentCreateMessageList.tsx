@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { MediaLightbox, type MediaLightboxItem } from "../../components/MediaLightbox";
 import { AgentCreateArtifactGrid } from "./AgentCreateArtifactCard";
 import type {
   AgentCreateArtifact,
@@ -69,14 +70,35 @@ function workDurationForSteps(steps: AgentCreateToolProgressStep[], nowMs: numbe
   return Math.max(0, end - start);
 }
 
+function activeWorkStep(steps: AgentCreateToolProgressStep[]) {
+  return steps.find((step) => step.status === "running") ??
+    steps.find((step) => step.status === "queued") ??
+    steps.find((step) => step.status === "blocked");
+}
+
+function lightboxMediaForArtifact(artifact: AgentCreateArtifact): MediaLightboxItem | null {
+  const src = artifact.url ?? artifact.thumbnailUrl;
+  if (!src || (artifact.kind !== "image" && artifact.kind !== "video")) return null;
+  return {
+    kind: artifact.kind,
+    src,
+    title: artifact.title,
+    meta: [artifact.modelLabel, artifact.mimeType].filter(Boolean).join(" · "),
+  };
+}
+
 function AgentMessageWorkLog({
   isWorking,
+  onArtifactOpen,
   steps = [],
 }: {
   isWorking: boolean;
+  onArtifactOpen?: (artifact: AgentCreateArtifact) => void;
   steps?: AgentCreateToolProgressStep[];
 }) {
   const [nowMs, setNowMs] = useState(Date.now());
+  const [isOpen, setIsOpen] = useState(isWorking);
+  const [lightboxMedia, setLightboxMedia] = useState<MediaLightboxItem | null>(null);
 
   useEffect(() => {
     if (!isWorking) {
@@ -88,43 +110,75 @@ function AgentMessageWorkLog({
     return () => window.clearInterval(interval);
   }, [isWorking]);
 
+  useEffect(() => {
+    setIsOpen(isWorking);
+  }, [isWorking]);
+
   if (!isWorking && !steps.length) return null;
 
   const duration = workDurationForSteps(steps, nowMs, isWorking);
   const label = isWorking
-    ? "Working"
+    ? duration !== undefined
+      ? `Working for ${formatWorkDuration(duration)}`
+      : "Working"
     : duration !== undefined
       ? `Worked for ${formatWorkDuration(duration)}`
       : "Worked";
+  const activeStep = activeWorkStep(steps);
+
+  const handleToggle = (event: SyntheticEvent<HTMLDetailsElement>) => {
+    if (isWorking) {
+      setIsOpen(true);
+      return;
+    }
+    setIsOpen(event.currentTarget.open);
+  };
 
   return (
-    <details className="group grid min-w-0 justify-items-start border-b border-[var(--color-border)] pb-[var(--space-3)]">
-      <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.78rem] font-[720] text-[var(--color-ink-muted)] marker:hidden">
-        <span>{label}</span>
-        {isWorking ? (
-          <span className="ml-1 flex items-center gap-1" aria-hidden="true">
-            <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)]" />
-            <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)] [animation-delay:120ms]" />
-            <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)] [animation-delay:240ms]" />
-          </span>
-        ) : null}
-        <ChevronRight
-          className="transition-transform group-open:rotate-90"
-          size={14}
-        />
-      </summary>
-      <div className="mt-[var(--space-3)] grid w-full max-w-[min(44rem,100%)] gap-[var(--space-3)]">
-        {steps.length ? (
-          <ToolProgressTimeline
-            className="text-[0.82rem]"
-            steps={steps}
-            title="Work log"
+    <>
+      <details
+        className="group grid min-w-0 justify-items-start border-b border-[var(--color-border)] pb-[var(--space-3)]"
+        onToggle={handleToggle}
+        open={isOpen}
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.78rem] font-[720] text-[var(--color-ink-muted)] marker:hidden">
+          <span>{label}</span>
+          {isWorking ? (
+            <span className="ml-1 flex items-center gap-1" aria-hidden="true">
+              <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)]" />
+              <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)] [animation-delay:120ms]" />
+              <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)] [animation-delay:240ms]" />
+            </span>
+          ) : null}
+          <ChevronRight
+            className="transition-transform group-open:rotate-90"
+            size={14}
           />
-        ) : (
-          <p className="m-0 text-[0.82rem] text-[var(--color-ink-muted)]">Preparing the next step.</p>
-        )}
-      </div>
-    </details>
+        </summary>
+        <div className="mt-[var(--space-3)] grid w-full max-w-[min(44rem,100%)] gap-[var(--space-3)]">
+          {isWorking && activeStep ? (
+            <p className="m-0 text-[0.8rem] leading-[1.45] text-[var(--color-ink-muted)]">
+              Currently: <span className="font-[760] text-[var(--color-ink-soft)]">{activeStep.label}</span>
+            </p>
+          ) : null}
+          {steps.length ? (
+            <ToolProgressTimeline
+              className="text-[0.82rem]"
+              onArtifactOpen={onArtifactOpen}
+              onArtifactPreview={(artifact) => {
+                const media = lightboxMediaForArtifact(artifact);
+                if (media) setLightboxMedia(media);
+              }}
+              steps={steps}
+              title="Work log"
+            />
+          ) : (
+            <p className="m-0 text-[0.82rem] text-[var(--color-ink-muted)]">Preparing the next step.</p>
+          )}
+        </div>
+      </details>
+      <MediaLightbox media={lightboxMedia} onClose={() => setLightboxMedia(null)} />
+    </>
   );
 }
 
@@ -160,6 +214,7 @@ export function AgentCreateMessageList({
   const initializedRef = useRef(false);
   const previousMessageIdsRef = useRef<Set<string>>(new Set());
   const [animatedMessageIds, setAnimatedMessageIds] = useState<Set<string>>(new Set());
+  const [lightboxMedia, setLightboxMedia] = useState<MediaLightboxItem | null>(null);
 
   useEffect(() => {
     initializedRef.current = false;
@@ -202,87 +257,95 @@ export function AgentCreateMessageList({
   }
 
   return (
-    <div className={agentCreateClassNames("grid min-w-0 gap-[var(--space-6)]", className)}>
-      {messages.map((message) => {
-        const isUser = message.role === "user";
-        const isSystem = message.role === "system";
-        const artifacts = visibleChatArtifacts(message.artifacts);
-        const showWorkLog = !isUser && (Boolean(message.toolSteps?.length) || workingMessageId === message.id);
-        const content = showWorkLog ? stripRedundantPlan(message.content) : message.content;
+    <>
+      <div className={agentCreateClassNames("grid min-w-0 gap-[var(--space-6)]", className)}>
+        {messages.map((message) => {
+          const isUser = message.role === "user";
+          const isSystem = message.role === "system";
+          const artifacts = visibleChatArtifacts(message.artifacts);
+          const showWorkLog = !isUser && (Boolean(message.toolSteps?.length) || workingMessageId === message.id);
+          const content = showWorkLog ? stripRedundantPlan(message.content) : message.content;
 
-        return (
-          <article
-            className={agentCreateClassNames(
-              "grid min-w-0",
-              isUser ? "justify-items-end" : "justify-items-start"
-            )}
-            key={message.id}
-          >
-            <div
+          return (
+            <article
               className={agentCreateClassNames(
-                "grid min-w-0 gap-[var(--space-3)]",
-                isUser
-                  ? "max-w-[min(34rem,78%)] rounded-[1.25rem] bg-[var(--color-ink)] px-[var(--space-3)] py-[var(--space-2)] text-[var(--color-surface)] shadow-[var(--shadow-sm)]"
-                  : isSystem
-                    ? "max-w-[min(42rem,100%)] rounded-[var(--radius-sm)] bg-[var(--color-page-quiet)] px-[var(--space-3)] py-[var(--space-2)]"
-                    : "max-w-[min(48rem,100%)]"
+                "grid min-w-0",
+                isUser ? "justify-items-end" : "justify-items-start"
               )}
+              key={message.id}
             >
-              {showWorkLog ? (
-                <AgentMessageWorkLog
-                  isWorking={workingMessageId === message.id}
-                  steps={message.toolSteps}
-                />
-              ) : null}
-
-              {content ? (
-                <p
-                  className={agentCreateClassNames(
-                    "m-0 whitespace-pre-wrap text-[0.94rem] leading-[1.6]",
-                    isUser ? "text-[var(--color-surface)]" : "text-[var(--color-ink)]"
-                  )}
-                >
-                  <TypewriterText
-                    animate={animatedMessageIds.has(message.id)}
-                    text={content}
+              <div
+                className={agentCreateClassNames(
+                  "grid min-w-0 gap-[var(--space-3)]",
+                  isUser
+                    ? "max-w-[min(34rem,78%)] rounded-[1.25rem] bg-[var(--color-ink)] px-[var(--space-3)] py-[var(--space-2)] text-[var(--color-surface)] shadow-[var(--shadow-sm)]"
+                    : isSystem
+                      ? "max-w-[min(42rem,100%)] rounded-[var(--radius-sm)] bg-[var(--color-page-quiet)] px-[var(--space-3)] py-[var(--space-2)]"
+                      : "max-w-[min(48rem,100%)]"
+                )}
+              >
+                {showWorkLog ? (
+                  <AgentMessageWorkLog
+                    isWorking={workingMessageId === message.id}
+                    onArtifactOpen={onArtifactOpen}
+                    steps={message.toolSteps}
                   />
-                </p>
-              ) : null}
+                ) : null}
 
-              {message.referenceMentions?.length ? (
-                <div className="flex min-w-0 flex-wrap gap-[var(--space-2)]">
-                  {message.referenceMentions.map((mention) => (
-                    <span
-                      className={agentCreateClassNames(
-                        "inline-flex min-h-7 max-w-full items-center gap-[0.35rem] rounded-full px-[var(--space-2)] text-[0.72rem] font-[720]",
-                        isUser
-                          ? "bg-[oklch(100%_0_0_/_0.14)] text-[var(--color-surface)]"
-                          : "border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-ink-soft)]"
-                      )}
-                      key={`${message.id}:${mention.entityType}:${mention.entityId}:${mention.token}`}
-                    >
-                      <span className="truncate">{mention.token}</span>
-                      <span className={isUser ? "opacity-70" : "text-[var(--color-ink-muted)]"}>
-                        {formatAgentCreateEntityType(mention.entityType)}
+                {content ? (
+                  <p
+                    className={agentCreateClassNames(
+                      "m-0 whitespace-pre-wrap text-[0.94rem] leading-[1.6]",
+                      isUser ? "text-[var(--color-surface)]" : "text-[var(--color-ink)]"
+                    )}
+                  >
+                    <TypewriterText
+                      animate={animatedMessageIds.has(message.id)}
+                      text={content}
+                    />
+                  </p>
+                ) : null}
+
+                {message.referenceMentions?.length ? (
+                  <div className="flex min-w-0 flex-wrap gap-[var(--space-2)]">
+                    {message.referenceMentions.map((mention) => (
+                      <span
+                        className={agentCreateClassNames(
+                          "inline-flex min-h-7 max-w-full items-center gap-[0.35rem] rounded-full px-[var(--space-2)] text-[0.72rem] font-[720]",
+                          isUser
+                            ? "bg-[oklch(100%_0_0_/_0.14)] text-[var(--color-surface)]"
+                            : "border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-ink-soft)]"
+                        )}
+                        key={`${message.id}:${mention.entityType}:${mention.entityId}:${mention.token}`}
+                      >
+                        <span className="truncate">{mention.token}</span>
+                        <span className={isUser ? "opacity-70" : "text-[var(--color-ink-muted)]"}>
+                          {formatAgentCreateEntityType(mention.entityType)}
+                        </span>
                       </span>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+                    ))}
+                  </div>
+                ) : null}
 
-              {artifacts.length ? (
-                <AgentCreateArtifactGrid
-                  artifacts={artifacts}
-                  onDownload={onArtifactDownload}
-                  onOpen={onArtifactOpen}
-                  onOpenStudio={onArtifactOpenStudio}
-                  onSave={onArtifactSave}
-                />
-              ) : null}
-            </div>
-          </article>
-        );
-      })}
-    </div>
+                {artifacts.length ? (
+                  <AgentCreateArtifactGrid
+                    artifacts={artifacts}
+                    onDownload={onArtifactDownload}
+                    onOpen={onArtifactOpen}
+                    onOpenStudio={onArtifactOpenStudio}
+                    onPreview={(artifact) => {
+                      const media = lightboxMediaForArtifact(artifact);
+                      if (media) setLightboxMedia(media);
+                    }}
+                    onSave={onArtifactSave}
+                  />
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      <MediaLightbox media={lightboxMedia} onClose={() => setLightboxMedia(null)} />
+    </>
   );
 }

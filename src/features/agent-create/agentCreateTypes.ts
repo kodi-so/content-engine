@@ -89,6 +89,7 @@ export type AgentCreateToolProgressStep = {
   label: string;
   status: AgentCreateToolStatus;
   detail?: string;
+  artifacts?: AgentCreateArtifact[];
   artifactIds?: string[];
   costLabel?: string;
   errorMessage?: string;

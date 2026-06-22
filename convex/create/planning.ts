@@ -77,6 +77,16 @@ function inferredDurationSeconds(content: string) {
   return duration && duration > 0 ? duration : undefined;
 }
 
+function finitePositiveNumberFromInput(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+function isVariationRequest(content: string) {
+  return /\b(options?|variations?|alternatives?|versions?|takes?|choices?)\b/i.test(content);
+}
+
 function inferredAudioMode(content: string) {
   if (/\b(voiceover|voice over|narration|narrator|spoken|dialogue|dialog)\b/i.test(content)) {
     return "voiceover";
@@ -302,6 +312,31 @@ export function buildPlannedToolInput(args: PlannedToolInputArgs): Record<string
   }
 
   return baseInput;
+}
+
+export function normalizePlannedToolInputForToolCall(args: {
+  input: Record<string, unknown>;
+  planStep?: string;
+  prompt?: string;
+  siblingToolNames: CreateToolName[];
+  toolName: CreateToolName;
+}): Record<string, unknown> {
+  const input = { ...args.input };
+
+  if (args.toolName === "media.generateImage") {
+    const count = finitePositiveNumberFromInput(input.count);
+    if (input.count !== undefined && !count) {
+      delete input.count;
+    }
+
+    const imageToolCallCount = args.siblingToolNames.filter((name) => name === "media.generateImage").length;
+    const callText = [args.planStep, args.prompt].filter(Boolean).join(" ");
+    if (imageToolCallCount > 1 && count && count > 1 && !isVariationRequest(callText)) {
+      delete input.count;
+    }
+  }
+
+  return input;
 }
 
 export function firstUrl(content: string) {
