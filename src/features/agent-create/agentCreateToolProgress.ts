@@ -24,6 +24,10 @@ export type AgentCreateToolCallRecord = {
   toolName: string;
 };
 
+type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
+type ModelProviderName = "bulkapis" | "gemini" | "fal" | "openrouter" | "manual";
+export type AgentCreateDefaultProviders = Partial<Record<MediaGenerationMode, ModelProviderName>>;
+
 function recordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -55,6 +59,14 @@ function defaultModelForProviderMode(
   return undefined;
 }
 
+function mediaModeForToolName(toolName: string): MediaGenerationMode | undefined {
+  if (toolName === "media.generateImage") return "image";
+  if (toolName === "media.generateVideo") return "video";
+  if (toolName === "media.generateAudio") return "audio";
+  if (toolName === "media.lipsync") return "lipsync";
+  return undefined;
+}
+
 function modelDisplayLabel(provider: string | undefined, model: string | undefined) {
   if (model?.trim()) {
     const cleanModel = model.trim();
@@ -63,11 +75,27 @@ function modelDisplayLabel(provider: string | undefined, model: string | undefin
   return provider;
 }
 
-function toolStepDetail(inputValue: unknown, outputValue: unknown, fallback: string, resolvedModel?: string) {
+function toolStepDetail(args: {
+  defaultProviders?: AgentCreateDefaultProviders;
+  inputValue: unknown;
+  outputValue: unknown;
+  resolvedModel?: string;
+  toolName: string;
+}) {
+  const {
+    defaultProviders,
+    inputValue,
+    outputValue,
+    resolvedModel,
+    toolName,
+  } = args;
   const input = recordFromUnknown(inputValue);
   const output = recordFromUnknown(outputValue);
-  const provider = typeof input.provider === "string" ? input.provider : outputId(output, "provider");
-  const outputMode = outputId(output, "mode") ??
+  const toolMode = mediaModeForToolName(toolName);
+  const provider = typeof input.provider === "string"
+    ? input.provider
+    : outputId(output, "provider") ?? (toolMode ? defaultProviders?.[toolMode] : undefined);
+  const outputMode = outputId(output, "mode") ?? toolMode ??
     (typeof input.inferredOutputType === "string" ? input.inferredOutputType : undefined);
   const referenceCount = typeof output.referenceCount === "number" ? output.referenceCount : 0;
   const usesReferences = referenceCount > 0 || input.usePriorImageOutputs === true;
@@ -85,7 +113,7 @@ function toolStepDetail(inputValue: unknown, outputValue: unknown, fallback: str
   const modelLabel = modelDisplayLabel(provider, model);
   const promptLabel = prompt?.trim().replace(/\s+/g, " ");
   if (modelLabel && promptLabel) return `${modelLabel} - ${promptLabel}`;
-  return modelLabel || promptLabel || fallback;
+  return modelLabel || promptLabel || toolName;
 }
 
 export function pendingContentStatus(status: string): AgentCreateToolStatus | undefined {
@@ -141,10 +169,11 @@ function shouldShowPromptDraftStep(toolName: string) {
 
 export function toolProgressStepsForCall(args: {
   asyncState?: AsyncToolState;
+  defaultProviders?: AgentCreateDefaultProviders;
   resolvedModel?: string;
   toolCall: AgentCreateToolCallRecord;
 }) {
-  const { asyncState, resolvedModel, toolCall } = args;
+  const { asyncState, defaultProviders, resolvedModel, toolCall } = args;
   const status = asyncState?.status ?? toolCall.status;
   const errorMessage = asyncState?.errorMessage ?? toolCall.errorMessage;
   const steps: AgentCreateToolProgressStep[] = [];
@@ -165,7 +194,13 @@ export function toolProgressStepsForCall(args: {
     id: toolCall._id,
     label: toolCall.label,
     status,
-    detail: toolStepDetail(toolCall.input, toolCall.output, toolCall.toolName, resolvedModel),
+    detail: toolStepDetail({
+      defaultProviders,
+      inputValue: toolCall.input,
+      outputValue: toolCall.output,
+      resolvedModel,
+      toolName: toolCall.toolName,
+    }),
     artifactIds: toolCall.artifactIds?.map(String),
     costLabel: typeof toolCall.costUsd === "number" ? `$${toolCall.costUsd.toFixed(2)}` : undefined,
     errorMessage,

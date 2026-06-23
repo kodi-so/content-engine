@@ -33,6 +33,7 @@ import {
   pendingContentStatus,
   pendingStudioRenderStatus,
   toolProgressStepsForCall,
+  type AgentCreateDefaultProviders,
   type AgentCreateToolCallRecord,
   type AsyncToolState,
 } from "./agentCreateToolProgress";
@@ -43,6 +44,15 @@ type CreateCheckpointId = Id<"createCheckpoints">;
 type ArtifactId = Id<"artifacts">;
 type PersonaId = Id<"personas">;
 type VideoProjectId = Id<"videoProjects">;
+
+type PendingAgentTurn = {
+  localMessageId: string;
+  serverMessageId?: string;
+  threadId?: CreateThreadId;
+  content: string;
+  createdAt: number;
+  referenceMentions?: AgentCreateSelectedMention[];
+};
 
 const sourceLabels: Record<SelectableLibraryAsset["source"], string> = {
   create: "Create",
@@ -151,6 +161,36 @@ function uniqueArtifacts(artifacts: AgentCreateArtifact[]) {
   });
 }
 
+function latestUserMessageIndex(messages: AgentCreateMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "user") return index;
+  }
+  return -1;
+}
+
+function pendingTurnMessageIndex(
+  messages: AgentCreateMessage[],
+  pendingTurn: PendingAgentTurn | null
+) {
+  if (!pendingTurn) return -1;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.id === pendingTurn.localMessageId) return index;
+    if (pendingTurn.serverMessageId && message.id === pendingTurn.serverMessageId) return index;
+    if (
+      message.role === "user" &&
+      message.content === pendingTurn.content &&
+      typeof message.createdAt === "number" &&
+      message.createdAt >= pendingTurn.createdAt - 5000
+    ) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
 function isTransientQueuedMessage(message: {
   content: string;
   kind?: string;
@@ -217,6 +257,7 @@ export function AgentCreateSurface() {
   const [deletingThreadId, setDeletingThreadId] = useState<CreateThreadId | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState<CreateThreadId | null>(null);
   const [isContinuing, setIsContinuing] = useState(false);
+  const [pendingAgentTurn, setPendingAgentTurn] = useState<PendingAgentTurn | null>(null);
   const [pendingCheckpointId, setPendingCheckpointId] = useState<CreateCheckpointId | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -300,6 +341,15 @@ export function AgentCreateSurface() {
 
     return { analysisJobs, contentRequests, studioRenderRequests };
   }, [threadOutputs]);
+  const defaultProviders = useMemo<AgentCreateDefaultProviders>(
+    () => ({
+      image: activeWorkspace?.aiGenerationSettings?.imageProvider ?? "fal",
+      video: activeWorkspace?.aiGenerationSettings?.videoProvider ?? "fal",
+      audio: activeWorkspace?.aiGenerationSettings?.audioProvider ?? "fal",
+      lipsync: activeWorkspace?.aiGenerationSettings?.lipsyncProvider ?? "fal",
+    }),
+    [activeWorkspace?.aiGenerationSettings]
+  );
 
   useEffect(() => {
     if (activeThreadId || !threads?.length) return;
@@ -413,6 +463,7 @@ export function AgentCreateSurface() {
 
         return toolProgressStepsForCall({
           asyncState,
+          defaultProviders,
           resolvedModel,
           toolCall: toolCall as AgentCreateToolCallRecord,
         }).map((step) =>
@@ -421,7 +472,7 @@ export function AgentCreateSurface() {
             : step
         );
       }),
-    [artifactsByToolCallId, asyncStateLookup, resolvedModelByContentRequestId, toolCalls]
+    [artifactsByToolCallId, asyncStateLookup, defaultProviders, resolvedModelByContentRequestId, toolCalls]
   );
   const artifactsByMessageId = useMemo(() => {
     const mapped = new Map<string, AgentCreateArtifact[]>();
@@ -453,13 +504,14 @@ export function AgentCreateSurface() {
         ? resolvedModelByContentRequestId.get(contentRequestId)
         : undefined;
 
-      mapped.set(messageId, [
-        ...(mapped.get(messageId) ?? []),
-        ...toolProgressStepsForCall({
-          asyncState,
-          resolvedModel,
-          toolCall: toolCall as AgentCreateToolCallRecord,
-        }).map((step) =>
+        mapped.set(messageId, [
+          ...(mapped.get(messageId) ?? []),
+          ...toolProgressStepsForCall({
+            asyncState,
+            defaultProviders,
+            resolvedModel,
+            toolCall: toolCall as AgentCreateToolCallRecord,
+          }).map((step) =>
           step.id === String(toolCall._id)
             ? { ...step, artifacts: artifactsByToolCallId.get(String(toolCall._id)) }
             : step
@@ -467,7 +519,7 @@ export function AgentCreateSurface() {
       ]);
     }
     return mapped;
-  }, [artifactsByToolCallId, asyncStateLookup, resolvedModelByContentRequestId, toolCalls]);
+  }, [artifactsByToolCallId, asyncStateLookup, defaultProviders, resolvedModelByContentRequestId, toolCalls]);
   const renderedMessages = useMemo<AgentCreateMessage[]>(
     () =>
       (messages ?? [])
@@ -489,6 +541,24 @@ export function AgentCreateSurface() {
         }),
     [artifactById, artifactsByMessageId, messages, toolStepsByMessageId]
   );
+  const visibleMessages = useMemo<AgentCreateMessage[]>(() => {
+    if (!pendingAgentTurn) return renderedMessages;
+    if (pendingTurnMessageIndex(renderedMessages, pendingAgentTurn) >= 0) {
+      return renderedMessages;
+    }
+
+    return [
+      ...renderedMessages,
+      {
+        id: pendingAgentTurn.localMessageId,
+        role: "user",
+        content: pendingAgentTurn.content,
+        kind: "chat",
+        createdAt: pendingAgentTurn.createdAt,
+        referenceMentions: pendingAgentTurn.referenceMentions,
+      },
+    ];
+  }, [pendingAgentTurn, renderedMessages]);
   const openCheckpoints = useMemo<AgentCreateCheckpoint[]>(
     () =>
       (checkpoints ?? [])
@@ -509,6 +579,16 @@ export function AgentCreateSurface() {
     artifact.status === "generating" ||
     artifact.status === "failed"
   );
+  const latestUserIndex = latestUserMessageIndex(visibleMessages);
+  const pendingTurnIndex = pendingTurnMessageIndex(visibleMessages, pendingAgentTurn);
+  const hasAgentMessageAfterPendingTurn = pendingTurnIndex >= 0 &&
+    visibleMessages.slice(pendingTurnIndex + 1).some((message) => message.role !== "user");
+  const showThinkingPlaceholder = Boolean(
+    pendingAgentTurn &&
+      latestUserIndex >= 0 &&
+      pendingTurnIndex >= 0 &&
+      !hasAgentMessageAfterPendingTurn
+  );
   const activeProgressStep = progressSteps.find((step) => step.status === "running") ??
     progressSteps.find((step) => step.status === "queued");
   const activeWorkingArtifact = outputArtifacts.find((artifact) =>
@@ -523,6 +603,7 @@ export function AgentCreateSurface() {
   ) && !openCheckpoints.length;
   const workingMessageId = useMemo(
     () => {
+      if (showThinkingPlaceholder) return undefined;
       if (!showActivity) return undefined;
       const activeToolCall = activeProgressStep
         ? toolCalls?.find((toolCall) => toolCall._id === activeProgressStep.id)
@@ -531,11 +612,17 @@ export function AgentCreateSurface() {
       const fallbackMessageId = [...(messages ?? [])].reverse().find((message) => message.role !== "user")?._id;
       return fallbackMessageId ? String(fallbackMessageId) : undefined;
     },
-    [activeProgressStep, messages, showActivity, toolCalls]
+    [activeProgressStep, messages, showActivity, showThinkingPlaceholder, toolCalls]
   );
   const handleMentionSelect = (mention: AgentCreateSelectedMention) => {
     setSelectedMentions((current) => uniqueMentions([...current, mention]));
   };
+
+  useEffect(() => {
+    if (!pendingAgentTurn) return;
+    if (!hasAgentMessageAfterPendingTurn) return;
+    setPendingAgentTurn(null);
+  }, [hasAgentMessageAfterPendingTurn, pendingAgentTurn]);
 
   const handlePromptChange = (nextPrompt: string) => {
     setPrompt(nextPrompt);
@@ -560,9 +647,20 @@ export function AgentCreateSurface() {
     const content = prompt.trim();
     if (!content || isSubmitting) return;
     const activeMentions = selectedMentions.filter((mention) => content.includes(mention.token));
+    const now = Date.now();
+    const localMessageId = `pending:${now}`;
 
     setIsSubmitting(true);
     setStatusMessage("");
+    setPendingAgentTurn({
+      localMessageId,
+      ...(activeThreadId ? { threadId: activeThreadId } : {}),
+      content,
+      createdAt: now,
+      referenceMentions: activeMentions,
+    });
+    setPrompt("");
+    setSelectedMentions([]);
     try {
       const result = await submitAgentMessage({
         ...(activeThreadId ? { threadId: activeThreadId } : workspaceArgs),
@@ -570,10 +668,22 @@ export function AgentCreateSurface() {
         content,
         referenceMentions: activeMentions,
       });
+      setPendingAgentTurn((current) =>
+        current?.localMessageId === localMessageId
+          ? {
+              ...current,
+              threadId: result.threadId,
+              serverMessageId: String(result.userMessageId),
+            }
+          : current
+      );
       setActiveThreadId(result.threadId);
-      setPrompt("");
-      setSelectedMentions([]);
     } catch (error) {
+      setPendingAgentTurn((current) =>
+        current?.localMessageId === localMessageId ? null : current
+      );
+      setPrompt(content);
+      setSelectedMentions(activeMentions);
       setStatusMessage(error instanceof Error ? error.message : "Unable to send message");
     } finally {
       setIsSubmitting(false);
@@ -598,6 +708,7 @@ export function AgentCreateSurface() {
     setStatusMessage("");
     setPrompt("");
     setSelectedMentions([]);
+    setPendingAgentTurn(null);
     setConfirmingDeleteThreadId(null);
     setEditingThreadId(null);
     setEditingThreadTitle("");
@@ -982,7 +1093,7 @@ export function AgentCreateSurface() {
           <AgentCreateMessageList
             emptyLabel={`Start a new Create chat in ${activeWorkspace?.name ?? "this workspace"}.`}
             isLoading={Boolean(activeThreadId) && messages === undefined}
-            messages={renderedMessages}
+            messages={visibleMessages}
             onArtifactDownload={(artifact) => {
               void exportArtifact(artifact);
             }}
@@ -991,6 +1102,7 @@ export function AgentCreateSurface() {
             onArtifactSave={(artifact) => {
               void saveArtifactToLibrary(artifact);
             }}
+            showThinkingPlaceholder={showThinkingPlaceholder}
             threadKey={activeThreadId}
             workingMessageId={workingMessageId}
           />

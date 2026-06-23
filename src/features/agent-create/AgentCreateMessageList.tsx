@@ -55,11 +55,19 @@ function formatWorkDuration(ms: number) {
   return `${minutes}m ${seconds}s`;
 }
 
-function workDurationForSteps(steps: AgentCreateToolProgressStep[], nowMs: number, isWorking: boolean) {
-  const timestamps = steps.flatMap((step) => [
-    step.startedAt,
-    step.createdAt,
-  ]).filter((value): value is number => typeof value === "number");
+function workDurationForSteps(
+  steps: AgentCreateToolProgressStep[],
+  nowMs: number,
+  isWorking: boolean,
+  startedAt?: number
+) {
+  const timestamps = [
+    startedAt,
+    ...steps.flatMap((step) => [
+      step.startedAt,
+      step.createdAt,
+    ]),
+  ].filter((value): value is number => typeof value === "number");
   if (!timestamps.length) return undefined;
 
   const start = Math.min(...timestamps);
@@ -88,16 +96,20 @@ function lightboxMediaForArtifact(artifact: AgentCreateArtifact): MediaLightboxI
 }
 
 function AgentMessageWorkLog({
+  defaultOpen = false,
   isWorking,
   onArtifactOpen,
+  startedAt,
   steps = [],
 }: {
+  defaultOpen?: boolean;
   isWorking: boolean;
   onArtifactOpen?: (artifact: AgentCreateArtifact) => void;
+  startedAt?: number;
   steps?: AgentCreateToolProgressStep[];
 }) {
   const [nowMs, setNowMs] = useState(Date.now());
-  const [isOpen, setIsOpen] = useState(isWorking);
+  const [isOpen, setIsOpen] = useState(isWorking || defaultOpen);
   const [lightboxMedia, setLightboxMedia] = useState<MediaLightboxItem | null>(null);
 
   useEffect(() => {
@@ -111,12 +123,12 @@ function AgentMessageWorkLog({
   }, [isWorking]);
 
   useEffect(() => {
-    setIsOpen(isWorking);
-  }, [isWorking]);
+    setIsOpen(isWorking || defaultOpen);
+  }, [defaultOpen, isWorking]);
 
   if (!isWorking && !steps.length) return null;
 
-  const duration = workDurationForSteps(steps, nowMs, isWorking);
+  const duration = workDurationForSteps(steps, nowMs, isWorking, startedAt);
   const label = isWorking
     ? duration !== undefined
       ? `Working for ${formatWorkDuration(duration)}`
@@ -182,6 +194,21 @@ function AgentMessageWorkLog({
   );
 }
 
+function ThinkingMessage() {
+  return (
+    <article className="grid min-w-0 justify-items-start">
+      <div className="inline-flex min-h-9 items-center gap-2 rounded-full bg-[var(--color-page-quiet)] px-[var(--space-3)] text-[0.88rem] font-[690] text-[var(--color-ink-muted)]">
+        <span className="animate-pulse">Thinking</span>
+        <span className="flex items-center gap-1" aria-hidden="true">
+          <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)]" />
+          <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)] [animation-delay:120ms]" />
+          <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-primary)] [animation-delay:240ms]" />
+        </span>
+      </div>
+    </article>
+  );
+}
+
 function stripRedundantPlan(content: string) {
   return content
     .replace(/\n+Plan:\s*\n(?:\d+\.\s.*(?:\n|$))+/i, "")
@@ -197,6 +224,7 @@ export function AgentCreateMessageList({
   onArtifactOpen,
   onArtifactOpenStudio,
   onArtifactSave,
+  showThinkingPlaceholder = false,
   workingMessageId,
   threadKey,
 }: {
@@ -208,6 +236,7 @@ export function AgentCreateMessageList({
   onArtifactOpen?: (artifact: AgentCreateArtifact) => void;
   onArtifactOpenStudio?: (artifact: AgentCreateArtifact) => void;
   onArtifactSave?: (artifact: AgentCreateArtifact) => void;
+  showThinkingPlaceholder?: boolean;
   workingMessageId?: string;
   threadKey?: string | null;
 }) {
@@ -241,7 +270,7 @@ export function AgentCreateMessageList({
     setAnimatedMessageIds((current) => new Set([...current, ...newAgentMessageIds]));
   }, [isLoading, messages]);
 
-  if (!messages.length) {
+  if (!messages.length && !showThinkingPlaceholder) {
     return (
       <div
         className={agentCreateClassNames(
@@ -259,12 +288,18 @@ export function AgentCreateMessageList({
   return (
     <>
       <div className={agentCreateClassNames("grid min-w-0 gap-[var(--space-6)]", className)}>
-        {messages.map((message) => {
+        {messages.map((message, messageIndex) => {
           const isUser = message.role === "user";
           const isSystem = message.role === "system";
           const artifacts = visibleChatArtifacts(message.artifacts);
           const showWorkLog = !isUser && (Boolean(message.toolSteps?.length) || workingMessageId === message.id);
           const content = showWorkLog ? stripRedundantPlan(message.content) : message.content;
+          const previousUserMessage = !isUser
+            ? messages
+                .slice(0, messageIndex)
+                .reverse()
+                .find((candidate) => candidate.role === "user")
+            : undefined;
 
           return (
             <article
@@ -286,8 +321,10 @@ export function AgentCreateMessageList({
               >
                 {showWorkLog ? (
                   <AgentMessageWorkLog
+                    defaultOpen={message.kind === "plan"}
                     isWorking={workingMessageId === message.id}
                     onArtifactOpen={onArtifactOpen}
+                    startedAt={previousUserMessage?.createdAt}
                     steps={message.toolSteps}
                   />
                 ) : null}
@@ -344,6 +381,7 @@ export function AgentCreateMessageList({
             </article>
           );
         })}
+        {showThinkingPlaceholder ? <ThinkingMessage /> : null}
       </div>
       <MediaLightbox media={lightboxMedia} onClose={() => setLightboxMedia(null)} />
     </>
