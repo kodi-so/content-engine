@@ -12,6 +12,7 @@ import {
 } from "../_generated/server";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { getModelProvider } from "../providers";
+import { isProviderError } from "../providers/errors";
 import type { ModelMessage } from "../providers/model";
 import {
   requireWorkspaceMember,
@@ -80,9 +81,57 @@ const createAgentModel =
   "openai/gpt-4.1";
 
 const outputTypes = ["image", "video", "audio", "slideshow", "analysis", "text"] as const;
+const AGENT_ERROR_LOG_TEXT_LIMIT = 8000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function compactLogValue(value: unknown, limit = AGENT_ERROR_LOG_TEXT_LIMIT) {
+  if (value === undefined || value === null) return undefined;
+
+  const text = typeof value === "string"
+    ? value
+    : value instanceof Error
+      ? `${value.name}: ${value.message}`
+      : (() => {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })();
+
+  return text.length > limit ? `${text.slice(0, limit)}...[truncated]` : text;
+}
+
+function createAgentDecisionErrorLog(error: unknown) {
+  if (isProviderError(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      provider: error.provider,
+      operation: error.operation,
+      code: error.code,
+      statusCode: error.statusCode,
+      retryable: error.retryable,
+      detailsPreview: compactLogValue(error.details),
+      causePreview: compactLogValue(error.cause, 1200),
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stackPreview: compactLogValue(error.stack, 2400),
+    };
+  }
+
+  return {
+    message: "Unknown non-Error thrown",
+    detailsPreview: compactLogValue(error),
+  };
 }
 
 async function hasRecordAccess(
@@ -164,7 +213,9 @@ function outputId(output: unknown, key: string) {
 function createProductionPlanningPolicy() {
   return [
     "Before selecting tools for a create request, make a concise production plan. Think in terms of: final artifact, source/reference roles, atomic assets, shots/clips/scenes, assembly, render/export.",
-    "Return that plan as productionPlan in the JSON. Keep it brief and structured; do not include hidden reasoning or long prose.",
+    "Return that plan as productionPlan in the JSON. Keep it brief and structured; do not include hidden reasoning, full scripts, long prose, or duplicated prompt text.",
+    "Keep planSteps short and keep each tool prompt focused on what that one tool needs. If detailed scripts, dialogue, shot lists, captions, or narration are useful, include a text.generate tool call for that artifact instead of expanding those details inside the planner JSON.",
+    "For requests whose final artifact is media, do not stop the plan at text.generate. Include the complete downstream production route in the same toolCalls array: source/reference assets, media generation, assembly/composition, and render/export as needed.",
     "Map each semantic production unit to the smallest appropriate tool call. Image tools create individual images/assets. Video tools create one coherent shot or clip. Studio tools sequence, stitch, overlay, transition, and render multi-part videos.",
     "If the user asks for multiple distinct assets, scenes, options, states, products, moments, or story beats, create separate toolCalls with distinct prompts instead of one call with count or one broad prompt.",
     "If multiple references represent different states or moments in the final output, do not pass them all as generic references to a single generation. Use them as separate source units, generate separate clips/assets as needed, then assemble.",
@@ -971,6 +1022,13 @@ export const decideAgentTurn = internalAction({
     userMessageId: v.id("createMessages"),
   },
   handler: async (ctx, args) => {
+    let diagnosticContext: Record<string, unknown> = {
+      createThreadId: String(args.threadId),
+      createMessageId: String(args.userMessageId),
+      modelProvider: createAgentProvider,
+      model: createAgentModel,
+    };
+
     try {
       const context = await ctx.runQuery(internal.create.agent.agentTurnContext, {
         threadId: args.threadId,
@@ -982,6 +1040,16 @@ export const decideAgentTurn = internalAction({
         content: context.userMessage.content,
         currentMentions: context.userMessage.referenceMentions,
       });
+      diagnosticContext = {
+        ...diagnosticContext,
+        workspaceId: context.thread.workspaceId ? String(context.thread.workspaceId) : undefined,
+        threadStatus: context.thread.status,
+        userMessageKind: context.userMessage.kind,
+        userMessageLength: context.userMessage.content.length,
+        effectiveBriefPreview: compactLogValue(effectiveBrief.content, 2400),
+        referenceMentionCount: effectiveBrief.referenceMentions?.length ?? 0,
+        contextMessageCount: context.messages.length,
+      };
 
       const provider = getModelProvider(createAgentProvider);
       const modelMessages: ModelMessage[] = [
@@ -1001,7 +1069,7 @@ export const decideAgentTurn = internalAction({
         messages: modelMessages,
         model: createAgentModel,
         temperature: 0.2,
-        maxTokens: 1400,
+        maxTokens: 4000,
         parser: normalizeAgentDecision,
         metadata: {
           createThreadId: String(args.threadId),
@@ -1021,6 +1089,10 @@ export const decideAgentTurn = internalAction({
         userMessageId: args.userMessageId,
       });
     } catch (error) {
+      console.error("[create.agent.decide] failed", {
+        ...diagnosticContext,
+        error: createAgentDecisionErrorLog(error),
+      });
       await ctx.runMutation(internal.create.agent.failAgentDecision, {
         errorMessage: error instanceof Error ? error.message : "Unknown model error",
         threadId: args.threadId,
