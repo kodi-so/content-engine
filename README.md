@@ -26,8 +26,9 @@ library, and publishing primitives.
 - React 18, Vite, TypeScript, React Router
 - Tailwind-based styling through the existing app CSS entrypoint and shared
   components
-- Convex for database, actions, HTTP endpoints, crons, file storage, and MCP
-  surface
+- Convex for database, actions, HTTP endpoints, crons, and MCP surface
+- Cloudflare R2 (via the `@convex-dev/r2` Convex component) for media storage and
+  serving
 - Clerk for authentication and private-beta access gating
 - Generation providers behind Convex abstractions: Gemini, fal, OpenRouter, and
   BulkAPIs
@@ -69,6 +70,21 @@ npx convex env set FAL_API_KEY "..."
 npx convex env set GEMINI_API_KEY "..."
 npx convex env set BULKAPIS_API_KEY "..."
 npx convex env set POSTIZ_API_KEY "..."
+```
+
+Media (images, video, audio) is stored in and served from Cloudflare R2 through
+the [`@convex-dev/r2`](https://www.convex.dev/components/cloudflare-r2) component.
+Create an R2 bucket plus an API token, then set the R2 secrets in your Convex
+deployment:
+
+```sh
+npx convex env set R2_TOKEN "..."
+npx convex env set R2_ACCESS_KEY_ID "..."
+npx convex env set R2_SECRET_ACCESS_KEY "..."
+npx convex env set R2_ENDPOINT "https://<account-id>.r2.cloudflarestorage.com"
+npx convex env set R2_BUCKET "..."
+# Public base URL for serving objects (custom domain or the bucket's r2.dev URL)
+npx convex env set R2_PUBLIC_URL "https://media.your-domain.com"
 ```
 
 Only set provider secrets you need for the workflows you are testing. See

@@ -203,7 +203,7 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
       v.object({
         slideId: v.string(),
         index: v.number(),
-        storageId: v.id("_storage"),
+        storageId: v.string(),
         storageUrl: v.string(),
         mimeType: v.string(),
         fileSize: v.number(),

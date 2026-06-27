@@ -219,7 +219,8 @@ export default defineSchema({
     sourceType: videoAnalysisSourceTypeValidator,
     sourcePlatform: videoAnalysisSourcePlatformValidator,
     sourceUrl: v.optional(v.string()),
-    storageId: v.optional(v.id("_storage")),
+    // R2 object key for an uploaded source clip.
+    storageId: v.optional(v.string()),
     storageUrl: v.optional(v.string()),
     fileName: v.optional(v.string()),
     mimeType: v.optional(v.string()),

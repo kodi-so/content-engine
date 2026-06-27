@@ -1,29 +1,13 @@
-// Convex File Storage utilities for handling images
+// Cloudflare R2 storage utilities for handling images
 import { action, mutation } from "../_generated/server";
 import { api } from "../_generated/api";
 import { v } from "convex/values";
-import { Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { requireCurrentUserId } from "../auth/users";
+import { keyFromPublicUrl, publicUrlForKey, r2 } from "./r2";
 
 /**
- * Extract storage ID from a Convex storage URL
- * URL format: https://<deployment>.convex.cloud/api/storage/<storageId>
- */
-function extractStorageIdFromUrl(url: string): Id<"_storage"> | null {
-  try {
-    const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) {
-      return match[1] as Id<"_storage">;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Delete a file from Convex storage by its URL
+ * Delete a file from R2 by its public URL
  */
 export const deleteByUrl = mutation({
   args: {
@@ -31,13 +15,13 @@ export const deleteByUrl = mutation({
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
     await requireCurrentUserId(ctx);
-    const storageId = extractStorageIdFromUrl(args.url);
-    if (!storageId) {
-      return { success: false, error: "Could not extract storage ID from URL" };
+    const key = keyFromPublicUrl(args.url);
+    if (!key) {
+      return { success: false, error: "Could not extract storage key from URL" };
     }
 
     try {
-      await ctx.storage.delete(storageId);
+      await r2.deleteObject(ctx, key);
       return { success: true };
     } catch (error) {
       return {
@@ -48,9 +32,24 @@ export const deleteByUrl = mutation({
   },
 });
 
+function blobFromDataUri(base64Data: string): { blob: Blob; mimeType: string; byteLength: number } {
+  const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+  if (!matches) {
+    throw new Error("Invalid base64 data URI format");
+  }
+
+  const mimeType = matches[1];
+  const binaryString = atob(matches[2]);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let index = 0; index < binaryString.length; index += 1) {
+    bytes[index] = binaryString.charCodeAt(index);
+  }
+  return { blob: new Blob([bytes], { type: mimeType }), mimeType, byteLength: bytes.byteLength };
+}
+
 /**
- * Upload a base64 image to Convex storage
- * Returns a permanent storage URL
+ * Upload a base64 image to R2
+ * Returns a permanent public URL
  */
 export const uploadBase64Image = action({
   args: {
@@ -60,34 +59,9 @@ export const uploadBase64Image = action({
   handler: async (ctx, args): Promise<string> => {
     await requireBetaAccessForAction(ctx);
     try {
-      // Extract mime type and base64 data
-      const matches = args.base64Data.match(/^data:([^;]+);base64,(.+)$/);
-      if (!matches) {
-        throw new Error("Invalid base64 data URI format");
-      }
-
-      const mimeType = matches[1];
-      const base64String = matches[2];
-
-      // Convert base64 to binary
-      const binaryString = atob(base64String);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: mimeType });
-
-      // Upload to Convex storage
-      const storageId = await ctx.storage.store(blob);
-
-      // Get the permanent URL
-      const url = await ctx.storage.getUrl(storageId);
-
-      if (!url) {
-        throw new Error("Failed to get storage URL");
-      }
-
-      return url;
+      const { blob, mimeType } = blobFromDataUri(args.base64Data);
+      const key = await r2.store(ctx, blob, { type: mimeType });
+      return publicUrlForKey(key);
     } catch (error) {
       throw new Error(
         `Failed to upload image: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -102,43 +76,27 @@ export const uploadBase64ImageWithMetadata = action({
     filename: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{
-    storageId: Id<"_storage">;
+    storageId: string;
     storageUrl: string;
     mimeType: string;
     byteLength: number;
   }> => {
     await requireBetaAccessForAction(ctx);
-    const matches = args.base64Data.match(/^data:([^;]+);base64,(.+)$/);
-    if (!matches) {
-      throw new Error("Invalid base64 data URI format");
-    }
-
-    const mimeType = matches[1];
-    const base64String = matches[2];
-    const binaryString = atob(base64String);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let index = 0; index < binaryString.length; index += 1) {
-      bytes[index] = binaryString.charCodeAt(index);
-    }
-
-    const storageId = await ctx.storage.store(new Blob([bytes], { type: mimeType }));
-    const storageUrl = await ctx.storage.getUrl(storageId);
-    if (!storageUrl) {
-      throw new Error("Failed to get storage URL");
-    }
+    const { blob, mimeType, byteLength } = blobFromDataUri(args.base64Data);
+    const key = await r2.store(ctx, blob, { type: mimeType });
 
     return {
-      storageId,
-      storageUrl,
+      storageId: key,
+      storageUrl: publicUrlForKey(key),
       mimeType,
-      byteLength: bytes.byteLength,
+      byteLength,
     };
   },
 });
 
 /**
- * Upload multiple base64 images to Convex storage
- * Returns an array of permanent storage URLs
+ * Upload multiple base64 images to R2
+ * Returns an array of permanent public URLs
  */
 export const uploadBase64Images = action({
   args: {
@@ -165,8 +123,8 @@ interface ReferenceImageData {
 }
 
 /**
- * Fetch reference images from Convex storage and convert to base64 for Gemini API
- * Takes an array of storage URLs and returns base64 encoded images
+ * Fetch reference images from their storage URLs and convert to base64 for Gemini API
+ * Takes an array of media URLs and returns base64 encoded images
  */
 export const fetchReferenceImages = action({
   args: {
@@ -178,7 +136,7 @@ export const fetchReferenceImages = action({
 
     for (const url of args.imageUrls) {
       try {
-        // Fetch the image from Convex storage
+        // Fetch the image from its storage URL
         const response = await fetch(url);
         if (!response.ok) {
           console.error(`Failed to fetch reference image: ${url}, status: ${response.status}`);

@@ -1,9 +1,10 @@
-import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { GeneratedAsset } from "../providers/model";
+import { publicUrlForKey, r2 } from "../storage/r2";
 
 export type StoredGeneratedAsset = {
-  storageId: Id<"_storage">;
+  // R2 object key for the stored media.
+  storageId: string;
   storageUrl: string;
   mimeType: string;
   byteLength: number;
@@ -42,16 +43,13 @@ export async function storeGeneratedAsset(
   asset: GeneratedAsset
 ): Promise<StoredGeneratedAsset> {
   const blob = await blobFromGeneratedAsset(asset);
-  const storageId = await ctx.storage.store(blob);
-  const storageUrl = await ctx.storage.getUrl(storageId);
-  if (!storageUrl) {
-    throw new Error("Could not resolve Convex storage URL");
-  }
+  const mimeType = blob.type || asset.mimeType;
+  const storageId = await r2.store(ctx, blob, { type: mimeType });
 
   return {
     storageId,
-    storageUrl,
-    mimeType: blob.type || asset.mimeType,
+    storageUrl: publicUrlForKey(storageId),
+    mimeType,
     byteLength: blob.size,
   };
 }
