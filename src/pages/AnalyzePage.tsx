@@ -1,3 +1,4 @@
+import { useUploadFile } from "@convex-dev/r2/react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Eye,
@@ -33,7 +34,7 @@ export function AnalyzePage() {
     api.analyze.videoAnalysis.list,
     activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
   );
-  const generateUploadUrl = useMutation(api.analyze.videoAnalysis.generateUploadUrl);
+  const uploadFile = useUploadFile(api.storage.r2);
   const createFromUrl = useMutation(api.analyze.videoAnalysis.createFromUrl);
   const createFromUpload = useMutation(api.analyze.videoAnalysis.createFromUpload);
   const askQuestion = useAction(api.analyze.videoAnalysis.askQuestion);
@@ -96,19 +97,10 @@ export function AnalyzePage() {
         if (file.size > MAX_UPLOAD_BYTES) {
           throw new Error("Choose a clip under 100 MB.");
         }
-        const uploadUrl = await generateUploadUrl();
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        });
-        if (!uploadResponse.ok) {
-          throw new Error("Upload failed.");
-        }
-        const { storageId } = await uploadResponse.json() as { storageId: Id<"_storage"> };
+        const storageKey = await uploadFile(file);
         const jobId = await createFromUpload({
           workspaceId: activeWorkspaceId,
-          storageId,
+          storageKey,
           fileName: file.name,
           mimeType: file.type || undefined,
           byteLength: file.size,

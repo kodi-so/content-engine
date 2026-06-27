@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 import { action, internalQuery, mutation, query } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { storeGeneratedAsset } from "../content/assetStorage";
+import { keyFromPublicUrl, r2 } from "../storage/r2";
 import { getModelProvider } from "../providers";
 import type { GeneratedAsset, ModelProvider } from "../providers/model";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
@@ -19,11 +19,6 @@ const audioExtensions = new Set(["mp3", "wav", "m4a", "aac", "ogg", "flac"]);
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
   return identity.subject;
-}
-
-function storageIdFromUrl(url: string): Id<"_storage"> | undefined {
-  const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
-  return match?.[1] as Id<"_storage"> | undefined;
 }
 
 function inferMediaType(args: { storageUrl: string; mimeType?: string }):
@@ -273,10 +268,10 @@ export const remove = mutation({
       throw new Error("Reference asset not found");
     }
 
-    const storageId = storageIdFromUrl(asset.storageUrl);
-    if (storageId) {
+    const storageKey = keyFromPublicUrl(asset.storageUrl);
+    if (storageKey) {
       try {
-        await ctx.storage.delete(storageId);
+        await r2.deleteObject(ctx, storageKey);
       } catch {
         // The database row is the source of truth; storage cleanup is best-effort.
       }

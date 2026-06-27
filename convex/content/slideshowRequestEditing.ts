@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { r2 } from "../storage/r2";
 import type { RequestedRenderingMode } from "./planning";
 import type {
   CanonicalSlideshowSlide,
@@ -114,13 +115,13 @@ export function normalizeEditableTextBlocks(value: unknown): SlideshowTextBlock[
 
 export async function cleanupArtifactStorage(ctx: MutationCtx, artifact: Doc<"artifacts">) {
   const data = getArtifactData(artifact);
-  const storageIds = [data.storageId, data.publishStorageId].filter(
-    (value): value is Id<"_storage"> => typeof value === "string"
+  const storageKeys = [data.storageId, data.publishStorageId].filter(
+    (value): value is string => typeof value === "string"
   );
 
-  for (const storageId of storageIds) {
+  for (const storageKey of storageKeys) {
     try {
-      await ctx.storage.delete(storageId);
+      await r2.deleteObject(ctx, storageKey);
     } catch {
       // Storage cleanup is best-effort; rows are still the durable state.
     }

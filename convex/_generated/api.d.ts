@@ -78,6 +78,7 @@ import type * as publishing_distributionPlans from "../publishing/distributionPl
 import type * as publishing_metrics from "../publishing/metrics.js";
 import type * as publishing_publishInput from "../publishing/publishInput.js";
 import type * as storage_files from "../storage/files.js";
+import type * as storage_r2 from "../storage/r2.js";
 import type * as system_crons from "../system/crons.js";
 import type * as system_http from "../system/http.js";
 import type * as validators from "../validators.js";
@@ -112,6 +113,7 @@ import type * as workflows_runtime_publishPackaging from "../workflows/runtime/p
 import type * as workflows_scheduling from "../workflows/scheduling.js";
 import type * as workspaces_workspaces from "../workspaces/workspaces.js";
 
+import type { ComponentApi as R2ComponentApi } from "@convex-dev/r2/_generated/component.js";
 import type {
   ApiFromModules,
   FilterApi,
@@ -189,6 +191,7 @@ declare const fullApi: ApiFromModules<{
   "publishing/metrics": typeof publishing_metrics;
   "publishing/publishInput": typeof publishing_publishInput;
   "storage/files": typeof storage_files;
+  "storage/r2": typeof storage_r2;
   "system/crons": typeof system_crons;
   "system/http": typeof system_http;
   validators: typeof validators;
@@ -250,4 +253,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  r2: R2ComponentApi;
+};
