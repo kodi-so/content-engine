@@ -15,6 +15,7 @@ import {
   reviewStatusValidator,
 } from "../validators";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
+import { r2 } from "../storage/r2";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -717,12 +718,12 @@ export const remove = mutation({
       artifact.data && typeof artifact.data === "object" && !Array.isArray(artifact.data)
         ? artifact.data as Record<string, unknown>
         : {};
-    const storageIds = [data.storageId, data.publishStorageId].filter(
-      (value): value is Id<"_storage"> => typeof value === "string"
+    const storageKeys = [data.storageId, data.publishStorageId].filter(
+      (value): value is string => typeof value === "string"
     );
-    for (const storageId of storageIds) {
+    for (const storageKey of storageKeys) {
       try {
-        await ctx.storage.delete(storageId);
+        await r2.deleteObject(ctx, storageKey);
       } catch {
         // Storage cleanup is best-effort; deleting the artifact row is the durable state.
       }

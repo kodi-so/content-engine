@@ -12,6 +12,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { requireBetaAccess } from "../auth/users";
+import { publicUrlForKey, r2 } from "../storage/r2";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
 
 const STUDIO_RENDER_BLOCKER_MESSAGE =
@@ -647,9 +648,10 @@ export const executeWorkerRender = internalAction({
 
       const mimeType = response.headers.get("content-type") || "video/mp4";
       const bytes = await response.arrayBuffer();
-      const storageId = await ctx.storage.store(new Blob([bytes], { type: mimeType }));
-      const storageUrl = await ctx.storage.getUrl(storageId);
-      if (!storageUrl) throw new Error("Could not resolve rendered video storage URL.");
+      const storageId = await r2.store(ctx, new Blob([bytes], { type: mimeType }), {
+        type: mimeType,
+      });
+      const storageUrl = publicUrlForKey(storageId);
 
       const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: request.userId,

@@ -13,6 +13,7 @@ import {
 } from "../_generated/server";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
+import { publicUrlForKey } from "../storage/r2";
 import {
   videoAnalysisModeValidator,
   videoAnalysisSourcePlatformValidator,
@@ -105,14 +106,6 @@ export const listQuestions = query({
   },
 });
 
-export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await ensureCurrentUser(ctx);
-    return await ctx.storage.generateUploadUrl();
-  },
-});
-
 export const createFromUrl = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
@@ -154,7 +147,7 @@ export const createFromUrl = mutation({
 export const createFromUpload = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    storageId: v.id("_storage"),
+    storageKey: v.string(),
     fileName: v.optional(v.string()),
     mimeType: v.optional(v.string()),
     byteLength: v.optional(v.number()),
@@ -173,8 +166,7 @@ export const createFromUpload = mutation({
       : defaultWorkspace;
     if (!workspace) throw new Error("Workspace not found");
 
-    const storageUrl = await ctx.storage.getUrl(args.storageId);
-    if (!storageUrl) throw new Error("Uploaded file not found");
+    const storageUrl = publicUrlForKey(args.storageKey);
 
     const now = Date.now();
     const jobId = await ctx.db.insert("videoAnalysisJobs", {
@@ -183,7 +175,7 @@ export const createFromUpload = mutation({
       sourceType: "upload",
       sourcePlatform: args.sourcePlatform ?? "unknown",
       sourceUrl: cleanOptionalText(args.sourceUrl),
-      storageId: args.storageId,
+      storageId: args.storageKey,
       storageUrl,
       fileName: cleanOptionalText(args.fileName),
       mimeType: cleanOptionalText(args.mimeType),

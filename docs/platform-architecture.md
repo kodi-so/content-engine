@@ -109,6 +109,10 @@ Convex/server variables:
   `POSTBRIDGE_DRY_RUN`
 - Postiz: `POSTIZ_API_KEY`, optional `POSTIZ_BASE_URL`, `POSTIZ_DRY_RUN`
 - Analyze resolver: `MEDIA_RESOLVER_URL`, `MEDIA_RESOLVER_API_KEY`
+- Media storage (Cloudflare R2): `R2_TOKEN`, `R2_ACCESS_KEY_ID`,
+  `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET`, and `R2_PUBLIC_URL` (the
+  bucket's public base URL — custom domain or `r2.dev` — used to build the
+  permanent media URLs persisted on artifacts)
 - Create defaults: `CONTENT_ENGINE_TEXT_MODEL`,
   `CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL`, `CONTENT_ENGINE_IMAGE_PROVIDER`,
   `CONTENT_ENGINE_REFERENCE_IMAGE_PROVIDER`, `CONTENT_ENGINE_IMAGE_MODEL`,
