@@ -74,6 +74,21 @@ function artifactBelongsToThread(
   return artifact.userId === thread.userId;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function slideshowPromptReviewRequestId(data: unknown): Id<"contentRequests"> | null {
+  if (
+    !isRecord(data) ||
+    data.kind !== "slideshow_prompt_review" ||
+    typeof data.contentRequestId !== "string"
+  ) {
+    return null;
+  }
+  return data.contentRequestId as Id<"contentRequests">;
+}
+
 async function requireArtifactsInThreadScope(
   ctx: QueryCtx | MutationCtx,
   thread: ThreadDoc,
@@ -493,6 +508,25 @@ export const updateCheckpoint = mutation({
           })
         )
       );
+
+      const pausedSlideshowRequestId = slideshowPromptReviewRequestId(checkpoint.data);
+      if (pausedSlideshowRequestId) {
+        const request = await ctx.db.get(pausedSlideshowRequestId);
+        if (
+          request &&
+          request.status === "planning" &&
+          (thread.workspaceId ? request.workspaceId === thread.workspaceId : request.userId === thread.userId)
+        ) {
+          await ctx.db.patch(request._id, {
+            status: "discarded",
+            errorMessage: args.status === "revised"
+              ? "Revised from slideshow prompt checkpoint."
+              : "Stopped at slideshow prompt checkpoint.",
+            completedAt: now,
+            updatedAt: now,
+          });
+        }
+      }
     }
 
     await ctx.db.patch(thread._id, {

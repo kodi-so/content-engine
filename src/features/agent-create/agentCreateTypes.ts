@@ -116,6 +116,7 @@ export type AgentCreateCheckpoint = {
   label: string;
   message: string;
   artifacts?: AgentCreateArtifact[];
+  data?: unknown;
 };
 
 export type AgentCreateFinalReviewAction =

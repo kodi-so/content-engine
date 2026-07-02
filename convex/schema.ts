@@ -434,6 +434,7 @@ export default defineSchema({
     label: v.string(),
     message: v.string(),
     artifactIds: v.optional(v.array(v.id("artifacts"))),
+    data: v.optional(v.any()),
     response: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),

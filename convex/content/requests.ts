@@ -183,6 +183,54 @@ type CreateGenerationPayload = {
   voiceReferenceAudios?: CreateReferenceAsset[];
 };
 
+type SlideshowDebugPromptReviewItem = {
+  slideIndex: number;
+  prompt: string;
+  textBlocks: string[];
+};
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function slideshowDebugContext(generation: CreateGenerationPayload | null) {
+  const providerInput = recordValue(generation?.providerInput);
+  if (providerInput?.debugPauseAfterPlanning !== true) return null;
+  const createThreadId = typeof providerInput.createThreadId === "string"
+    ? providerInput.createThreadId as Id<"createThreads">
+    : undefined;
+  const createToolCallId = typeof providerInput.createToolCallId === "string"
+    ? providerInput.createToolCallId as Id<"createToolCalls">
+    : undefined;
+  if (!createThreadId) return null;
+  return { createThreadId, createToolCallId };
+}
+
+function previewTextBlocksForSlide(slide: SlideshowPlan["slides"][number]) {
+  if (slide.renderingMode === "full_graphic_generation") {
+    const text = slide.visibleText.trim();
+    return text ? [text] : [];
+  }
+
+  return slide.textBlocks.flatMap((block) => {
+    const lines = [
+      block.text.trim(),
+      ...block.items.map((item) => `- ${item.trim()}`),
+    ].filter(Boolean);
+    return lines.length ? [lines.join("\n")] : [];
+  });
+}
+
+function promptReviewItemsForPlan(plan: SlideshowPlan): SlideshowDebugPromptReviewItem[] {
+  return plan.slides.map((slide) => ({
+    slideIndex: slide.index,
+    prompt: promptForSlide(slide),
+    textBlocks: previewTextBlocksForSlide(slide),
+  }));
+}
+
 function contentFormatForGenerationMode(mode: CreateGenerationMode) {
   switch (mode) {
     case "image":
@@ -590,6 +638,79 @@ export const transition = internalMutation({
   },
 });
 
+export const pauseSlideshowForDebugPromptReview = internalMutation({
+  args: {
+    requestId: v.id("contentRequests"),
+    createThreadId: v.id("createThreads"),
+    createToolCallId: v.optional(v.id("createToolCalls")),
+    specArtifactId: v.id("artifacts"),
+    prompts: v.array(
+      v.object({
+        slideIndex: v.number(),
+        prompt: v.string(),
+        textBlocks: v.array(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const request = await ctx.db.get(args.requestId);
+    const thread = await ctx.db.get(args.createThreadId);
+    if (!request || !thread) return false;
+    if (thread.workspaceId ? request.workspaceId !== thread.workspaceId : request.userId !== thread.userId) {
+      return false;
+    }
+
+    const checkpoints = await ctx.db
+      .query("createCheckpoints")
+      .withIndex("by_thread_status", (q) =>
+        q.eq("createThreadId", thread._id).eq("status", "open")
+      )
+      .collect();
+    if (checkpoints.length) {
+      await ctx.db.patch(thread._id, {
+        status: "waiting_for_user",
+        updatedAt: Date.now(),
+      });
+      return true;
+    }
+
+    const now = Date.now();
+    await ctx.db.insert("createCheckpoints", {
+      userId: thread.userId,
+      workspaceId: thread.workspaceId,
+      createThreadId: thread._id,
+      status: "open",
+      label: "Review slideshow image prompts",
+      message:
+        "Debug Mode is pausing before image generation. Approve these slide image prompts to generate the slideshow, or ask for changes.",
+      data: {
+        kind: "slideshow_prompt_review",
+        contentRequestId: request._id,
+        createToolCallId: args.createToolCallId,
+        planArtifactId: args.specArtifactId,
+        prompts: args.prompts,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("createMessages", {
+      userId: thread.userId,
+      workspaceId: thread.workspaceId,
+      createThreadId: thread._id,
+      role: "agent",
+      kind: "status",
+      content: "Paused for Debug Mode review. Approve the slideshow image prompts to continue, or ask for a revision.",
+      createdAt: now,
+    });
+    await ctx.db.patch(thread._id, {
+      status: "waiting_for_user",
+      updatedAt: now,
+    });
+
+    return true;
+  },
+});
+
 export const deleteSlide = mutation({
   args: {
     slideshowId: v.id("slideshows"),
@@ -709,7 +830,11 @@ export const execute = internalAction({
     });
     if (!context) throw new Error("Content request not found");
 
-    let costUsd = 0;
+    let costUsd = context.request.contentFormat === "slideshow" &&
+      context.request.plan &&
+      typeof context.request.costUsd === "number"
+      ? context.request.costUsd
+      : 0;
     try {
       const generation = generationPayload(
         (context.request as Doc<"contentRequests"> & { generation?: unknown }).generation
@@ -827,74 +952,112 @@ export const execute = internalAction({
       const plannerReferences = context.referenceAssets.map(({ asset, instruction }) =>
         plannerReferenceFromAsset(asset, instruction)
       );
-      const structured = await generateStructuredWithFallback<SlideshowPlannerOutput>({
-        systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
-        prompt: planPromptForMode({
-          prompt: context.request.prompt,
-          revisionPrompt: context.request.revisionPrompt,
-          brand: context.brand,
-          socialAccount: context.socialAccount,
-          requestedRenderingMode,
-          references: plannerReferences,
-        }),
-        schema: planSchemaForMode(requestedRenderingMode),
-        schemaName: "slideshow_create_plan",
-        temperature: 0.7,
-        parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
-      });
-      costUsd = sumCost(costUsd, structured.metadata);
-      const rawSlides = Array.isArray((structured.object as { slides?: unknown }).slides)
-        ? (structured.object as { slides: unknown[] }).slides
-        : [];
-      const imagePromptSlides = await Promise.all(rawSlides.map(async (slide) => {
-        const imagePrompt = await generateStructuredWithFallback<SingleImagePromptWriterOutput>({
-          systemPrompt: IMAGE_PROMPT_WRITER_SYSTEM_PROMPT,
-          prompt: buildSingleImagePromptWriterPrompt({
+      let plan = context.request.plan as SlideshowPlan | undefined;
+      let specArtifactId = context.request.planArtifactId;
+
+      if (!plan) {
+        const structured = await generateStructuredWithFallback<SlideshowPlannerOutput>({
+          systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
+          prompt: planPromptForMode({
             prompt: context.request.prompt,
             revisionPrompt: context.request.revisionPrompt,
             brand: context.brand,
             socialAccount: context.socialAccount,
             requestedRenderingMode,
             references: plannerReferences,
-            plan: structured.object,
-            slide,
           }),
-          schema: singleImagePromptSchemaForMode(requestedRenderingMode),
-          schemaName: "slideshow_single_image_prompt",
-          model: process.env.CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL?.trim() ||
-            process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
-            "openai/gpt-4.1",
-          temperature: 0.2,
-          parser: (text) => JSON.parse(text) as SingleImagePromptWriterOutput,
+          schema: planSchemaForMode(requestedRenderingMode),
+          schemaName: "slideshow_create_plan",
+          temperature: 0.7,
+          parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
         });
-        costUsd = sumCost(costUsd, imagePrompt.metadata);
-        return imagePrompt.object;
-      }));
-      const imagePrompts = {
-        renderingMode: requestedRenderingMode,
-        slides: imagePromptSlides,
-      } as ImagePromptWriterOutput;
-      const plan = normalizePlan(
-        structured.object,
-        imagePrompts,
-        context.request.prompt,
-        context.request.revisionPrompt,
-        requestedRenderingMode
-      );
+        costUsd = sumCost(costUsd, structured.metadata);
+        const rawSlides = Array.isArray((structured.object as { slides?: unknown }).slides)
+          ? (structured.object as { slides: unknown[] }).slides
+          : [];
+        const imagePromptSlides = await Promise.all(rawSlides.map(async (slide) => {
+          const imagePrompt = await generateStructuredWithFallback<SingleImagePromptWriterOutput>({
+            systemPrompt: IMAGE_PROMPT_WRITER_SYSTEM_PROMPT,
+            prompt: buildSingleImagePromptWriterPrompt({
+              prompt: context.request.prompt,
+              revisionPrompt: context.request.revisionPrompt,
+              brand: context.brand,
+              socialAccount: context.socialAccount,
+              requestedRenderingMode,
+              references: plannerReferences,
+              plan: structured.object,
+              slide,
+            }),
+            schema: singleImagePromptSchemaForMode(requestedRenderingMode),
+            schemaName: "slideshow_single_image_prompt",
+            model: process.env.CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL?.trim() ||
+              process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
+              "openai/gpt-4.1",
+            temperature: 0.2,
+            parser: (text) => JSON.parse(text) as SingleImagePromptWriterOutput,
+          });
+          costUsd = sumCost(costUsd, imagePrompt.metadata);
+          return imagePrompt.object;
+        }));
+        const imagePrompts = {
+          renderingMode: requestedRenderingMode,
+          slides: imagePromptSlides,
+        } as ImagePromptWriterOutput;
+        plan = normalizePlan(
+          structured.object,
+          imagePrompts,
+          context.request.prompt,
+          context.request.revisionPrompt,
+          requestedRenderingMode
+        );
 
-      const specArtifactId = await createRequestArtifact(ctx, {
-        request: context.request,
-        type: "slide_spec",
-        title: plan.title,
-        data: plan,
-        provider: structured.metadata.provider,
-        model: structured.metadata.model,
-        prompt: context.request.prompt,
-      });
+        specArtifactId = await createRequestArtifact(ctx, {
+          request: context.request,
+          type: "slide_spec",
+          title: plan.title,
+          data: plan,
+          provider: structured.metadata.provider,
+          model: structured.metadata.model,
+          prompt: context.request.prompt,
+        });
+
+        await ctx.runMutation(internal.content.requests.transition, {
+          requestId: args.requestId,
+          status: "planning",
+          plan,
+          planArtifactId: specArtifactId,
+          summary: plan.creativeBrief,
+          costUsd,
+        });
+
+        const debugContext = slideshowDebugContext(generation);
+        if (debugContext) {
+          await ctx.runMutation(internal.content.requests.pauseSlideshowForDebugPromptReview, {
+            requestId: args.requestId,
+            createThreadId: debugContext.createThreadId,
+            createToolCallId: debugContext.createToolCallId,
+            specArtifactId,
+            prompts: promptReviewItemsForPlan(plan),
+          });
+          return;
+        }
+      }
+
+      if (!specArtifactId) {
+        specArtifactId = await createRequestArtifact(ctx, {
+          request: context.request,
+          type: "slide_spec",
+          title: plan.title,
+          data: plan,
+          provider: "manual",
+          prompt: context.request.prompt,
+        });
+      }
 
       await ctx.runMutation(internal.content.requests.transition, {
         requestId: args.requestId,
         status: "generating",
+        plan,
         planArtifactId: specArtifactId,
         summary: plan.creativeBrief,
         costUsd,

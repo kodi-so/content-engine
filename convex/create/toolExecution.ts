@@ -1362,6 +1362,7 @@ async function createSlideshowRequestForToolCall(
     explicitSlideshowRenderingMode(input.renderingMode) ??
     explicitSlideshowRenderingMode(input.slideshowStyle) ??
     "background_plus_overlay";
+  const providerInput = isRecord(input.providerInput) ? input.providerInput : {};
   const now = Date.now();
   const requestId = await ctx.db.insert("contentRequests", {
     userId: thread.userId,
@@ -1372,7 +1373,12 @@ async function createSlideshowRequestForToolCall(
     generation: {
       mode: "slideshow",
       provider,
-      providerInput: {},
+      providerInput: {
+        ...providerInput,
+        debugPauseAfterPlanning: thread.checkpointMode === "debug",
+        createThreadId: thread._id,
+        createToolCallId: toolCall._id,
+      },
       referenceImages: references.imageReferences,
     },
     referenceAssets: references.creativeAssetReferences,
@@ -1580,7 +1586,14 @@ async function asyncFailureMessageForToolCall(
       (thread.workspaceId ? request.workspaceId === thread.workspaceId : request.userId === thread.userId) &&
       (request.status === "failed" || request.status === "discarded")
     ) {
-      if (request.status === "discarded" && request.errorMessage === "Stopped by user.") {
+      if (
+        request.status === "discarded" &&
+        (
+          request.errorMessage === "Stopped by user." ||
+          request.errorMessage === "Stopped at slideshow prompt checkpoint." ||
+          request.errorMessage === "Revised from slideshow prompt checkpoint."
+        )
+      ) {
         return null;
       }
       return request.errorMessage ?? "The queued generation request failed.";

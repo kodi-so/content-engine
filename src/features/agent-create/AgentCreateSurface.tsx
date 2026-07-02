@@ -569,6 +569,7 @@ export function AgentCreateSurface() {
           status: checkpoint.status,
           label: checkpoint.label,
           message: checkpoint.message,
+          data: checkpoint.data,
           artifacts: checkpoint.artifactIds
             ?.flatMap((artifactId) => artifactById.get(String(artifactId)) ?? []),
         })),
@@ -599,6 +600,7 @@ export function AgentCreateSurface() {
     isSubmitting ||
       activeThread?.status === "planning" ||
       activeThread?.status === "running" ||
+      activeProgressStep?.status === "queued" ||
       activeProgressStep?.status === "running" ||
       activeWorkingArtifact
   ) && !openCheckpoints.length;
@@ -1141,7 +1143,7 @@ export function AgentCreateSurface() {
             threadKey={activeThreadId}
             workingMessageId={workingMessageId}
           />
-          {hasQueuedTools && !openCheckpoints.length && !hasUnreadyOutputs ? (
+          {hasQueuedTools && !openCheckpoints.length && !hasUnreadyOutputs && !showActivity ? (
             <button
               className="secondary-button justify-self-start"
               disabled={isContinuing}

@@ -201,6 +201,17 @@ function contentRequestIdFromToolOutput(output: unknown): Id<"contentRequests"> 
   return output.contentRequestId as Id<"contentRequests">;
 }
 
+function slideshowPromptReviewRequestId(data: unknown): Id<"contentRequests"> | null {
+  if (
+    !isRecord(data) ||
+    data.kind !== "slideshow_prompt_review" ||
+    typeof data.contentRequestId !== "string"
+  ) {
+    return null;
+  }
+  return data.contentRequestId as Id<"contentRequests">;
+}
+
 function analysisJobIdFromToolOutput(output: unknown): Id<"videoAnalysisJobs"> | null {
   if (!isRecord(output) || typeof output.analysisJobId !== "string") return null;
   return output.analysisJobId as Id<"videoAnalysisJobs">;
@@ -273,7 +284,7 @@ function createAgentSystemPrompt() {
     "If the user wants to create, analyze, edit, compose, render, save, export, publish, or convert something into a workflow, choose kind=\"create\" and select the necessary tools.",
     "If the user appears to want creation but the desired output or source is genuinely ambiguous, choose kind=\"clarify\" and ask one concise question.",
     "Do not ask for brand/platform unless the user makes that relevant.",
-    "In Debug Mode the runtime may pause for checkpointable tools before spending generation or render resources. Some native artifact tools, including slideshow.render, run without a debug checkpoint.",
+    "In Debug Mode the runtime may pause for checkpointable tools before spending generation or render resources. For slideshow.render, the native slideshow pipeline plans the slides and image prompts first, then pauses for review before generating slide images.",
     "For create decisions, write planSteps as plain-English user-visible actions. Do not expose internal tool labels. Example: \"Create an image of an apple.\"",
     "For create decisions, toolCalls is required. It is an ordered list of exact tool invocations you want the runtime to make.",
     ...createProductionPlanningPolicy(),
@@ -1260,6 +1271,20 @@ export const approveCheckpoint = mutation({
       updatedAt: now,
     });
 
+    const pausedSlideshowRequestId = slideshowPromptReviewRequestId(checkpoint.data);
+    if (pausedSlideshowRequestId) {
+      const request = await ctx.db.get(pausedSlideshowRequestId);
+      if (
+        request &&
+        request.status === "planning" &&
+        (thread.workspaceId ? request.workspaceId === thread.workspaceId : request.userId === thread.userId)
+      ) {
+        await ctx.scheduler.runAfter(0, internal.content.requests.execute, {
+          requestId: request._id,
+        });
+      }
+    }
+
     return await executeRunnableQueuedTools(ctx, thread);
   },
 });
@@ -1513,6 +1538,19 @@ export const continueAfterAsyncResult = internalMutation({
             : `Finished ${toolCall.label}.`,
           kind: "status",
         });
+        if (
+          !remainingQueued.length &&
+          toolCall.toolName === "slideshow.render" &&
+          "contentFormat" in readySource &&
+          readySource.contentFormat === "slideshow"
+        ) {
+          await ctx.db.patch(thread._id, {
+            status: "ready",
+            updatedAt: Date.now(),
+          });
+          continuedThreadCount += 1;
+          continue;
+        }
       }
       await executeRunnableQueuedTools(ctx, thread);
       continuedThreadCount += 1;

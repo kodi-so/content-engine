@@ -38,8 +38,10 @@ function splitModelDetail(detail: string) {
   const separator = " - ";
   const index = detail.indexOf(separator);
   if (index < 0) return { prompt: detail };
+  const model = detail.slice(0, index).trim();
+  if (model.length > 80) return { prompt: detail };
   return {
-    model: detail.slice(0, index).trim(),
+    model,
     prompt: detail.slice(index + separator.length).trim(),
   };
 }
@@ -125,7 +127,7 @@ export function ToolProgressTimeline({
                       <span className="truncate">{detail.model}</span>
                     </span>
                   ) : null}
-                  <p className="m-0 whitespace-normal break-words text-[0.76rem] leading-[1.4] text-[var(--color-ink-muted)]">
+                  <p className="m-0 max-w-full whitespace-normal break-words text-[0.76rem] leading-[1.4] text-[var(--color-ink-muted)] [overflow-wrap:anywhere]">
                     {detail.prompt}
                   </p>
                 </div>
