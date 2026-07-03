@@ -50,6 +50,8 @@ export type AgentCreateSelectedMention = {
   label: string;
   entityType: AgentCreateMentionEntityType;
   entityId: string;
+  draftFile?: File;
+  draftPreviewUrl?: string;
   instruction?: string;
   mediaType?: AgentCreateMentionMediaType;
   mimeType?: string;

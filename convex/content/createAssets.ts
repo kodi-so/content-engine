@@ -16,13 +16,6 @@ const referenceAssetValidator = v.object({
   description: v.optional(v.string()),
 });
 
-type CreateReferenceAsset = {
-  url: string;
-  mimeType: string;
-  alias?: string;
-  description?: string;
-};
-
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
   return identity.subject;

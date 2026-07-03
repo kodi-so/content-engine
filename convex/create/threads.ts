@@ -78,6 +78,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function storageIdFromUrl(url: string): Id<"_storage"> | null {
+  const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
+  return match?.[1] ? match[1] as Id<"_storage"> : null;
+}
+
+async function deleteThreadUploadedReferences(
+  ctx: MutationCtx,
+  messages: Doc<"createMessages">[]
+) {
+  const storageIds = new Set<Id<"_storage">>();
+
+  for (const message of messages) {
+    for (const reference of message.referenceMentions ?? []) {
+      if (reference.entityType !== "uploaded_reference") continue;
+      const storageUrl = reference.storageUrl;
+      if (!storageUrl) continue;
+      const storageId = storageIdFromUrl(storageUrl);
+      if (storageId) storageIds.add(storageId);
+    }
+  }
+
+  await Promise.all(
+    [...storageIds].map(async (storageId) => {
+      try {
+        await ctx.storage.delete(storageId);
+      } catch {
+        // Thread attachment cleanup is best-effort; chat deletion should still complete.
+      }
+    })
+  );
+}
+
 function slideshowPromptReviewRequestId(data: unknown): Id<"contentRequests"> | null {
   if (
     !isRecord(data) ||
@@ -261,6 +293,7 @@ export const remove = mutation({
         .collect(),
     ]);
 
+    await deleteThreadUploadedReferences(ctx, messages);
     await Promise.all([
       ...studioRenderRequests.map((request) =>
         ctx.db.patch(request._id, {

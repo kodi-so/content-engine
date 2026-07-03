@@ -26,6 +26,8 @@ export type CreateReferenceAsset = {
   mimeType: string;
   alias?: string;
   description?: string;
+  storageId?: string;
+  temporary?: boolean;
 };
 
 type CreateAssetRunnerScope = {

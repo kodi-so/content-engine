@@ -73,6 +73,20 @@ function mediaTypeFromFile(file: File): AgentCreateMentionMediaType {
   return "file";
 }
 
+function draftReferenceId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `draft:${crypto.randomUUID()}`;
+  }
+
+  return `draft:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function revokeDraftMentionPreview(mention: AgentCreateSelectedMention) {
+  if (mention.draftPreviewUrl?.startsWith("blob:")) {
+    URL.revokeObjectURL(mention.draftPreviewUrl);
+  }
+}
+
 function mentionOptionFromAsset(asset: SelectableLibraryAsset): AgentCreateMentionOption {
   return {
     id: asset.sourceId,
@@ -696,7 +710,7 @@ export function AgentCreateSurface() {
     setSelectedMentions((current) => uniqueMentions([...current, mention]));
   };
 
-  const handlePastedReferenceFiles = async (files: File[]): Promise<RichMentionToken[]> => {
+  const handlePastedReferenceFiles = (files: File[]): RichMentionToken[] => {
     const mediaFiles = files.filter((file) =>
       file.type.startsWith("image/") ||
         file.type.startsWith("video/") ||
@@ -704,52 +718,42 @@ export function AgentCreateSurface() {
     );
     if (!mediaFiles.length) return [];
 
-    setStatusMessage("Uploading pasted reference");
-    try {
-      const uploadedMentions = await Promise.all(
-        mediaFiles.map(async (file, index) => {
-          const uploaded = await uploadReference({
-            base64Data: await fileToDataUrl(file),
-            filename: file.name,
-          });
-          const mediaType = mediaTypeFromFile(file);
-          const label = file.name || `Pasted ${mediaType}`;
-          const token = `@pasted_${mediaType}_${Date.now()}_${index + 1}`;
+    const pastedMentions = mediaFiles.map((file, index) => {
+      const mediaType = mediaTypeFromFile(file);
+      const label = file.name || `Pasted ${mediaType}`;
+      const token = `@pasted_${mediaType}_${Date.now()}_${index + 1}`;
+      const previewUrl = URL.createObjectURL(file);
 
-          return {
-            token,
-            label,
-            entityType: "uploaded_reference" as const,
-            entityId: String(uploaded.storageId),
-            mediaType,
-            mimeType: uploaded.mimeType,
-            previewUrl: uploaded.storageUrl,
-            sourceLabel: "Pasted reference",
-            storageUrl: uploaded.storageUrl,
-            thumbnailUrl: mediaType === "image" ? uploaded.storageUrl : undefined,
-          };
-        })
-      );
+      return {
+        token,
+        label,
+        entityType: "uploaded_reference" as const,
+        entityId: draftReferenceId(),
+        draftFile: file,
+        draftPreviewUrl: previewUrl,
+        mediaType,
+        mimeType: file.type || undefined,
+        previewUrl,
+        sourceLabel: "Pasted reference",
+        thumbnailUrl: mediaType === "image" ? previewUrl : undefined,
+      };
+    });
 
-      setSelectedMentions((current) => uniqueMentions([...current, ...uploadedMentions]));
-      setStatusMessage("");
+    setSelectedMentions((current) => uniqueMentions([...current, ...pastedMentions]));
+    setStatusMessage("");
 
-      return uploadedMentions.map((mention) => ({
-        token: mention.token,
-        asset: {
-          id: mention.entityId,
-          title: mention.label,
-          storageUrl: mention.previewUrl,
-          thumbnailUrl: mention.thumbnailUrl,
-          mimeType: mention.mimeType,
-          mediaKind: mention.mediaType,
-        },
-        meta: [mention.token, mention.sourceLabel].filter(Boolean).join(" · "),
-      }));
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Unable to upload pasted reference");
-      return [];
-    }
+    return pastedMentions.map((mention) => ({
+      token: mention.token,
+      asset: {
+        id: mention.entityId,
+        title: mention.label,
+        storageUrl: mention.previewUrl,
+        thumbnailUrl: mention.thumbnailUrl,
+        mimeType: mention.mimeType,
+        mediaKind: mention.mediaType,
+      },
+      meta: [mention.token, mention.sourceLabel].filter(Boolean).join(" · "),
+    }));
   };
 
   useEffect(() => {
@@ -760,31 +764,68 @@ export function AgentCreateSurface() {
 
   const handlePromptChange = (nextPrompt: string) => {
     setPrompt(nextPrompt);
-    setSelectedMentions((current) =>
-      current.filter((mention) => nextPrompt.includes(mention.token))
+    setSelectedMentions((current) => {
+      const nextMentions = current.filter((mention) => nextPrompt.includes(mention.token));
+      current
+        .filter((mention) => !nextMentions.includes(mention))
+        .forEach(revokeDraftMentionPreview);
+      return nextMentions;
+    });
+  };
+
+  const uploadDraftMentionsForSubmit = async (
+    mentions: AgentCreateSelectedMention[]
+  ): Promise<AgentCreateSelectedMention[]> => {
+    if (!mentions.some((mention) => mention.draftFile)) return mentions;
+
+    setStatusMessage("Uploading pasted references");
+    const uploadedMentions = await Promise.all(
+      mentions.map(async (mention) => {
+        if (!mention.draftFile) return mention;
+
+        const uploaded = await uploadReference({
+          base64Data: await fileToDataUrl(mention.draftFile),
+          filename: mention.label,
+        });
+        const uploadedMention: AgentCreateSelectedMention = {
+          ...mention,
+          entityId: String(uploaded.storageId),
+          draftFile: undefined,
+          draftPreviewUrl: undefined,
+          mimeType: uploaded.mimeType,
+          previewUrl: uploaded.storageUrl,
+          storageUrl: uploaded.storageUrl,
+          thumbnailUrl: mention.mediaType === "image" ? uploaded.storageUrl : undefined,
+        };
+        return uploadedMention;
+      })
     );
+    mentions.forEach(revokeDraftMentionPreview);
+    return uploadedMentions;
   };
 
   const submitMessage = async () => {
     const content = prompt.trim();
     if (!content || isSubmitting) return;
     const activeMentions = selectedMentions.filter((mention) => content.includes(mention.token));
-    const submitMentions = activeMentions.map(backendReferenceMention);
     const now = Date.now();
     const localMessageId = `pending:${now}`;
 
     setIsSubmitting(true);
     setStatusMessage("");
-    setPendingAgentTurn({
-      localMessageId,
-      ...(activeThreadId ? { threadId: activeThreadId } : {}),
-      content,
-      createdAt: now,
-      referenceMentions: activeMentions,
-    });
-    setPrompt("");
-    setSelectedMentions([]);
     try {
+      const uploadedMentions = await uploadDraftMentionsForSubmit(activeMentions);
+      const submitMentions = uploadedMentions.map(backendReferenceMention);
+      setPendingAgentTurn({
+        localMessageId,
+        ...(activeThreadId ? { threadId: activeThreadId } : {}),
+        content,
+        createdAt: now,
+        referenceMentions: uploadedMentions,
+      });
+      setPrompt("");
+      setSelectedMentions([]);
+      setStatusMessage("");
       const result = await submitAgentMessage({
         ...(activeThreadId ? { threadId: activeThreadId } : workspaceArgs),
         checkpointMode,
@@ -830,7 +871,10 @@ export function AgentCreateSurface() {
   const startEmptyThread = async () => {
     setStatusMessage("");
     setPrompt("");
-    setSelectedMentions([]);
+    setSelectedMentions((current) => {
+      current.forEach(revokeDraftMentionPreview);
+      return [];
+    });
     setPendingAgentTurn(null);
     setConfirmingDeleteThreadId(null);
     setEditingThreadId(null);

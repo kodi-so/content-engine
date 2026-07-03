@@ -13,14 +13,14 @@ export function AssetThumbnail({
   className = "",
   mediaClassName = "",
   onAspectRatio,
-  videoPlayIndicator = "corner",
+  videoPlayIndicator = "center",
 }: {
   asset: AssetPreviewItem;
   audioControls?: boolean;
   className?: string;
   mediaClassName?: string;
   onAspectRatio?: (aspectRatio: string) => void;
-  videoPlayIndicator?: "corner" | "centerCompact";
+  videoPlayIndicator?: "corner" | "center" | "centerCompact";
 }) {
   const [failed, setFailed] = useState(false);
   const source = mediaSource(asset);
@@ -81,11 +81,13 @@ export function AssetThumbnail({
           className={
             videoPlayIndicator === "centerCompact"
               ? "absolute left-1/2 top-1/2 grid size-4 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white shadow-[0_4px_10px_rgb(15_23_42_/_0.18)]"
-              : "absolute bottom-2 right-2 grid size-7 place-items-center rounded-full bg-black/55 text-white shadow-[0_8px_18px_rgb(15_23_42_/_0.22)]"
+              : videoPlayIndicator === "corner"
+                ? "absolute bottom-2 right-2 grid size-7 place-items-center rounded-full bg-black/55 text-white shadow-[0_8px_18px_rgb(15_23_42_/_0.22)]"
+                : "absolute left-1/2 top-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white shadow-[0_8px_18px_rgb(15_23_42_/_0.22)]"
           }
         >
           <Play
-            size={videoPlayIndicator === "centerCompact" ? 8 : 13}
+            size={videoPlayIndicator === "centerCompact" ? 8 : 14}
             fill="currentColor"
           />
         </span>

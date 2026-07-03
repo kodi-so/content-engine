@@ -751,18 +751,27 @@ export function localReferenceFilesFromConfig(
   const references = value.flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const record = item as Record<string, unknown>;
-    const storageUrl = record.storageUrl ?? record.url;
+    const storageUrl = record.storageUrl ?? record.url ?? record.previewUrl;
     if (typeof storageUrl !== "string" || !storageUrl.trim()) return [];
+    const file =
+      typeof File !== "undefined" && record.file instanceof File
+        ? record.file
+        : undefined;
 
     return [{
       id: typeof record.id === "string" && record.id.trim() ? record.id.trim() : storageUrl,
       storageUrl,
+      previewUrl: typeof record.previewUrl === "string" ? record.previewUrl : undefined,
       title: typeof record.title === "string" ? record.title : "Reference file",
       mimeType: typeof record.mimeType === "string" ? record.mimeType : undefined,
       kind: typeof record.kind === "string" ? record.kind : fallbackKind,
       alias: typeof record.alias === "string" ? record.alias : undefined,
       source: typeof record.source === "string" ? record.source : undefined,
       sourceId: typeof record.sourceId === "string" ? record.sourceId : undefined,
+      storageId: typeof record.storageId === "string" ? record.storageId : undefined,
+      isDraft: record.isDraft === true,
+      temporary: record.temporary === true,
+      file,
     }];
   });
 

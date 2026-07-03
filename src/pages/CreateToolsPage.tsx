@@ -187,6 +187,7 @@ export function CreateToolsPage() {
   }, [selectedCreateProvider, mode]);
 
   const handleModeChange = (nextMode: CreateMode) => {
+    revokeDraftReferencesInConfig(generationConfig);
     setMode(nextMode);
     setModel("");
     setGenerationConfig(defaultCreateGenerationConfig(nextMode));
@@ -218,7 +219,9 @@ export function CreateToolsPage() {
     handleReferenceUpload,
     localFileFieldMeta,
     removeReferenceUpload,
+    revokeDraftReferencesInConfig,
     updateReferenceAlias,
+    uploadDraftReferencesForSubmit,
   } = useCreateReferenceFiles({
     createNodeType,
     generationConfig,
@@ -360,28 +363,31 @@ export function CreateToolsPage() {
     );
 
     try {
+      const submitGenerationConfig = isCreateGenerationMode(mode)
+        ? (await uploadDraftReferencesForSubmit(generationConfig)).config
+        : generationConfig;
       const referenceImages = referenceAssetsFromConfig(
-        generationConfig,
+        submitGenerationConfig,
         "localReferenceImages",
         "image"
       );
       const startFrameImages = referenceAssetsFromConfig(
-        generationConfig,
+        submitGenerationConfig,
         "localStartFrameImages",
         "image"
       );
       const endFrameImages = referenceAssetsFromConfig(
-        generationConfig,
+        submitGenerationConfig,
         "localEndFrameImages",
         "image"
       );
       const referenceVideos = referenceAssetsFromConfig(
-        generationConfig,
+        submitGenerationConfig,
         "localReferenceVideos",
         "video"
       );
       const voiceReferenceAudios = referenceAssetsFromConfig(
-        generationConfig,
+        submitGenerationConfig,
         "localReferenceAudios",
         "audio"
       );
@@ -400,7 +406,7 @@ export function CreateToolsPage() {
       const audioReferenceAudios =
         generationOperationId === "audio_voice_clone" ? voiceReferenceAudios : [];
       const visibleGenerationConfig = visibleConfigValues(
-        generationConfig,
+        submitGenerationConfig,
         generationFields.map((field) => field.key)
       );
 
@@ -456,12 +462,12 @@ export function CreateToolsPage() {
         if (mode === "video") {
           const startFrameUrl = startFrameImages[0]?.url;
           const endFrameUrl = endFrameImages[0]?.url;
-          if (generationConfig.startEndFrameMode === true && startFrameUrl) {
+          if (submitGenerationConfig.startEndFrameMode === true && startFrameUrl) {
             providerInput.start_frame_url = startFrameUrl;
             providerInput.start_image_url = startFrameUrl;
             providerInput.first_frame_url = startFrameUrl;
           }
-          if (generationConfig.startEndFrameMode === true && endFrameUrl) {
+          if (submitGenerationConfig.startEndFrameMode === true && endFrameUrl) {
             providerInput.end_frame_url = endFrameUrl;
             providerInput.end_image_url = endFrameUrl;
             providerInput.last_frame_url = endFrameUrl;

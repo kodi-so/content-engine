@@ -40,6 +40,8 @@ export function referenceAssetsFromConfig(
     url: reference.storageUrl,
     mimeType: reference.mimeType ?? "application/octet-stream",
     description: reference.title,
+    temporary: reference.temporary === true,
+    storageId: reference.storageId,
   }));
 }
 

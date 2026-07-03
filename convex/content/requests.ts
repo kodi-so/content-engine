@@ -163,6 +163,8 @@ const createReferenceAssetValidator = v.object({
   mimeType: v.string(),
   alias: v.optional(v.string()),
   description: v.optional(v.string()),
+  storageId: v.optional(v.string()),
+  temporary: v.optional(v.boolean()),
 });
 
 type CreateGenerationMode = "image" | "video" | "audio" | "lipsync" | "slideshow";
@@ -188,6 +190,47 @@ type SlideshowDebugPromptReviewItem = {
   prompt: string;
   textBlocks: string[];
 };
+
+function storageIdFromUrl(url: string): Id<"_storage"> | null {
+  const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
+  return match?.[1] ? match[1] as Id<"_storage"> : null;
+}
+
+function temporaryReferenceStorageIds(request: Doc<"contentRequests">) {
+  const generation = request.generation as CreateGenerationPayload | undefined;
+  const references = [
+    ...(generation?.referenceImages ?? []),
+    ...(generation?.referenceVideos ?? []),
+    ...(generation?.voiceReferenceAudios ?? []),
+  ];
+  const storageIds = new Set<Id<"_storage">>();
+
+  for (const reference of references) {
+    if (reference.temporary !== true) continue;
+    const storageId = reference.storageId
+      ? reference.storageId as Id<"_storage">
+      : storageIdFromUrl(reference.url);
+    if (storageId) storageIds.add(storageId);
+  }
+
+  return [...storageIds];
+}
+
+async function deleteTemporaryReferenceStorage(
+  ctx: { storage: { delete: (storageId: Id<"_storage">) => Promise<void> } },
+  request: Doc<"contentRequests">
+) {
+  const storageIds = temporaryReferenceStorageIds(request);
+  await Promise.all(
+    storageIds.map(async (storageId) => {
+      try {
+        await ctx.storage.delete(storageId);
+      } catch {
+        // Temporary references are best-effort cleanup; generation status should still settle.
+      }
+    })
+  );
+}
 
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -499,6 +542,7 @@ export const discard = mutation({
 
     await deleteArtifactsForRequest(ctx, { requestId: args.id, userId: request.userId });
     await deleteSlideshowsForRequest(ctx, { requestId: args.id, userId: request.userId });
+    await deleteTemporaryReferenceStorage(ctx, request);
     await ctx.db.patch(args.id, {
       status: "discarded",
       updatedAt: Date.now(),
@@ -608,6 +652,7 @@ export const transition = internalMutation({
       args.status === "failed" ||
       args.status === "discarded"
     ) {
+      await deleteTemporaryReferenceStorage(ctx, current);
       await ctx.scheduler.runAfter(0, internal.create.agent.continueAfterAsyncResult, {
         contentRequestId: args.requestId,
       });

@@ -12,12 +12,17 @@ import { createLocalFileFieldMeta } from "./createPageHelpers";
 
 type LocalReferenceFile = {
   alias: string;
+  file?: File;
   id: string;
+  isDraft?: boolean;
   kind: string;
   mimeType?: string;
+  previewUrl?: string;
   source?: string;
   sourceId?: string;
+  storageId?: string;
   storageUrl: string;
+  temporary?: boolean;
   title: string;
 };
 
@@ -29,6 +34,28 @@ type UploadReference = (args: {
   storageId: unknown;
   storageUrl: string;
 }>;
+
+const DRAFT_REFERENCE_SOURCE = "draft_upload";
+
+function createDraftReferenceId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `draft:${crypto.randomUUID()}`;
+  }
+
+  return `draft:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function createDraftPreviewUrl(file: File) {
+  return URL.createObjectURL(file);
+}
+
+function revokeDraftReference(file: { source?: string; storageUrl?: string; previewUrl?: string }) {
+  if (file.source !== DRAFT_REFERENCE_SOURCE) return;
+  const url = file.previewUrl ?? file.storageUrl;
+  if (url?.startsWith("blob:")) {
+    URL.revokeObjectURL(url);
+  }
+}
 
 export function useCreateReferenceFiles(args: {
   createNodeType: WorkflowNodeType;
@@ -63,9 +90,9 @@ export function useCreateReferenceFiles(args: {
       : options.multiple === false
         ? 1
         : files.length;
-    const filesToUpload = files.slice(0, remainingSlots);
+    const filesToAdd = files.slice(0, remainingSlots);
 
-    if (!filesToUpload.length) {
+    if (!filesToAdd.length) {
       args.setStatus(
         options.maxCount
           ? `This field allows up to ${options.maxCount} file${options.maxCount === 1 ? "" : "s"}.`
@@ -74,51 +101,46 @@ export function useCreateReferenceFiles(args: {
       return [];
     }
 
-    args.setIsUploadingReference(true);
-    args.setStatus("Uploading references");
-    try {
-      const uploaded = await Promise.all(
-        filesToUpload.map(async (file) => {
-          const stored = await args.uploadReference({
-            base64Data: await fileToDataUrl(file),
-            filename: file.name,
-          });
-          return {
-            id: String(stored.storageId),
-            storageUrl: stored.storageUrl,
-            mimeType: stored.mimeType,
-            title: file.name,
-            kind,
-          };
-        })
-      );
-      let uploadedWithAliases: LocalReferenceFile[] = assignReferenceAliases(uploaded, kind);
-      args.setGenerationConfig((current) => ({
-        ...current,
-        [configKey]: (() => {
-          const nextFiles = assignReferenceAliases(
-            [
-              ...(options.multiple === false
-                ? []
-                : localReferenceFilesFromConfig(current, configKey, kind)),
-              ...uploaded,
-            ],
-            kind
-          );
-          uploadedWithAliases = nextFiles.filter((file) =>
-            uploaded.some((uploadedFile) => uploadedFile.id === file.id)
-          );
-          return nextFiles;
-        })(),
-      }));
-      args.setStatus("");
-      return uploadedWithAliases;
-    } catch (error) {
-      args.setStatus(error instanceof Error ? error.message : "Reference upload failed");
-      return [];
-    } finally {
-      args.setIsUploadingReference(false);
-    }
+    const draftFiles = filesToAdd.map((file) => {
+      const previewUrl = createDraftPreviewUrl(file);
+      return {
+        id: createDraftReferenceId(),
+        storageUrl: previewUrl,
+        previewUrl,
+        mimeType: file.type || undefined,
+        title: file.name || `Pasted ${kind}`,
+        kind,
+        file,
+        source: DRAFT_REFERENCE_SOURCE,
+        isDraft: true,
+      };
+    });
+
+    let draftFilesWithAliases: LocalReferenceFile[] = assignReferenceAliases(draftFiles, kind);
+    args.setGenerationConfig((current) => ({
+      ...current,
+      [configKey]: (() => {
+        const replacedFiles = options.multiple === false
+          ? localReferenceFilesFromConfig(current, configKey, kind)
+          : [];
+        replacedFiles.forEach(revokeDraftReference);
+        const nextFiles = assignReferenceAliases(
+          [
+            ...(options.multiple === false
+              ? []
+              : localReferenceFilesFromConfig(current, configKey, kind)),
+            ...draftFiles,
+          ],
+          kind
+        );
+        draftFilesWithAliases = nextFiles.filter((file) =>
+          draftFiles.some((draftFile) => draftFile.id === file.id)
+        );
+        return nextFiles;
+      })(),
+    }));
+    args.setStatus("");
+    return draftFilesWithAliases;
   };
 
   const removeReferenceUpload = (
@@ -128,9 +150,11 @@ export function useCreateReferenceFiles(args: {
   ) => {
     args.setGenerationConfig((current) => ({
       ...current,
-      [configKey]: localReferenceFilesFromConfig(current, configKey, kind).filter(
-        (file) => file.id !== fileId
-      ),
+      [configKey]: localReferenceFilesFromConfig(current, configKey, kind).filter((file) => {
+        const shouldRemove = file.id === fileId;
+        if (shouldRemove) revokeDraftReference(file);
+        return !shouldRemove;
+      }),
     }));
   };
 
@@ -203,11 +227,89 @@ export function useCreateReferenceFiles(args: {
     });
   };
 
+  const uploadDraftReferencesForSubmit = async (config: Record<string, unknown>) => {
+    const referenceFields: Array<{ key: string; kind: LocalReferenceFileKind }> = [
+      { key: "localReferenceImages", kind: "image" },
+      { key: "localStartFrameImages", kind: "image" },
+      { key: "localEndFrameImages", kind: "image" },
+      { key: "localReferenceVideos", kind: "video" },
+      { key: "localReferenceAudios", kind: "audio" },
+    ];
+    const nextConfig: Record<string, unknown> = { ...config };
+    const temporaryStorageUrls: string[] = [];
+    const draftReferences = referenceFields.flatMap(({ key, kind }) =>
+      localReferenceFilesFromConfig(config, key, kind)
+        .filter((file) => file.source === DRAFT_REFERENCE_SOURCE && file.file)
+        .map((file) => ({ key, kind, file }))
+    );
+
+    if (!draftReferences.length) {
+      return { config: nextConfig, temporaryStorageUrls };
+    }
+
+    args.setIsUploadingReference(true);
+    args.setStatus("Uploading temporary references");
+    try {
+      const uploadedById = new Map<string, LocalReferenceFile>();
+      await Promise.all(
+        draftReferences.map(async ({ file }) => {
+          if (!file.file) return;
+          const stored = await args.uploadReference({
+            base64Data: await fileToDataUrl(file.file),
+            filename: file.title,
+          });
+          const uploaded = {
+            ...file,
+            id: String(stored.storageId),
+            storageId: String(stored.storageId),
+            storageUrl: stored.storageUrl,
+            previewUrl: stored.storageUrl,
+            mimeType: stored.mimeType,
+            file: undefined,
+            isDraft: false,
+            temporary: true,
+          };
+          temporaryStorageUrls.push(stored.storageUrl);
+          uploadedById.set(file.id, uploaded);
+        })
+      );
+
+      for (const { key, kind } of referenceFields) {
+        const files = localReferenceFilesFromConfig(config, key, kind);
+        if (!files.length) continue;
+        nextConfig[key] = assignReferenceAliases(
+          files.map((file) => uploadedById.get(file.id) ?? file),
+          kind
+        );
+      }
+
+      return { config: nextConfig, temporaryStorageUrls };
+    } finally {
+      args.setIsUploadingReference(false);
+    }
+  };
+
+  const revokeDraftReferencesInConfig = (config: Record<string, unknown>) => {
+    const referenceFields: Array<{ key: string; kind: LocalReferenceFileKind }> = [
+      { key: "localReferenceImages", kind: "image" },
+      { key: "localStartFrameImages", kind: "image" },
+      { key: "localEndFrameImages", kind: "image" },
+      { key: "localReferenceVideos", kind: "video" },
+      { key: "localReferenceAudios", kind: "audio" },
+    ];
+
+    for (const { key, kind } of referenceFields) {
+      localReferenceFilesFromConfig(config, key, kind).forEach(revokeDraftReference);
+    }
+  };
+
   return {
     handleLibraryReferenceSelect,
     handleReferenceUpload,
     localFileFieldMeta,
     removeReferenceUpload,
+    revokeDraftReferencesInConfig,
     updateReferenceAlias,
+    uploadDraftReferencesForSubmit,
   };
 }
