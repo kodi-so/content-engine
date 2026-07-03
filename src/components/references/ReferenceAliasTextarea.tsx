@@ -86,9 +86,11 @@ export function ReferenceAliasTextarea({
         {required ? " *" : ""}
       </span>
       <RichMentionTextarea
+        assetForOption={assetForOption}
         className={`${textareaClassName ?? ""} whitespace-pre-wrap break-words`}
         emptyHint={emptyMentionHint}
         getReplacement={(option) => option.alias}
+        metaForOption={(option) => [option.alias, option.kind].filter(Boolean).join(" · ")}
         onChange={onChange}
         optionKey={(option) => option.alias}
         optionMatchesQuery={optionMatchesQuery}

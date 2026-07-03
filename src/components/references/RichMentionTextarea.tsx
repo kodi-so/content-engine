@@ -1,3 +1,27 @@
+import { ContentEditable } from "@lexical/react/LexicalContentEditable";
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getNodeByKey,
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isNodeSelection,
+  $isRangeSelection,
+  $isTextNode,
+  DecoratorNode,
+  type LexicalNode,
+  type NodeKey,
+  type SerializedLexicalNode,
+  type Spread,
+  type TextNode,
+} from "lexical";
 import {
   useEffect,
   useMemo,
@@ -21,18 +45,23 @@ type RichMentionToken = {
   token: string;
 };
 
-type DisplayMention = RichMentionToken & {
-  displayIndex: number;
-  externalEnd: number;
-  externalStart: number;
+type ActiveEditorMention = {
+  mention: ActiveMention;
+  nodeKey: string;
+  range: {
+    end: number;
+    start: number;
+  };
 };
 
 type RichMentionTextareaProps<Option> = {
+  assetForOption: (option: Option) => AssetPreviewItem;
   className?: string;
   disabled?: boolean;
   emptyHint?: ReactNode;
   getReplacement: (option: Option, activeMention: ActiveMention) => string;
   menuClassName?: string;
+  metaForOption?: (option: Option) => string | undefined;
   onChange: (value: string) => void;
   onSelect?: (selection: MentionAutocompleteSelection<Option>) => void;
   onSubmitShortcut?: () => void;
@@ -52,128 +81,453 @@ type RichMentionTextareaProps<Option> = {
   value: string;
 };
 
-const ATOMIC_MENTION_CHARACTER = "\uFFFC";
-const controlKeys = new Set(["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"]);
+type SerializedAssetMentionNode = Spread<
+  {
+    asset: AssetPreviewItem;
+    meta?: string;
+    token: string;
+  },
+  SerializedLexicalNode
+>;
 
-function buildDisplayModel(value: string, tokens: RichMentionToken[]) {
+const controlKeys = new Set(["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"]);
+const defaultMenuClassName =
+  "absolute left-3 top-[calc(100%-0.5rem)] z-30 grid max-h-56 w-[min(24rem,calc(100%-1.5rem))] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-[var(--shadow-lg)]";
+
+class AssetMentionNode extends DecoratorNode<ReactNode> {
+  __asset: AssetPreviewItem;
+  __meta?: string;
+  __token: string;
+
+  static getType() {
+    return "asset-mention";
+  }
+
+  static clone(node: AssetMentionNode) {
+    return new AssetMentionNode(node.__token, node.__asset, node.__meta, node.__key);
+  }
+
+  static importJSON(serializedNode: SerializedAssetMentionNode) {
+    return $createAssetMentionNode({
+      asset: serializedNode.asset,
+      meta: serializedNode.meta,
+      token: serializedNode.token,
+    });
+  }
+
+  constructor(token: string, asset: AssetPreviewItem, meta?: string, key?: NodeKey) {
+    super(key);
+    this.__asset = asset;
+    this.__meta = meta;
+    this.__token = token;
+  }
+
+  createDOM() {
+    const span = document.createElement("span");
+    span.className = "inline-flex align-baseline";
+    return span;
+  }
+
+  updateDOM() {
+    return false;
+  }
+
+  decorate() {
+    return (
+      <AssetMentionChip
+        asset={this.__asset}
+        meta={this.__meta}
+        size="inline"
+      />
+    );
+  }
+
+  exportJSON(): SerializedAssetMentionNode {
+    return {
+      ...super.exportJSON(),
+      asset: this.__asset,
+      meta: this.__meta,
+      token: this.__token,
+    };
+  }
+
+  getTextContent() {
+    return this.__token;
+  }
+
+  isInline() {
+    return true;
+  }
+}
+
+function $createAssetMentionNode({
+  asset,
+  meta,
+  token,
+}: RichMentionToken) {
+  return new AssetMentionNode(token, asset, meta);
+}
+
+function $isAssetMentionNode(node: LexicalNode | null | undefined): node is AssetMentionNode {
+  return node instanceof AssetMentionNode;
+}
+
+function richMentionTokenSignature(tokens: RichMentionToken[]) {
+  return tokens
+    .map((token) => `${token.token}:${token.asset.id ?? ""}:${token.asset.title}`)
+    .join("|");
+}
+
+function nodesForText(value: string, tokens: RichMentionToken[]) {
   const tokenMap = new Map(
     tokens
       .filter((token) => token.token)
       .map((token) => [token.token, token])
   );
   const sortedTokens = Array.from(tokenMap.keys()).sort((a, b) => b.length - a.length);
-  const mentionsByDisplayIndex = new Map<number, DisplayMention>();
-  let displayValue = "";
-  let externalCursor = 0;
-
-  while (externalCursor < value.length) {
-    const matchingToken = sortedTokens.find((token) => value.startsWith(token, externalCursor));
-
-    if (matchingToken) {
-      const token = tokenMap.get(matchingToken);
-      if (token) {
-        mentionsByDisplayIndex.set(displayValue.length, {
-          ...token,
-          displayIndex: displayValue.length,
-          externalStart: externalCursor,
-          externalEnd: externalCursor + matchingToken.length,
-        });
-        displayValue += ATOMIC_MENTION_CHARACTER;
-        externalCursor += matchingToken.length;
-        continue;
-      }
-    }
-
-    displayValue += value[externalCursor];
-    externalCursor += 1;
-  }
-
-  const displayToExternalOffset = (displayOffset: number) => {
-    let externalOffset = 0;
-
-    for (let displayIndex = 0; displayIndex < displayOffset; displayIndex += 1) {
-      const mention = mentionsByDisplayIndex.get(displayIndex);
-      externalOffset += mention ? mention.token.length : 1;
-    }
-
-    return externalOffset;
-  };
-
-  const expandDisplayValue = (nextDisplayValue: string) => {
-    let nextValue = "";
-
-    for (let displayIndex = 0; displayIndex < nextDisplayValue.length; displayIndex += 1) {
-      const character = nextDisplayValue[displayIndex];
-
-      if (character === ATOMIC_MENTION_CHARACTER) {
-        const mention = mentionsByDisplayIndex.get(displayIndex);
-        if (mention) nextValue += mention.token;
-      } else {
-        nextValue += character;
-      }
-    }
-
-    return nextValue;
-  };
-
-  return {
-    displayToExternalOffset,
-    displayValue,
-    expandDisplayValue,
-    mentionsByDisplayIndex,
-  };
-}
-
-function renderDisplaySegments(
-  displayValue: string,
-  mentionsByDisplayIndex: Map<number, DisplayMention>
-) {
-  const segments: Array<
-    | { key: string; text: string; type: "text" }
-    | { key: string; token: DisplayMention; type: "mention" }
-  > = [];
+  const nodes: LexicalNode[] = [];
+  let cursor = 0;
   let textBuffer = "";
-  let textStart = 0;
 
-  const flushText = (nextIndex: number) => {
+  const flushText = () => {
     if (!textBuffer) return;
-    segments.push({
-      key: `text-${textStart}`,
-      text: textBuffer,
-      type: "text",
-    });
+    nodes.push($createTextNode(textBuffer));
     textBuffer = "";
-    textStart = nextIndex;
   };
 
-  for (let index = 0; index < displayValue.length; index += 1) {
-    const mention = mentionsByDisplayIndex.get(index);
+  while (cursor < value.length) {
+    const matchingToken = sortedTokens.find((token) => value.startsWith(token, cursor));
+    const token = matchingToken ? tokenMap.get(matchingToken) : undefined;
 
-    if (mention) {
-      flushText(index);
-      segments.push({
-        key: `mention-${index}-${mention.token}`,
-        token: mention,
-        type: "mention",
-      });
-      textStart = index + 1;
+    if (token) {
+      flushText();
+      nodes.push($createAssetMentionNode(token));
+      cursor += token.token.length;
       continue;
     }
 
-    if (!textBuffer) textStart = index;
-    textBuffer += displayValue[index];
+    textBuffer += value[cursor];
+    cursor += 1;
   }
 
-  flushText(displayValue.length);
-  return segments;
+  flushText();
+  return nodes;
 }
 
-export function RichMentionTextarea<Option>({
+function hydrateEditorValue(value: string, tokens: RichMentionToken[]) {
+  const root = $getRoot();
+  root.clear();
+
+  const lines = value.split("\n");
+  lines.forEach((line) => {
+    const paragraph = $createParagraphNode();
+    const nodes = nodesForText(line, tokens);
+
+    if (nodes.length) {
+      paragraph.append(...nodes);
+    }
+    root.append(paragraph);
+  });
+}
+
+function serializedEditorText() {
+  return $getRoot().getTextContent();
+}
+
+function textSizeForNode(node: LexicalNode) {
+  return node.getTextContent().length;
+}
+
+function textOffsetForPoint(nodeKey: string, pointOffset: number) {
+  let offset = 0;
+  let found = false;
+
+  const visit = (node: LexicalNode) => {
+    if (found) return;
+
+    if (node.getKey() === nodeKey) {
+      if ($isTextNode(node)) {
+        offset += pointOffset;
+      } else if ($isElementNode(node)) {
+        const children = node.getChildren().slice(0, pointOffset);
+        offset += children.reduce((sum, child) => sum + textSizeForNode(child), 0);
+      }
+      found = true;
+      return;
+    }
+
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(visit);
+      return;
+    }
+
+    offset += textSizeForNode(node);
+  };
+
+  visit($getRoot());
+  return offset;
+}
+
+function collapsedSelectionTextOffset() {
+  const selection = $getSelection();
+
+  if ($isRangeSelection(selection) && selection.isCollapsed()) {
+    return textOffsetForPoint(selection.anchor.getNode().getKey(), selection.anchor.offset);
+  }
+
+  if ($isNodeSelection(selection)) {
+    const selectedNode = selection.getNodes()[0];
+    const parent = selectedNode?.getParent();
+    if (parent) {
+      return textOffsetForPoint(parent.getKey(), selectedNode.getIndexWithinParent() + 1);
+    }
+  }
+
+  return null;
+}
+
+function selectTextOffset(targetOffset: number) {
+  const root = $getRoot();
+  let remainingOffset = Math.max(0, targetOffset);
+
+  const selectWithinNode = (node: LexicalNode): boolean => {
+    if ($isTextNode(node)) {
+      const textLength = node.getTextContent().length;
+      if (remainingOffset <= textLength) {
+        node.select(remainingOffset, remainingOffset);
+        return true;
+      }
+
+      remainingOffset -= textLength;
+      return false;
+    }
+
+    if ($isAssetMentionNode(node)) {
+      const parent = node.getParent();
+      if (!parent) return false;
+
+      const textLength = node.getTextContent().length;
+      if (remainingOffset <= textLength) {
+        const index = node.getIndexWithinParent();
+        parent.select(index + 1, index + 1);
+        return true;
+      }
+
+      remainingOffset -= textLength;
+      return false;
+    }
+
+    if (!$isElementNode(node)) return false;
+
+    const children = node.getChildren();
+    if (!children.length || remainingOffset === 0) {
+      node.select(0, 0);
+      return true;
+    }
+
+    for (const child of children) {
+      if (selectWithinNode(child)) return true;
+    }
+
+    node.select(children.length, children.length);
+    return true;
+  };
+
+  selectWithinNode(root);
+}
+
+function activeMentionFromEditorSelection(triggerChars: string[]): ActiveEditorMention | null {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null;
+
+  const anchor = selection.anchor;
+  const anchorNode = anchor.getNode();
+  if (!$isTextNode(anchorNode)) return null;
+
+  const text = anchorNode.getTextContent();
+  const mention = mentionAtCursor(text, anchor.offset, triggerChars);
+  if (!mention) return null;
+
+  const globalCursor = textOffsetForPoint(anchorNode.getKey(), anchor.offset);
+
+  return {
+    mention,
+    nodeKey: anchorNode.getKey(),
+    range: {
+      start: globalCursor - (mention.end - mention.start),
+      end: globalCursor,
+    },
+  };
+}
+
+function replaceTextRangeWithMention({
+  activeMention,
+  asset,
+  meta,
+  replacement,
+}: {
+  activeMention: ActiveEditorMention;
+  asset: AssetPreviewItem;
+  meta?: string;
+  replacement: string;
+}) {
+  const node = $getNodeByKey(activeMention.nodeKey);
+  if (!$isTextNode(node)) return;
+
+  const text = node.getTextContent();
+  const before = text.slice(0, activeMention.mention.start);
+  const after = text.slice(activeMention.mention.end);
+  const needsSpace = Boolean(after && !/^\s/.test(after));
+  const newNodes: LexicalNode[] = [];
+  let selectionNode: TextNode | null = null;
+  let selectionOffset = 0;
+
+  if (before) newNodes.push($createTextNode(before));
+  newNodes.push($createAssetMentionNode({ asset, meta, token: replacement }));
+
+  if (needsSpace || !after) {
+    const spacerNode = $createTextNode(" ");
+    newNodes.push(spacerNode);
+    selectionNode = spacerNode;
+    selectionOffset = 1;
+  }
+
+  const afterNode = after ? $createTextNode(after) : null;
+  if (afterNode) {
+    newNodes.push(afterNode);
+    if (!selectionNode) {
+      selectionNode = afterNode;
+      selectionOffset = 0;
+    }
+  }
+
+  const firstNode = newNodes[0];
+  node.replace(firstNode);
+  let previousNode = firstNode;
+  newNodes.slice(1).forEach((nextNode) => {
+    previousNode.insertAfter(nextNode);
+    previousNode = nextNode;
+  });
+
+  selectionNode?.select(selectionOffset, selectionOffset);
+}
+
+function moveSelectionAcrossMention(direction: "left" | "right") {
+  const selection = $getSelection();
+
+  if ($isNodeSelection(selection)) {
+    const mentionNode = selection.getNodes().find($isAssetMentionNode);
+    if (!mentionNode) return false;
+
+    if (direction === "left") {
+      mentionNode.selectPrevious();
+    } else {
+      mentionNode.selectNext(0, 0);
+    }
+    return true;
+  }
+
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+
+  const anchor = selection.anchor;
+  const anchorNode = anchor.getNode();
+
+  if ($isTextNode(anchorNode)) {
+    const text = anchorNode.getTextContent();
+
+    if (direction === "left") {
+      const previousNode = anchorNode.getPreviousSibling();
+      const isSpacerAfterMention = anchor.offset === 1 && text.startsWith(" ");
+      if ($isAssetMentionNode(previousNode) && (anchor.offset === 0 || isSpacerAfterMention)) {
+        previousNode.selectPrevious();
+        return true;
+      }
+    }
+
+    if (direction === "right") {
+      const nextNode = anchorNode.getNextSibling();
+      if ($isAssetMentionNode(nextNode) && anchor.offset === text.length) {
+        nextNode.selectNext(0, 0);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  if ($isElementNode(anchorNode)) {
+    const children = anchorNode.getChildren();
+
+    if (direction === "left") {
+      const previousNode = children[anchor.offset - 1];
+      if ($isAssetMentionNode(previousNode)) {
+        previousNode.selectPrevious();
+        return true;
+      }
+    }
+
+    if (direction === "right") {
+      const nextNode = children[anchor.offset];
+      if ($isAssetMentionNode(nextNode)) {
+        nextNode.selectNext(0, 0);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function EditableStatePlugin({ disabled }: { disabled: boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => editor.setEditable(!disabled), [disabled, editor]);
+  return null;
+}
+
+function SyncExternalValuePlugin({
+  lastSerializedRef,
+  tokens,
+  value,
+}: {
+  lastSerializedRef: React.MutableRefObject<string>;
+  tokens: RichMentionToken[];
+  value: string;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const tokenSignature = useMemo(() => richMentionTokenSignature(tokens), [tokens]);
+  const lastTokenSignatureRef = useRef(tokenSignature);
+
+  useEffect(() => {
+    if (
+      value === lastSerializedRef.current &&
+      tokenSignature === lastTokenSignatureRef.current
+    ) {
+      return;
+    }
+
+    lastSerializedRef.current = value;
+    lastTokenSignatureRef.current = tokenSignature;
+    editor.update(() => {
+      const selectionOffset = collapsedSelectionTextOffset();
+      hydrateEditorValue(value, tokens);
+      if (selectionOffset !== null) {
+        selectTextOffset(selectionOffset);
+      }
+    });
+  }, [editor, lastSerializedRef, tokenSignature, tokens, value]);
+
+  return null;
+}
+
+function RichMentionEditorInner<Option>({
+  assetForOption,
   className = "",
   disabled = false,
   emptyHint,
   getReplacement,
-  menuClassName = "absolute left-3 top-[calc(100%-0.5rem)] z-30 grid max-h-56 w-[min(24rem,calc(100%-1.5rem))] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-[var(--shadow-lg)]",
+  menuClassName = defaultMenuClassName,
+  metaForOption,
   onChange,
   onSelect,
   onSubmitShortcut,
@@ -187,25 +541,14 @@ export function RichMentionTextarea<Option>({
   triggerChars = ["@"],
   value,
 }: RichMentionTextareaProps<Option>) {
-  const backdropRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const pendingSelectionRef = useRef<number | null>(null);
-  const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
+  const [editor] = useLexicalComposerContext();
+  const lastSerializedRef = useRef(value);
+  const [activeMention, setActiveMention] = useState<ActiveEditorMention | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [focused, setFocused] = useState(false);
-  const displayModel = useMemo(() => buildDisplayModel(value, tokens), [tokens, value]);
-  const displaySegments = useMemo(
-    () =>
-      renderDisplaySegments(
-        displayModel.displayValue,
-        displayModel.mentionsByDisplayIndex
-      ),
-    [displayModel]
-  );
   const filteredOptions = useMemo(
     () =>
       activeMention
-        ? options.filter((option) => optionMatchesQuery(option, activeMention.query))
+        ? options.filter((option) => optionMatchesQuery(option, activeMention.mention.query))
         : [],
     [activeMention, optionMatchesQuery, options]
   );
@@ -213,90 +556,85 @@ export function RichMentionTextarea<Option>({
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [activeMention?.query, filteredOptions.length]);
+  }, [activeMention?.mention.query, filteredOptions.length]);
 
-  useEffect(() => {
-    const pendingSelection = pendingSelectionRef.current;
-    if (pendingSelection === null || !textareaRef.current) return;
-
-    textareaRef.current.setSelectionRange(pendingSelection, pendingSelection);
-    pendingSelectionRef.current = null;
-  }, [displayModel.displayValue]);
+  const refreshMention = () => {
+    editor.getEditorState().read(() => {
+      setActiveMention(activeMentionFromEditorSelection(triggerChars));
+    });
+  };
 
   const closeMention = () => setActiveMention(null);
-
-  const refreshMention = (textarea: HTMLTextAreaElement) => {
-    setActiveMention(
-      mentionAtCursor(displayModel.displayValue, textarea.selectionStart, triggerChars)
-    );
-  };
-
-  const syncScroll = () => {
-    const textarea = textareaRef.current;
-    const backdrop = backdropRef.current;
-    if (!textarea || !backdrop) return;
-
-    backdrop.scrollTop = textarea.scrollTop;
-    backdrop.scrollLeft = textarea.scrollLeft;
-  };
 
   const insertOption = (option: Option) => {
     if (!activeMention) return;
 
-    const replacement = getReplacement(option, activeMention);
-    const externalStart = displayModel.displayToExternalOffset(activeMention.start);
-    const externalEnd = displayModel.displayToExternalOffset(activeMention.end);
-    const nextCharacter = displayModel.displayValue.slice(activeMention.end, activeMention.end + 1);
-    const needsSpace = nextCharacter && !/\s/.test(nextCharacter);
-    const nextValue =
-      value.slice(0, externalStart) +
-      replacement +
-      (needsSpace ? " " : "") +
-      value.slice(externalEnd);
-    const nextDisplayCursor = activeMention.start + 1 + (needsSpace ? 1 : 0);
+    const replacement = getReplacement(option, activeMention.mention);
+    const asset = assetForOption(option);
+    const meta = metaForOption?.(option);
+    let nextSerializedValue = value;
 
-    pendingSelectionRef.current = nextDisplayCursor;
-    onChange(nextValue);
+    editor.update(() => {
+      replaceTextRangeWithMention({
+        activeMention,
+        asset,
+        meta,
+        replacement,
+      });
+      nextSerializedValue = serializedEditorText();
+      lastSerializedRef.current = nextSerializedValue;
+    });
+
+    onChange(nextSerializedValue);
     onSelect?.({
       option,
       replacement,
-      trigger: activeMention.trigger,
-      range: {
-        start: externalStart,
-        end: externalEnd,
-      },
+      trigger: activeMention.mention.trigger,
+      range: activeMention.range,
     });
     closeMention();
-
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(nextDisplayCursor, nextDisplayCursor);
-    });
+    editor.focus();
   };
 
-  const handleChange = (nextDisplayValue: string) => {
-    onChange(displayModel.expandDisplayValue(nextDisplayValue));
-  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !event.shiftKey) {
+      let movedAcrossMention = false;
+      editor.update(() => {
+        movedAcrossMention = moveSelectionAcrossMention(
+          event.key === "ArrowLeft" ? "left" : "right"
+        );
+      });
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (movedAcrossMention) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMention();
+        return;
+      }
+    }
+
     if (showMenu) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
+        event.stopPropagation();
         setActiveIndex((index) => (index + 1) % filteredOptions.length);
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopPropagation();
         setActiveIndex((index) => (index === 0 ? filteredOptions.length - 1 : index - 1));
         return;
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
+        event.stopPropagation();
         insertOption(filteredOptions[activeIndex]);
         return;
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         closeMention();
         return;
       }
@@ -304,65 +642,58 @@ export function RichMentionTextarea<Option>({
 
     if (event.key === "Enter" && !event.shiftKey && onSubmitShortcut) {
       event.preventDefault();
+      event.stopPropagation();
       onSubmitShortcut();
     }
   };
 
-  const handleKeyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {
     if (controlKeys.has(event.key)) return;
-    refreshMention(event.currentTarget);
+    refreshMention();
   };
 
   return (
     <div className="relative min-w-0">
-      <div
-        aria-hidden="true"
-        className={`${className} pointer-events-none absolute inset-0 overflow-hidden text-[var(--color-ink)]`}
-        ref={backdropRef}
-      >
-        {displaySegments.length ? (
-          displaySegments.map((segment) =>
-            segment.type === "text" ? (
-              <span key={segment.key}>{segment.text}</span>
-            ) : (
-              <AssetMentionChip
-                asset={segment.token.asset}
-                key={segment.key}
-                meta={segment.token.meta}
-                size="inline"
-              />
-            )
-          )
-        ) : placeholder && !focused ? (
-          <span className="text-[var(--color-ink-muted)]">{placeholder}</span>
-        ) : null}
-      </div>
-      <textarea
-        aria-label={placeholder}
-        className={`${className} relative z-10 caret-[var(--color-ink)]`}
-        disabled={disabled}
-        onBlur={() => {
-          setFocused(false);
-          window.setTimeout(closeMention, 120);
+      <PlainTextPlugin
+        ErrorBoundary={LexicalErrorBoundary}
+        contentEditable={
+          <ContentEditable
+            aria-label={placeholder}
+            className={className}
+            onBlur={() => window.setTimeout(closeMention, 120)}
+            onClick={refreshMention}
+            onFocus={refreshMention}
+            onKeyDownCapture={handleKeyDown}
+            onKeyUp={handleKeyUp}
+            spellCheck={false}
+          />
+        }
+        placeholder={
+          placeholder ? (
+            <span className="pointer-events-none absolute left-[var(--space-3)] top-[var(--space-2)] text-[0.92rem] leading-[1.45] text-[var(--color-ink-muted)]">
+              {placeholder}
+            </span>
+          ) : null
+        }
+      />
+      <HistoryPlugin />
+      <EditableStatePlugin disabled={disabled} />
+      <SyncExternalValuePlugin
+        lastSerializedRef={lastSerializedRef}
+        tokens={tokens}
+        value={value}
+      />
+      <OnChangePlugin
+        onChange={(editorState) => {
+          editorState.read(() => {
+            const serialized = serializedEditorText();
+            if (serialized === lastSerializedRef.current) return;
+
+            lastSerializedRef.current = serialized;
+            onChange(serialized);
+            setActiveMention(activeMentionFromEditorSelection(triggerChars));
+          });
         }}
-        onChange={(event) => {
-          handleChange(event.target.value);
-          setActiveMention(
-            mentionAtCursor(event.target.value, event.target.selectionStart, triggerChars)
-          );
-        }}
-        onClick={(event) => refreshMention(event.currentTarget)}
-        onFocus={() => setFocused(true)}
-        onKeyDown={handleKeyDown}
-        onKeyUp={handleKeyUp}
-        onScroll={syncScroll}
-        ref={textareaRef}
-        spellCheck={false}
-        style={{
-          backgroundColor: "transparent",
-          color: "transparent",
-        }}
-        value={displayModel.displayValue}
       />
       {showMenu ? (
         <MentionAutocompleteMenu
@@ -385,5 +716,30 @@ export function RichMentionTextarea<Option>({
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function RichMentionTextarea<Option>(props: RichMentionTextareaProps<Option>) {
+  const initialValueRef = useRef(props.value);
+  const initialTokensRef = useRef(props.tokens ?? []);
+  const initialConfig = useMemo(
+    () => ({
+      editorState: () => hydrateEditorValue(initialValueRef.current, initialTokensRef.current),
+      namespace: "RichMentionTextarea",
+      nodes: [AssetMentionNode],
+      onError(error: Error) {
+        throw error;
+      },
+      theme: {
+        paragraph: "m-0",
+      },
+    }),
+    []
+  );
+
+  return (
+    <LexicalComposer initialConfig={initialConfig}>
+      <RichMentionEditorInner {...props} />
+    </LexicalComposer>
   );
 }

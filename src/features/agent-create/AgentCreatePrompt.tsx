@@ -131,10 +131,16 @@ export function AgentCreatePrompt({
       <label className="grid min-w-0 gap-[var(--space-1)]">
         <span className="sr-only">{placeholder}</span>
         <RichMentionTextarea
+          assetForOption={assetForMentionOption}
           className="max-h-[15rem] min-h-[3.35rem] w-full overflow-y-auto whitespace-pre-wrap break-words rounded-[0.9rem] border-0 bg-[var(--color-page-quiet)] px-[var(--space-3)] py-[var(--space-2)] pr-[3.25rem] text-[0.92rem] leading-[1.45] text-[var(--color-ink)] outline-none transition focus:bg-[var(--color-page)] focus:shadow-[0_0_0_2px_oklch(57%_0.14_166_/_0.16)] aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
           disabled={disabled}
           getReplacement={(option) => option.token ?? mentionTokenForLabel(option.label)}
           menuClassName="absolute bottom-[calc(100%+0.55rem)] left-2 z-30 grid max-h-72 w-[min(30rem,calc(100%-1rem))] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-1)] shadow-[var(--shadow-lg)]"
+          metaForOption={(option) =>
+            `${option.sourceLabel ?? formatAgentCreateEntityType(option.entityType)}${
+              option.description ? ` - ${option.description}` : ""
+            }`
+          }
           onChange={onChange}
           onSelect={({ option, range, replacement }) => {
             const mention: AgentCreateSelectedMention = {
