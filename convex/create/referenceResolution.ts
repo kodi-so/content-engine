@@ -4,9 +4,11 @@ import type { MutationCtx } from "../_generated/server";
 type ReferenceMentionInput = {
   token: string;
   label: string;
-  entityType: "creative_asset" | "artifact" | "analysis";
+  entityType: "creative_asset" | "artifact" | "analysis" | "uploaded_reference";
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
+  mimeType?: string;
+  storageUrl?: string;
   instruction?: string;
 };
 
@@ -96,7 +98,8 @@ function referenceMentionsFromInput(input: Record<string, unknown>): ReferenceMe
     if (
       item.entityType !== "creative_asset" &&
       item.entityType !== "artifact" &&
-      item.entityType !== "analysis"
+      item.entityType !== "analysis" &&
+      item.entityType !== "uploaded_reference"
     ) return [];
     if (typeof item.entityId !== "string" || typeof item.token !== "string" || typeof item.label !== "string") {
       return [];
@@ -114,6 +117,8 @@ function referenceMentionsFromInput(input: Record<string, unknown>): ReferenceMe
         item.mediaType === "file"
           ? item.mediaType
           : undefined,
+      mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
+      storageUrl: typeof item.storageUrl === "string" ? item.storageUrl : undefined,
       instruction: typeof item.instruction === "string" ? item.instruction : undefined,
     }];
   });
@@ -210,6 +215,19 @@ export async function resolveToolReferences(
         description: mention.instruction?.trim() || artifact.prompt || artifact.title,
         mimeType,
         url: artifact.storageUrl,
+      });
+      continue;
+    }
+
+    if (mention.entityType === "uploaded_reference") {
+      const storageUrl = mention.storageUrl?.trim();
+      if (!storageUrl) continue;
+      const mediaType = mention.mediaType ?? "file";
+      pushReferenceByMediaType(resolved, mediaType, {
+        alias: cleanAlias(mention),
+        description: mention.instruction?.trim() || mention.label,
+        mimeType: mention.mimeType ?? mimeTypeForMediaType(mediaType),
+        url: storageUrl,
       });
       continue;
     }

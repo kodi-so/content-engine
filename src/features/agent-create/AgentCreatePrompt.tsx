@@ -3,7 +3,10 @@ import { useMemo, useState, type FormEvent } from "react";
 import { AssetListItem } from "../assets/AssetListItem";
 import { AssetPreviewModal } from "../assets/AssetPreviewModal";
 import type { AssetPreviewItem } from "../assets/assetTypes";
-import { RichMentionTextarea } from "../../components/references/RichMentionTextarea";
+import {
+  RichMentionTextarea,
+  type RichMentionToken,
+} from "../../components/references/RichMentionTextarea";
 import type {
   AgentCreateCheckpointMode,
   AgentCreateMentionOption,
@@ -59,6 +62,7 @@ export function AgentCreatePrompt({
   onChange,
   onCheckpointModeChange,
   onMentionSelect,
+  onPasteFiles,
   onStop,
   onSubmit,
   placeholder = "Describe what you want to create",
@@ -76,6 +80,7 @@ export function AgentCreatePrompt({
   onChange: (value: string) => void;
   onCheckpointModeChange?: (mode: AgentCreateCheckpointMode) => void;
   onMentionSelect?: (selection: MentionSelection) => void;
+  onPasteFiles?: (files: File[]) => Promise<RichMentionToken[]> | RichMentionToken[];
   onStop?: () => void;
   onSubmit?: () => void;
   placeholder?: string;
@@ -142,6 +147,7 @@ export function AgentCreatePrompt({
             }`
           }
           onChange={onChange}
+          onPasteFiles={onPasteFiles}
           onSelect={({ option, range, replacement }) => {
             const mention: AgentCreateSelectedMention = {
               token: replacement,

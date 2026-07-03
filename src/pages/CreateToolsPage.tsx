@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Field, LoadingSignal, Page, Select } from "../components/ui";
+import type { RichMentionToken } from "../components/references/RichMentionTextarea";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import { CreateGenerationFields } from "../features/create/CreateGenerationFields";
 import { CreateModeTabs } from "../features/create/CreateModeTabs";
@@ -227,6 +228,48 @@ export function CreateToolsPage() {
     setStatus,
     uploadReference,
   });
+
+  const handlePromptPasteReferenceFiles = async (files: File[]): Promise<RichMentionToken[]> => {
+    const targetField = generationFieldGroups.referenceFields
+      .map((field) => ({ field, meta: localFileFieldMeta(field.key) }))
+      .find(({ meta }) =>
+        meta &&
+        files.some((file) =>
+          meta.kind === "media" ||
+            file.type.startsWith(`${meta.kind}/`)
+        )
+      );
+
+    if (!targetField?.meta) {
+      setStatus("This operation does not have a compatible reference field for pasted media.");
+      return [];
+    }
+
+    const uploaded = await handleReferenceUpload(
+      files,
+      targetField.field.key,
+      targetField.meta.kind,
+      {
+        multiple: targetField.meta.multiple,
+        maxCount: targetField.meta.maxCount,
+      }
+    );
+
+    return uploaded
+      .filter((file) => file.alias)
+      .map((file) => ({
+        token: file.alias,
+        asset: {
+          id: file.id,
+          title: file.title,
+          storageUrl: file.storageUrl,
+          thumbnailUrl: file.kind === "image" ? file.storageUrl : undefined,
+          mimeType: file.mimeType,
+          mediaKind: file.kind,
+        },
+        meta: [file.alias, file.kind].filter(Boolean).join(" · "),
+      }));
+  };
 
   useEffect(() => {
     if (!activeRequestId || activeRequest === undefined) return;
@@ -537,6 +580,7 @@ export function CreateToolsPage() {
               onLibraryReferenceSelect={handleLibraryReferenceSelect}
               onLocalReferenceFileUpload={handleReferenceUpload}
               onNonGenerationPromptChange={setPrompt}
+              onPromptPasteReferenceFiles={handlePromptPasteReferenceFiles}
               onRemoveLocalReferenceFile={removeReferenceUpload}
               onSelectedModelChange={setModel}
               onUpdateLocalReferenceAlias={updateReferenceAlias}

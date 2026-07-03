@@ -4,6 +4,7 @@ import {
 } from "../../components/create/CreateGenerationConfigField";
 import type { SelectableLibraryAsset } from "../assets/assetTypes";
 import type { ReferenceMentionOption } from "../../components/references/ReferenceAliasTextarea";
+import type { RichMentionToken } from "../../components/references/RichMentionTextarea";
 import { TextArea } from "../../components/ui";
 import { WorkflowSelect, type WorkflowSelectOption } from "../../components/workflow/WorkflowSelect";
 import type { ConfigField, LocalReferenceFileKind } from "../../lib/workflow/workflowConfigFields";
@@ -32,6 +33,7 @@ export function CreateGenerationFields({
   onLibraryReferenceSelect,
   onLocalReferenceFileUpload,
   onNonGenerationPromptChange,
+  onPromptPasteReferenceFiles,
   onRemoveLocalReferenceFile,
   onSelectedModelChange,
   onUpdateLocalReferenceAlias,
@@ -66,6 +68,7 @@ export function CreateGenerationFields({
     options?: { multiple?: boolean; maxCount?: number }
   ) => void;
   onNonGenerationPromptChange: (value: string) => void;
+  onPromptPasteReferenceFiles?: (files: File[]) => Promise<RichMentionToken[]> | RichMentionToken[];
   onRemoveLocalReferenceFile: (configKey: string, fileId: string, kind: LocalReferenceFileKind) => void;
   onSelectedModelChange: (model: string) => void;
   onUpdateLocalReferenceAlias: (
@@ -106,6 +109,7 @@ export function CreateGenerationFields({
               onConfigChange={onConfigChange}
               onLibraryReferenceSelect={onLibraryReferenceSelect}
               onLocalReferenceFileUpload={onLocalReferenceFileUpload}
+              onPromptPasteReferenceFiles={onPromptPasteReferenceFiles}
               onRemoveLocalReferenceFile={onRemoveLocalReferenceFile}
               onUpdateLocalReferenceAlias={onUpdateLocalReferenceAlias}
               referenceMentionOptions={referenceMentionOptions}
@@ -160,6 +164,7 @@ export function CreateGenerationFields({
                 onConfigChange={onConfigChange}
                 onLibraryReferenceSelect={onLibraryReferenceSelect}
                 onLocalReferenceFileUpload={onLocalReferenceFileUpload}
+                onPromptPasteReferenceFiles={onPromptPasteReferenceFiles}
                 onRemoveLocalReferenceFile={onRemoveLocalReferenceFile}
                 onUpdateLocalReferenceAlias={onUpdateLocalReferenceAlias}
                 referenceMentionOptions={referenceMentionOptions}
@@ -186,6 +191,7 @@ export function CreateGenerationFields({
                 onConfigChange={onConfigChange}
                 onLibraryReferenceSelect={onLibraryReferenceSelect}
                 onLocalReferenceFileUpload={onLocalReferenceFileUpload}
+                onPromptPasteReferenceFiles={onPromptPasteReferenceFiles}
                 onRemoveLocalReferenceFile={onRemoveLocalReferenceFile}
                 onUpdateLocalReferenceAlias={onUpdateLocalReferenceAlias}
                 referenceMentionOptions={referenceMentionOptions}

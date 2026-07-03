@@ -300,10 +300,13 @@ export const createReferenceMentionValidator = v.object({
   entityType: v.union(
     v.literal("creative_asset"),
     v.literal("artifact"),
-    v.literal("analysis")
+    v.literal("analysis"),
+    v.literal("uploaded_reference")
   ),
   entityId: v.string(),
   mediaType: v.optional(creativeAssetMediaTypeValidator),
+  mimeType: v.optional(v.string()),
+  storageUrl: v.optional(v.string()),
   instruction: v.optional(v.string()),
 });
 

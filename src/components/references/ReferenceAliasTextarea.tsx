@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import { AssetListItem } from "../../features/assets/AssetListItem";
 import { AssetPreviewModal } from "../../features/assets/AssetPreviewModal";
 import type { AssetPreviewItem } from "../../features/assets/assetTypes";
-import { RichMentionTextarea } from "./RichMentionTextarea";
+import {
+  RichMentionTextarea,
+  type RichMentionToken,
+} from "./RichMentionTextarea";
 
 export type ReferenceMentionOption = {
   alias: string;
@@ -17,6 +20,7 @@ type ReferenceAliasTextareaProps = {
   helperText?: string;
   label: string;
   onChange: (value: string) => void;
+  onPasteFiles?: (files: File[]) => Promise<RichMentionToken[]> | RichMentionToken[];
   options?: ReferenceMentionOption[];
   required?: boolean;
   textareaClassName?: string;
@@ -59,6 +63,7 @@ export function ReferenceAliasTextarea({
   helperText,
   label,
   onChange,
+  onPasteFiles,
   options = [],
   required = false,
   textareaClassName,
@@ -92,6 +97,7 @@ export function ReferenceAliasTextarea({
         getReplacement={(option) => option.alias}
         metaForOption={(option) => [option.alias, option.kind].filter(Boolean).join(" · ")}
         onChange={onChange}
+        onPasteFiles={onPasteFiles}
         optionKey={(option) => option.alias}
         optionMatchesQuery={optionMatchesQuery}
         options={mentionOptions}

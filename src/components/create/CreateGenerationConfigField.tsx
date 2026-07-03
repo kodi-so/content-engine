@@ -13,6 +13,7 @@ import {
   ReferenceAliasTextarea,
   type ReferenceMentionOption,
 } from "../references/ReferenceAliasTextarea";
+import type { RichMentionToken } from "../references/RichMentionTextarea";
 import { WorkflowSelect } from "../workflow/WorkflowSelect";
 
 export type CreateLocalFileFieldMeta = {
@@ -30,6 +31,7 @@ type CreateGenerationConfigFieldProps = {
   localFileFieldMeta: (fieldKey: string) => CreateLocalFileFieldMeta | null;
   libraryAssets?: SelectableLibraryAsset[];
   onConfigChange: (key: string, value: unknown) => void;
+  onPromptPasteReferenceFiles?: (files: File[]) => Promise<RichMentionToken[]> | RichMentionToken[];
   onLibraryReferenceSelect: (
     assets: SelectableLibraryAsset[],
     configKey: string,
@@ -80,6 +82,7 @@ export function CreateGenerationConfigField({
   localFileFieldMeta,
   libraryAssets,
   onConfigChange,
+  onPromptPasteReferenceFiles,
   onLibraryReferenceSelect,
   onLocalReferenceFileUpload,
   onRemoveLocalReferenceFile,
@@ -169,6 +172,7 @@ export function CreateGenerationConfigField({
             coerceConfigFieldValue(field, nextValue, value)
           )
         }
+        onPasteFiles={onPromptPasteReferenceFiles}
         options={referenceMentionOptions}
         required={field.required}
         textareaClassName={field.key === "prompt" || field.key === "text" ? promptTextareaClass : textareaClass}

@@ -196,6 +196,21 @@ function normalizeOptionalText(value: string | undefined) {
   return trimmed || undefined;
 }
 
+function referenceMentionKey(mention: CreateReferenceMention) {
+  return `${mention.entityType}:${mention.entityId}:${mention.token}`;
+}
+
+function uniqueCreateReferenceMentions(mentions: CreateReferenceMention[]) {
+  const seen = new Set<string>();
+
+  return mentions.filter((mention) => {
+    const key = referenceMentionKey(mention);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function contentRequestIdFromToolOutput(output: unknown): Id<"contentRequests"> | null {
   if (!isRecord(output) || typeof output.contentRequestId !== "string") return null;
   return output.contentRequestId as Id<"contentRequests">;
@@ -328,7 +343,7 @@ function messageForModel(message: CreateMessageForModel): ModelMessage {
         "",
         "Referenced assets in this message:",
         ...message.referenceMentions.map((reference) =>
-          `- ${reference.token}: ${reference.label} (${reference.entityType}:${reference.entityId}${reference.mediaType ? `, ${reference.mediaType}` : ""}${reference.instruction ? `, instruction: ${reference.instruction}` : ""})`
+          `- ${reference.token}: ${reference.label} (${reference.entityType}:${reference.entityId}${reference.mediaType ? `, ${reference.mediaType}` : ""}${reference.storageUrl ? `, url: ${reference.storageUrl}` : ""}${reference.instruction ? `, instruction: ${reference.instruction}` : ""})`
         ),
       ].join("\n")
     : "";
@@ -1143,9 +1158,12 @@ export const decideAgentTurn = internalAction({
       });
       if (!context) return;
 
+      const threadReferenceMentions = uniqueCreateReferenceMentions(
+        context.messages.flatMap((message) => message.referenceMentions ?? [])
+      );
       const effectiveBrief = buildEffectiveBrief({
         content: context.userMessage.content,
-        currentMentions: context.userMessage.referenceMentions,
+        currentMentions: threadReferenceMentions,
       });
       diagnosticContext = {
         ...diagnosticContext,
@@ -1154,6 +1172,7 @@ export const decideAgentTurn = internalAction({
         userMessageKind: context.userMessage.kind,
         userMessageLength: context.userMessage.content.length,
         effectiveBriefPreview: compactLogValue(effectiveBrief.content, 2400),
+        currentMessageReferenceMentionCount: context.userMessage.referenceMentions?.length ?? 0,
         referenceMentionCount: effectiveBrief.referenceMentions?.length ?? 0,
         contextMessageCount: context.messages.length,
       };

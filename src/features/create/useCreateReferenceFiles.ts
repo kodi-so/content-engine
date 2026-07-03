@@ -10,6 +10,17 @@ import type { ImageModelUiContract } from "../../lib/workflow/workflowModelCatal
 import type { WorkflowNodeType } from "../../lib/workflow/workflowGraph";
 import { createLocalFileFieldMeta } from "./createPageHelpers";
 
+type LocalReferenceFile = {
+  alias: string;
+  id: string;
+  kind: string;
+  mimeType?: string;
+  source?: string;
+  sourceId?: string;
+  storageUrl: string;
+  title: string;
+};
+
 type UploadReference = (args: {
   base64Data: string;
   filename: string;
@@ -44,7 +55,7 @@ export function useCreateReferenceFiles(args: {
     kind: LocalReferenceFileKind,
     options: { multiple?: boolean; maxCount?: number } = {}
   ) => {
-    if (!files.length) return;
+    if (!files.length) return [];
 
     const existingFiles = localReferenceFilesFromConfig(args.generationConfig, configKey, kind);
     const remainingSlots = options.maxCount
@@ -58,9 +69,9 @@ export function useCreateReferenceFiles(args: {
       args.setStatus(
         options.maxCount
           ? `This field allows up to ${options.maxCount} file${options.maxCount === 1 ? "" : "s"}.`
-          : "This field only allows one file."
+            : "This field only allows one file."
       );
-      return;
+      return [];
     }
 
     args.setIsUploadingReference(true);
@@ -81,21 +92,30 @@ export function useCreateReferenceFiles(args: {
           };
         })
       );
+      let uploadedWithAliases: LocalReferenceFile[] = assignReferenceAliases(uploaded, kind);
       args.setGenerationConfig((current) => ({
         ...current,
-        [configKey]: assignReferenceAliases(
-          [
-            ...(options.multiple === false
-              ? []
-              : localReferenceFilesFromConfig(current, configKey, kind)),
-            ...uploaded,
-          ],
-          kind
-        ),
+        [configKey]: (() => {
+          const nextFiles = assignReferenceAliases(
+            [
+              ...(options.multiple === false
+                ? []
+                : localReferenceFilesFromConfig(current, configKey, kind)),
+              ...uploaded,
+            ],
+            kind
+          );
+          uploadedWithAliases = nextFiles.filter((file) =>
+            uploaded.some((uploadedFile) => uploadedFile.id === file.id)
+          );
+          return nextFiles;
+        })(),
       }));
       args.setStatus("");
+      return uploadedWithAliases;
     } catch (error) {
       args.setStatus(error instanceof Error ? error.message : "Reference upload failed");
+      return [];
     } finally {
       args.setIsUploadingReference(false);
     }

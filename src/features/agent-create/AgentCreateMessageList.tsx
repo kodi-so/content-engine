@@ -382,8 +382,8 @@ export function AgentCreateMessageList({
                         asset={{
                           id: mention.entityId,
                           title: mention.label,
-                          storageUrl: mention.previewUrl ?? mention.thumbnailUrl,
-                          thumbnailUrl: mention.thumbnailUrl,
+                          storageUrl: mention.previewUrl ?? mention.storageUrl ?? mention.thumbnailUrl,
+                          thumbnailUrl: mention.thumbnailUrl ?? mention.storageUrl,
                           mimeType: mention.mimeType,
                           mediaKind: mention.mediaType,
                         }}

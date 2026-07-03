@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Check,
   PanelLeft,
@@ -10,7 +10,9 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import type { RichMentionToken } from "../../components/references/RichMentionTextarea";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
+import { fileToDataUrl } from "../../lib/browser/dataUrl";
 import {
   assetSourceLongLabels,
   type SelectableLibraryAsset,
@@ -64,6 +66,13 @@ function mediaTypeFromAsset(asset: SelectableLibraryAsset): AgentCreateMentionMe
   return "file";
 }
 
+function mediaTypeFromFile(file: File): AgentCreateMentionMediaType {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  return "file";
+}
+
 function mentionOptionFromAsset(asset: SelectableLibraryAsset): AgentCreateMentionOption {
   return {
     id: asset.sourceId,
@@ -75,6 +84,23 @@ function mentionOptionFromAsset(asset: SelectableLibraryAsset): AgentCreateMenti
     previewUrl: asset.storageUrl,
     sourceLabel: assetSourceLongLabels[asset.source],
     thumbnailUrl: asset.mediaKind === "image" ? asset.storageUrl : undefined,
+  };
+}
+
+function mentionOptionFromReferenceMention(
+  mention: AgentCreateSelectedMention
+): AgentCreateMentionOption {
+  return {
+    id: mention.entityId,
+    label: mention.label,
+    entityType: mention.entityType,
+    description: mention.instruction,
+    mediaType: mention.mediaType,
+    mimeType: mention.mimeType,
+    previewUrl: mention.previewUrl ?? mention.storageUrl,
+    sourceLabel: mention.sourceLabel ?? "Thread reference",
+    thumbnailUrl: mention.thumbnailUrl ?? mention.storageUrl,
+    token: mention.token,
   };
 }
 
@@ -96,6 +122,8 @@ function backendReferenceMention(mention: AgentCreateSelectedMention): AgentCrea
     entityType: mention.entityType,
     entityId: mention.entityId,
     ...(mention.mediaType ? { mediaType: mention.mediaType } : {}),
+    ...(mention.mimeType ? { mimeType: mention.mimeType } : {}),
+    ...(mention.storageUrl ? { storageUrl: mention.storageUrl } : {}),
     ...(mention.instruction ? { instruction: mention.instruction } : {}),
   };
 }
@@ -218,6 +246,7 @@ export function AgentCreateSurface() {
   );
   const threads = useQuery(api.create.threads.list, workspaceArgs);
   const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
+  const uploadReference = useAction(api.storage.files.uploadBase64ImageWithMetadata);
   const createThread = useMutation(api.create.threads.create);
   const deleteThread = useMutation(api.create.threads.remove);
   const renameThread = useMutation(api.create.threads.rename);
@@ -354,9 +383,26 @@ export function AgentCreateSurface() {
     setEditingThreadTitle("");
   }, [chatMenuOpen]);
 
+  const threadUploadedMentionOptions = useMemo(
+    () =>
+      uniqueMentions([
+        ...((messages ?? []).flatMap((message) =>
+          (message.referenceMentions ?? []).filter((mention) =>
+            mention.entityType === "uploaded_reference"
+          ) as AgentCreateSelectedMention[]
+        )),
+        ...(pendingAgentTurn?.referenceMentions ?? []).filter((mention) =>
+          mention.entityType === "uploaded_reference"
+        ),
+      ]).map(mentionOptionFromReferenceMention),
+    [messages, pendingAgentTurn?.referenceMentions]
+  );
   const mentionOptions = useMemo(
-    () => (selectableLibraryAssets ?? []).map(mentionOptionFromAsset),
-    [selectableLibraryAssets]
+    () => [
+      ...threadUploadedMentionOptions,
+      ...(selectableLibraryAssets ?? []).map(mentionOptionFromAsset),
+    ],
+    [selectableLibraryAssets, threadUploadedMentionOptions]
   );
   const mentionOptionById = useMemo(
     () => new Map(mentionOptions.map((option) => [option.id, option])),
@@ -648,6 +694,62 @@ export function AgentCreateSurface() {
   );
   const handleMentionSelect = (mention: AgentCreateSelectedMention) => {
     setSelectedMentions((current) => uniqueMentions([...current, mention]));
+  };
+
+  const handlePastedReferenceFiles = async (files: File[]): Promise<RichMentionToken[]> => {
+    const mediaFiles = files.filter((file) =>
+      file.type.startsWith("image/") ||
+        file.type.startsWith("video/") ||
+        file.type.startsWith("audio/")
+    );
+    if (!mediaFiles.length) return [];
+
+    setStatusMessage("Uploading pasted reference");
+    try {
+      const uploadedMentions = await Promise.all(
+        mediaFiles.map(async (file, index) => {
+          const uploaded = await uploadReference({
+            base64Data: await fileToDataUrl(file),
+            filename: file.name,
+          });
+          const mediaType = mediaTypeFromFile(file);
+          const label = file.name || `Pasted ${mediaType}`;
+          const token = `@pasted_${mediaType}_${Date.now()}_${index + 1}`;
+
+          return {
+            token,
+            label,
+            entityType: "uploaded_reference" as const,
+            entityId: String(uploaded.storageId),
+            mediaType,
+            mimeType: uploaded.mimeType,
+            previewUrl: uploaded.storageUrl,
+            sourceLabel: "Pasted reference",
+            storageUrl: uploaded.storageUrl,
+            thumbnailUrl: mediaType === "image" ? uploaded.storageUrl : undefined,
+          };
+        })
+      );
+
+      setSelectedMentions((current) => uniqueMentions([...current, ...uploadedMentions]));
+      setStatusMessage("");
+
+      return uploadedMentions.map((mention) => ({
+        token: mention.token,
+        asset: {
+          id: mention.entityId,
+          title: mention.label,
+          storageUrl: mention.previewUrl,
+          thumbnailUrl: mention.thumbnailUrl,
+          mimeType: mention.mimeType,
+          mediaKind: mention.mediaType,
+        },
+        meta: [mention.token, mention.sourceLabel].filter(Boolean).join(" · "),
+      }));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to upload pasted reference");
+      return [];
+    }
   };
 
   useEffect(() => {
@@ -1178,6 +1280,7 @@ export function AgentCreateSurface() {
               onChange={handlePromptChange}
               onCheckpointModeChange={setCheckpointMode}
               onMentionSelect={(selection) => handleMentionSelect(selection.mention)}
+              onPasteFiles={handlePastedReferenceFiles}
               onStop={() => {
                 void stopActiveThread();
               }}

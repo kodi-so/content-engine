@@ -26,7 +26,8 @@ export type AgentCreateMessageKind =
 export type AgentCreateMentionEntityType =
   | "creative_asset"
   | "artifact"
-  | "analysis";
+  | "analysis"
+  | "uploaded_reference";
 
 export type AgentCreateMentionMediaType = "image" | "video" | "audio" | "file";
 
@@ -54,6 +55,7 @@ export type AgentCreateSelectedMention = {
   mimeType?: string;
   previewUrl?: string;
   sourceLabel?: string;
+  storageUrl?: string;
   thumbnailUrl?: string;
 };
 

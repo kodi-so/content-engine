@@ -27,6 +27,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -39,7 +40,7 @@ import {
   type MentionAutocompleteSelection,
 } from "./MentionAutocomplete";
 
-type RichMentionToken = {
+export type RichMentionToken = {
   asset: AssetPreviewItem;
   meta?: string;
   token: string;
@@ -63,6 +64,7 @@ type RichMentionTextareaProps<Option> = {
   menuClassName?: string;
   metaForOption?: (option: Option) => string | undefined;
   onChange: (value: string) => void;
+  onPasteFiles?: (files: File[]) => Promise<RichMentionToken[]> | RichMentionToken[];
   onSelect?: (selection: MentionAutocompleteSelection<Option>) => void;
   onSubmitShortcut?: () => void;
   optionKey: (option: Option) => string;
@@ -412,6 +414,30 @@ function replaceTextRangeWithMention({
   selectionNode?.select(selectionOffset, selectionOffset);
 }
 
+function insertMentionTokensAtOffset(tokens: RichMentionToken[], targetOffset: number | null) {
+  if (!tokens.length) return false;
+
+  if (targetOffset !== null) {
+    selectTextOffset(targetOffset);
+  }
+
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) return false;
+
+  const nodes = tokens.flatMap((token): LexicalNode[] => [
+    $createAssetMentionNode(token),
+    $createTextNode(" "),
+  ]);
+  selection.insertNodes(nodes);
+
+  const lastNode = nodes[nodes.length - 1];
+  if ($isTextNode(lastNode)) {
+    lastNode.select(1, 1);
+  }
+
+  return true;
+}
+
 function moveSelectionAcrossMention(direction: "left" | "right") {
   const selection = $getSelection();
 
@@ -529,6 +555,7 @@ function RichMentionEditorInner<Option>({
   menuClassName = defaultMenuClassName,
   metaForOption,
   onChange,
+  onPasteFiles,
   onSelect,
   onSubmitShortcut,
   optionKey,
@@ -594,6 +621,43 @@ function RichMentionEditorInner<Option>({
     });
     closeMention();
     editor.focus();
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!onPasteFiles || disabled) return;
+
+    const files = Array.from(event.clipboardData.files).filter((file) =>
+      file.type.startsWith("image/") ||
+        file.type.startsWith("video/") ||
+        file.type.startsWith("audio/")
+    );
+    if (!files.length) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    closeMention();
+
+    let selectionOffset: number | null = null;
+    editor.getEditorState().read(() => {
+      selectionOffset = collapsedSelectionTextOffset();
+    });
+
+    void Promise.resolve(onPasteFiles(files)).then((mentionTokens) => {
+      if (!mentionTokens.length) return;
+
+      let nextSerializedValue = value;
+      let inserted = false;
+      editor.update(() => {
+        inserted = insertMentionTokensAtOffset(mentionTokens, selectionOffset);
+        if (!inserted) return;
+        nextSerializedValue = serializedEditorText();
+        lastSerializedRef.current = nextSerializedValue;
+      });
+
+      if (!inserted) return;
+      onChange(nextSerializedValue);
+      editor.focus();
+    }).catch(() => undefined);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -665,6 +729,7 @@ function RichMentionEditorInner<Option>({
             onFocus={refreshMention}
             onKeyDownCapture={handleKeyDown}
             onKeyUp={handleKeyUp}
+            onPaste={handlePaste}
             spellCheck={false}
           />
         }

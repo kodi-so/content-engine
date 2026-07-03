@@ -1,4 +1,3 @@
-import type { Doc } from "../_generated/dataModel";
 import type { RequestedRenderingMode } from "../content/planningPrompts";
 import { listCreateToolsForPlanner } from "./tools";
 import type { CreateToolName, CreateToolPlannerDescriptor } from "./tools";
@@ -8,9 +7,11 @@ export type InferredOutputType = "image" | "video" | "audio" | "slideshow" | "an
 export type CreateReferenceMention = {
   token: string;
   label: string;
-  entityType: "creative_asset" | "artifact" | "analysis";
+  entityType: "creative_asset" | "artifact" | "analysis" | "uploaded_reference";
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
+  mimeType?: string;
+  storageUrl?: string;
   instruction?: string;
 };
 
@@ -126,6 +127,15 @@ function analyzeSourceInput(args: PlannedToolInputArgs) {
   }
 
   if (firstReference) {
+    if (firstReference.entityType === "uploaded_reference") {
+      return {
+        sourceType: "url",
+        source: firstReference.storageUrl ?? firstReference.entityId,
+        instructions: args.content,
+        inferredOutputType: args.outputType,
+      };
+    }
+
     return {
       sourceType: firstReference.entityType === "artifact" ? "artifact" : "library_asset",
       source: firstReference.entityId,
