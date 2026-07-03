@@ -20,11 +20,6 @@ type NodeInputBinding =
   | {
       type: "media_asset";
       assetId: string;
-    }
-  | {
-      type: "persona";
-      personaId: string;
-      assetKey?: string;
     };
 
 type WorkflowNode = {
@@ -166,7 +161,6 @@ function nodeForToolCall(toolCall: Doc<"createToolCalls">, index: number): Workf
       config: {
         artifactIds: references.artifactIds,
         creativeAssetIds: references.creativeAssetIds,
-        personaIds: [],
         uploadedMedia: [],
         sourceQuery: brief,
       },

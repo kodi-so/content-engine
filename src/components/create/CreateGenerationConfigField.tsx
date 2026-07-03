@@ -1,7 +1,5 @@
-import {
-  ReferenceAssetField,
-  type SelectableLibraryAsset,
-} from "../library/ReferenceAssetField";
+import { ReferenceAssetField } from "../library/ReferenceAssetField";
+import type { SelectableLibraryAsset } from "../../features/assets/assetTypes";
 import {
   coerceConfigFieldValue,
   configFieldValue,

@@ -8,9 +8,7 @@
  * @module
  */
 
-import type * as accounts_brands from "../accounts/brands.js";
 import type * as accounts_creativeAssets from "../accounts/creativeAssets.js";
-import type * as accounts_personas from "../accounts/personas.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as analyze_mediaResolver from "../analyze/mediaResolver.js";
 import type * as analyze_videoAnalysis from "../analyze/videoAnalysis.js";
@@ -36,6 +34,7 @@ import type * as content_slideshows from "../content/slideshows.js";
 import type * as content_types from "../content/types.js";
 import type * as content_videoProjects from "../content/videoProjects.js";
 import type * as create_agent from "../create/agent.js";
+import type * as create_mediaOverlayEditing from "../create/mediaOverlayEditing.js";
 import type * as create_planning from "../create/planning.js";
 import type * as create_referenceDiscovery from "../create/referenceDiscovery.js";
 import type * as create_referenceResolution from "../create/referenceResolution.js";
@@ -49,6 +48,7 @@ import type * as create_tools_registry from "../create/tools/registry.js";
 import type * as create_tools_types from "../create/tools/types.js";
 import type * as create_workflowExport from "../create/workflowExport.js";
 import type * as http from "../http.js";
+import type * as lib_mediaTextOverlays from "../lib/mediaTextOverlays.js";
 import type * as lib_text from "../lib/text.js";
 import type * as library_assets from "../library/assets.js";
 import type * as mcp_apiKeyRecords from "../mcp/apiKeyRecords.js";
@@ -119,9 +119,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  "accounts/brands": typeof accounts_brands;
   "accounts/creativeAssets": typeof accounts_creativeAssets;
-  "accounts/personas": typeof accounts_personas;
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "analyze/mediaResolver": typeof analyze_mediaResolver;
   "analyze/videoAnalysis": typeof analyze_videoAnalysis;
@@ -147,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "content/types": typeof content_types;
   "content/videoProjects": typeof content_videoProjects;
   "create/agent": typeof create_agent;
+  "create/mediaOverlayEditing": typeof create_mediaOverlayEditing;
   "create/planning": typeof create_planning;
   "create/referenceDiscovery": typeof create_referenceDiscovery;
   "create/referenceResolution": typeof create_referenceResolution;
@@ -160,6 +159,7 @@ declare const fullApi: ApiFromModules<{
   "create/tools/types": typeof create_tools_types;
   "create/workflowExport": typeof create_workflowExport;
   http: typeof http;
+  "lib/mediaTextOverlays": typeof lib_mediaTextOverlays;
   "lib/text": typeof lib_text;
   "library/assets": typeof library_assets;
   "mcp/apiKeyRecords": typeof mcp_apiKeyRecords;

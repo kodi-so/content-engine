@@ -4,7 +4,7 @@ import type { MutationCtx } from "../_generated/server";
 type ReferenceMentionInput = {
   token: string;
   label: string;
-  entityType: "creative_asset" | "persona" | "artifact" | "analysis";
+  entityType: "creative_asset" | "artifact" | "analysis";
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
   instruction?: string;
@@ -70,12 +70,6 @@ function recordBelongsToThread(
     : record.userId === thread.userId;
 }
 
-function personaBelongsToThread(thread: Doc<"createThreads">, persona: Doc<"personas">) {
-  return thread.workspaceId
-    ? persona.workspaceId === thread.workspaceId
-    : persona.userId === thread.userId;
-}
-
 function pushReferenceByMediaType(
   references: ResolvedToolReferences,
   mediaType: string,
@@ -102,7 +96,6 @@ function referenceMentionsFromInput(input: Record<string, unknown>): ReferenceMe
     if (
       item.entityType !== "creative_asset" &&
       item.entityType !== "artifact" &&
-      item.entityType !== "persona" &&
       item.entityType !== "analysis"
     ) return [];
     if (typeof item.entityId !== "string" || typeof item.token !== "string" || typeof item.label !== "string") {
@@ -126,27 +119,12 @@ function referenceMentionsFromInput(input: Record<string, unknown>): ReferenceMe
   });
 }
 
-function normalizeMentionId<TableName extends "artifacts" | "creativeAssets" | "personas">(
+function normalizeMentionId<TableName extends "artifacts" | "creativeAssets">(
   ctx: MutationCtx,
   tableName: TableName,
   id: string
 ) {
   return ctx.db.normalizeId(tableName, id);
-}
-
-function personaInstruction(persona: Doc<"personas">, mention?: ReferenceMentionInput) {
-  return [
-    mention?.instruction,
-    persona.identityPrompt,
-    persona.description,
-    persona.usageNotes,
-    persona.visualConstraints?.length
-      ? `Visual constraints: ${persona.visualConstraints.join(", ")}`
-      : undefined,
-  ]
-    .map((value) => value?.trim())
-    .filter(Boolean)
-    .join("\n");
 }
 
 export function artifactMediaKind(artifact: Doc<"artifacts">) {
@@ -236,48 +214,6 @@ export async function resolveToolReferences(
       continue;
     }
 
-    if (mention.entityType === "persona") {
-      const personaId = normalizeMentionId(ctx, "personas", mention.entityId);
-      if (!personaId) continue;
-      const persona = await ctx.db.get(personaId);
-      if (!persona || !personaBelongsToThread(thread, persona)) continue;
-
-      const instruction = personaInstruction(persona, mention);
-      const assetIds = [
-        ...persona.generatedAssetIds,
-        ...persona.sourceAssetIds,
-        ...persona.voiceAssetIds,
-      ];
-      for (const assetId of [...new Set(assetIds.map(String))] as Id<"creativeAssets">[]) {
-        const asset = await ctx.db.get(assetId);
-        if (!asset || !recordBelongsToThread(thread, asset)) continue;
-
-        const metadata = isRecord(asset.metadata) ? asset.metadata : {};
-        const mediaType = mediaTypeFromCreativeAsset(asset);
-        const mimeType = typeof metadata.mimeType === "string"
-          ? metadata.mimeType
-          : mimeTypeForMediaType(mediaType);
-        const assetInstruction = [
-          instruction,
-          asset.usageNotes,
-          asset.description,
-        ]
-          .map((value) => value?.trim())
-          .filter(Boolean)
-          .join("\n");
-
-        resolved.creativeAssetReferences.push({
-          assetId: asset._id,
-          instruction: assetInstruction,
-        });
-        pushReferenceByMediaType(resolved, mediaType, {
-          alias: cleanAlias(mention) ?? persona.name,
-          description: assetInstruction,
-          mimeType,
-          url: asset.storageUrl,
-        });
-      }
-    }
   }
 
   return resolved;

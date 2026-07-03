@@ -97,11 +97,6 @@ export type NodeInputBinding =
   | {
       type: "media_asset";
       assetId: string;
-    }
-  | {
-      type: "persona";
-      personaId: string;
-      assetKey?: string;
     };
 
 export type NodeRetentionMode =

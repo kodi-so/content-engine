@@ -24,7 +24,6 @@ export {
   buildSingleImagePromptWriterPrompt,
 } from "./planningPrompts";
 export type {
-  BrandPromptContext,
   PlannerReference,
   RequestedRenderingMode,
 } from "./planningPrompts";

@@ -1,3 +1,4 @@
+import { referenceBriefFromResult } from "../analyze/referenceBriefModel";
 import type { AgentCreateArtifact, AgentCreateArtifactKind } from "./agentCreateTypes";
 
 type ContentRequestOutput = {
@@ -29,6 +30,9 @@ type ThreadOutputs = {
   analysisJobs?: Array<{
     _id: string;
     errorMessage?: string;
+    result?: unknown;
+    sourcePlatform?: string;
+    sourceType?: string;
     status: string;
     summary?: string;
     title?: string;
@@ -195,6 +199,9 @@ export function buildAgentCreateOutputArtifacts(threadOutputs?: ThreadOutputs): 
       status: job.status === "completed" ? "ready" : job.status === "failed" ? "failed" : "generating",
       title: job.title ?? "Source analysis",
       description: job.summary ?? job.errorMessage ?? statusLabel(job.status),
+      referenceBrief: referenceBriefFromResult(job.result, {
+        summary: job.summary,
+      }),
     });
   }
 

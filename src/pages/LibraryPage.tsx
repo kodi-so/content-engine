@@ -49,7 +49,6 @@ export function LibraryPage() {
     ...workspaceArgs,
     includeDebug: true,
   });
-  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
   const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
   const runs = useQuery(api.workflows.runs.list, workspaceArgs);
   const creativeAssets = useQuery(api.accounts.creativeAssets.list, workspaceArgs);
@@ -64,7 +63,6 @@ export function LibraryPage() {
   const updateArtifactTitle = useMutation(api.artifacts.records.updateTitle);
   const approveImageReplacement = useMutation(api.artifacts.records.approveImageReplacement);
   const [libraryView, setLibraryView] = useState<"assets" | "workflows">("assets");
-  const [brandFilter, setBrandFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -116,28 +114,25 @@ export function LibraryPage() {
 
   const filteredCreateOutputs = useMemo(
     () => createOutputs.filter((output) => {
-      if (brandFilter && output.brandId !== brandFilter) return false;
       if (typeFilter && output.type !== typeFilter) return false;
       return true;
     }),
-    [brandFilter, createOutputs, typeFilter]
+    [createOutputs, typeFilter]
   );
   const filteredSlideshows = useMemo(
     () => savedSlideshows.filter((slideshow) => {
-      if (brandFilter && String(slideshow.brandId ?? "") !== brandFilter) return false;
       if (typeFilter && typeFilter !== "slideshow") return false;
       return true;
     }),
-    [brandFilter, savedSlideshows, typeFilter]
+    [savedSlideshows, typeFilter]
   );
 
   const filteredWorkflowOutputs = useMemo(
     () => workflowOutputs.filter((output) => {
-      if (brandFilter && output.brandId !== brandFilter) return false;
       if (typeFilter && output.type !== typeFilter) return false;
       return true;
     }),
-    [brandFilter, typeFilter, workflowOutputs]
+    [typeFilter, workflowOutputs]
   );
 
   const folders = useMemo(
@@ -279,7 +274,6 @@ export function LibraryPage() {
     try {
       const generated = await generateImage({
         workspaceId: activeWorkspaceId as Id<"workspaces"> | undefined,
-        brandId: editingOutput.brandId as Id<"brands"> | undefined,
         prompt: libraryImageEditPrompt(revisionPrompt),
         provider: imageGenerationDefault.provider,
         aspectRatio: generationAspectRatio(editingOutput),
@@ -390,14 +384,6 @@ export function LibraryPage() {
             </div>
           </div>
           <div className="filter-grid">
-            <Select label="Brand" value={brandFilter} onChange={setBrandFilter}>
-              <option value="">All brands</option>
-              {brands?.map((brand) => (
-                <option key={brand._id} value={brand._id}>
-                  {brand.name}
-                </option>
-              ))}
-            </Select>
             <Select label="Type" value={typeFilter} onChange={setTypeFilter}>
               <option value="">All output types</option>
               {visibleOutputTypes.map((type) => (
@@ -410,7 +396,6 @@ export function LibraryPage() {
               className="secondary-button self-end"
               type="button"
               onClick={() => {
-                setBrandFilter("");
                 setTypeFilter("");
                 clearSelection();
               }}

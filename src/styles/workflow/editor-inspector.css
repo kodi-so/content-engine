@@ -160,12 +160,12 @@
   opacity: 0.45;
 }
 
-.workflow-persona-picker {
+.workflow-option-picker {
   display: grid;
   gap: var(--space-2);
 }
 
-.workflow-persona-picker button {
+.workflow-option-picker button {
   display: grid;
   width: 100%;
   min-width: 0;
@@ -179,29 +179,29 @@
   text-align: left;
 }
 
-.workflow-persona-picker button:hover {
+.workflow-option-picker button:hover {
   border-color: var(--color-border-strong);
 }
 
-.workflow-persona-picker button.selected {
+.workflow-option-picker button.selected {
   border-color: var(--color-primary);
   background: var(--color-primary-soft);
   box-shadow: var(--focus-ring);
 }
 
-.workflow-persona-picker strong,
-.workflow-persona-picker span {
+.workflow-option-picker strong,
+.workflow-option-picker span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.workflow-persona-picker strong {
+.workflow-option-picker strong {
   font-size: 0.84rem;
   font-weight: 700;
   line-height: 1.2;
 }
 
-.workflow-persona-picker span {
+.workflow-option-picker span {
   color: var(--color-ink-muted);
   font-size: 0.72rem;
   line-height: 1.25;

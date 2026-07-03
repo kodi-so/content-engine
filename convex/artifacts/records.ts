@@ -216,7 +216,6 @@ async function reconcileApprovalForArtifact(
 export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     includeDebug: v.optional(v.boolean()),
@@ -262,21 +261,6 @@ export const list = query({
       return artifacts.filter(
         (artifact) =>
           sameOwnershipScope(artifact, request) &&
-          (args.includeDebug || isLibraryArtifact(artifact))
-      );
-    }
-
-    if (args.brandId) {
-      const brand = await ctx.db.get(args.brandId);
-      if (!brand || !(await hasRecordAccess(ctx, brand, userId))) return [];
-
-      const artifacts = await ctx.db
-        .query("artifacts")
-        .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
-        .collect();
-      return artifacts.filter(
-        (artifact) =>
-          sameOwnershipScope(artifact, brand) &&
           (args.includeDebug || isLibraryArtifact(artifact))
       );
     }
@@ -345,7 +329,6 @@ export const getRegenerationContext = internalQuery({
 export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
@@ -365,20 +348,17 @@ export const create = mutation({
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
     const linkedRun = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
     const linkedWorkflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
-    const linkedBrand = args.brandId ? await ctx.db.get(args.brandId) : null;
     const workspace = args.workspaceId ||
       linkedRequest?.workspaceId ||
       linkedRun?.workspaceId ||
-      linkedWorkflow?.workspaceId ||
-      linkedBrand?.workspaceId
+      linkedWorkflow?.workspaceId
       ? await resolveWritableWorkspace(
         ctx,
         userId,
         args.workspaceId ??
           linkedRequest?.workspaceId ??
           linkedRun?.workspaceId ??
-          linkedWorkflow?.workspaceId ??
-          linkedBrand?.workspaceId
+          linkedWorkflow?.workspaceId
       )
       : defaultWorkspace;
 
@@ -398,7 +378,6 @@ export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
@@ -417,13 +396,11 @@ export const createFromRunner = internalMutation({
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
     const linkedRun = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
     const linkedWorkflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
-    const linkedBrand = args.brandId ? await ctx.db.get(args.brandId) : null;
     const workspaceId =
       args.workspaceId ??
       linkedRequest?.workspaceId ??
       linkedRun?.workspaceId ??
-      linkedWorkflow?.workspaceId ??
-      linkedBrand?.workspaceId;
+      linkedWorkflow?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("artifacts", {
       ...args,

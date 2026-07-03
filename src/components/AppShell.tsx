@@ -84,8 +84,8 @@ export function Sidebar() {
   return (
     <>
       <aside className="sidebar">
-        <div className="brand-mark">
-          <ContentEngineMark className="brand-symbol" />
+        <div className="app-mark">
+          <ContentEngineMark className="app-symbol" />
           <span>
             Content Engine
             <small>Agent workspace</small>

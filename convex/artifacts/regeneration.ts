@@ -95,7 +95,6 @@ export const regenerate = action({
           : {};
       const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
-        brandId: artifact.brandId,
         workflowId: artifact.workflowId,
         workflowRunId: artifact.workflowRunId,
         parentArtifactIds: [artifact._id],
@@ -152,7 +151,6 @@ export const regenerate = action({
       const revisedPrompt = rewrite.text.trim() || sourcePrompt;
       const promptArtifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
-        brandId: artifact.brandId,
         workflowId: artifact.workflowId,
         workflowRunId: artifact.workflowRunId,
         parentArtifactIds: [
@@ -202,7 +200,6 @@ export const regenerate = action({
         artifactIds.push(
           await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
-            brandId: artifact.brandId,
             workflowId: artifact.workflowId,
             workflowRunId: artifact.workflowRunId,
             parentArtifactIds: [artifact._id, promptArtifactId],
@@ -226,7 +223,6 @@ export const regenerate = action({
         artifactIds.push(
           await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
-            brandId: artifact.brandId,
             workflowId: artifact.workflowId,
             workflowRunId: artifact.workflowRunId,
             parentArtifactIds: [artifact._id, promptArtifactId],

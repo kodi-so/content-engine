@@ -245,6 +245,7 @@ function createProductionPlanningPolicy() {
     "You are allowed to work iteratively. After any tool result appears in the conversation, decide the next best action from that actual result. If the request is already satisfied, choose kind=\"chat\" and summarize completion instead of calling another tool.",
     "Keep planSteps short and keep each tool prompt focused on what that one tool needs. If detailed scripts, dialogue, shot lists, captions, or narration are useful before media planning, call text.generate for that artifact instead of expanding those details inside the planner JSON.",
     "If downstream media prompts depend on unknown output from an earlier tool, return only the dependency tool call(s) for now. Do not invent dependent media calls in the same response; use the tool result from conversation context to decide the next tool calls.",
+    "When the user supplies a URL and asks to understand, study, analyze, use as inspiration, or adapt it, call analyze.source first. Treat its reference brief as the primary source context for later answers and generation.",
     "If the user already supplied enough concrete beats or states for the media output, you may plan the full media route immediately without a preliminary text.generate step.",
     "Map each semantic production unit to the smallest appropriate tool call. Image tools create individual images/assets. Video tools create one coherent shot or clip. Studio tools sequence, stitch, overlay, transition, and render multi-part videos.",
     "If the user asks for multiple distinct assets, scenes, options, states, products, moments, or story beats, create separate toolCalls with distinct prompts instead of one call with count or one broad prompt.",
@@ -260,6 +261,7 @@ function createProductionPlanningPolicy() {
     "For example, prefer prompts shaped like \"Edit the provided product photo to show the item in a new color while preserving the camera angle and lighting\" or \"Animate the provided character image so the character turns and waves\" over prompts that depend on unstated conversation history.",
     "For multi-state continuity, use prior image outputs deliberately: create the first state image, create later state images with input.usePriorImageOutputs=true when identity continuity matters, then create video clips with input.priorImageOutputIndex pointing at the exact still for that clip.",
     "For multi-clip final videos, call studio.compose after generating or selecting the clips. If the user asks to create a finished video rather than only a Studio draft, call studio.render after studio.compose.",
+    "When the user asks to edit text on an existing generated slideshow, Studio video project, or current media artifact, use mediaOverlay.updateText with concrete overlay add/update/remove/replace operations. Do not regenerate the whole media artifact unless the user asks for new visuals or a full remake.",
     "When a generated clip should use one specific prior image, set input.priorImageOutputIndex to the zero-based prior image index for that clip. Use input.usePriorImageOutputs=true only when all prior images should act as continuity/style references.",
     "For image-to-video, default to Kling through fal unless the user explicitly asks for another video model. Use model=\"fal-ai/kling-video/v3/pro/image-to-video\" when animating image references and model=\"fal-ai/kling-video/v3/pro/text-to-video\" for prompt-only video.",
     "When the requested artifact includes text, decide semantically where that text belongs: use Studio composition for video overlays/captions/lower thirds, slideshow tools for slide text, and image generation only when the artifact itself is a text-bearing graphic such as a poster, flyer, infographic, meme, title card, thumbnail, ad graphic, packaging, or specifically requested visible words.",
@@ -274,6 +276,7 @@ function createAgentSystemPrompt() {
     description: tool.description,
     category: tool.category,
     emitsArtifacts: tool.artifactBehavior.emitsArtifacts,
+    inputFields: tool.inputSchema.kind === "placeholder" ? tool.inputSchema.fields : undefined,
   }));
 
   return [
@@ -283,7 +286,7 @@ function createAgentSystemPrompt() {
     "If the user is just greeting you, brainstorming, asking a question, or clarifying an idea, choose kind=\"chat\" and answer normally.",
     "If the user wants to create, analyze, edit, compose, render, save, export, publish, or convert something into a workflow, choose kind=\"create\" and select the necessary tools.",
     "If the user appears to want creation but the desired output or source is genuinely ambiguous, choose kind=\"clarify\" and ask one concise question.",
-    "Do not ask for brand/platform unless the user makes that relevant.",
+    "Do not ask for platform unless the user makes that relevant.",
     "In Debug Mode the runtime may pause for checkpointable tools before spending generation or render resources. For slideshow.render, the native slideshow pipeline plans the slides and image prompts first, then pauses for review before generating slide images.",
     "For create decisions, write planSteps as plain-English user-visible actions. Do not expose internal tool labels. Example: \"Create an image of an apple.\"",
     "For create decisions, toolCalls is required. It is an ordered list of exact tool invocations you want the runtime to make.",
@@ -449,6 +452,18 @@ function nativeSlideshowToolCalls(
   }];
 }
 
+function toolCallsForOutputType(
+  outputType: Exclude<InferredOutputType, "unknown"> | null,
+  brief: string,
+  requestedToolCalls: CreatePlannedToolCall[]
+) {
+  if (outputType !== "slideshow") return requestedToolCalls;
+  if (requestedToolCalls.some((toolCall) => toolCall.toolName === "mediaOverlay.updateText")) {
+    return requestedToolCalls;
+  }
+  return nativeSlideshowToolCalls(brief, requestedToolCalls);
+}
+
 function planStepsFromDecision(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
@@ -481,9 +496,7 @@ export function normalizeAgentDecision(text: string): AgentDecision {
     const outputType = outputTypeFromDecision(parsed.outputType);
     const brief = stringFromDecision(parsed.brief);
     const requestedToolCalls = toolCallsFromDecision(parsed.toolCalls, brief);
-    const toolCalls = outputType === "slideshow"
-      ? nativeSlideshowToolCalls(brief, requestedToolCalls)
-      : requestedToolCalls;
+    const toolCalls = toolCallsForOutputType(outputType, brief, requestedToolCalls);
     const planSteps = planStepsFromDecision(parsed.planSteps);
     const productionPlan = productionPlanFromDecision(parsed.productionPlan);
     if (!outputType || !toolCalls.length || !brief) {

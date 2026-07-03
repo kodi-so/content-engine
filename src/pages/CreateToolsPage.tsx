@@ -56,13 +56,11 @@ import {
   modelOptionSourcesForNode,
   richModelPickerOptions,
 } from "../lib/workflow/workflowModelPickerOptions";
-import type { BrandId } from "../types";
 
 export function CreateToolsPage() {
   const navigate = useNavigate();
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
   const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
-  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
   const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
   const createWorkflow = useMutation(api.workflows.definitions.create);
   const createGeneration = useMutation(api.content.requests.createGeneration);
@@ -81,7 +79,6 @@ export function CreateToolsPage() {
     "image"
   );
   const selectedCreateProvider = createGenerationDefault?.provider ?? "bulkapis";
-  const [brandId, setBrandId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
@@ -114,7 +111,6 @@ export function CreateToolsPage() {
     activeRequestId ? { contentRequestId: activeRequestId } : "skip"
   );
 
-  const selectedWorkflowBrandId = mode === "workflow" ? brandId : "";
   const selectedModel = model;
   const createNodeType = workflowNodeTypeForCreateMode(mode) ?? "image_generation";
   const selectedGenerationOperation = useMemo(
@@ -321,9 +317,6 @@ export function CreateToolsPage() {
     );
 
     try {
-      const workflowBrandId = selectedWorkflowBrandId
-        ? (selectedWorkflowBrandId as BrandId)
-        : undefined;
       const referenceImages = referenceAssetsFromConfig(
         generationConfig,
         "localReferenceImages",
@@ -371,7 +364,6 @@ export function CreateToolsPage() {
       if (mode === "workflow") {
         const workflowId = await createWorkflow({
           ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-          brandId: workflowBrandId,
           name: name.trim() || draftName(creativeRequest),
           description: `Prompt draft: ${creativeRequest}`,
           trigger: "manual",
@@ -494,8 +486,8 @@ export function CreateToolsPage() {
 
   return (
     <Page
-      title="Tools"
-      description={`Manual creation tools inside ${activeWorkspace?.name ?? "this workspace"}.`}
+      title="Create"
+      description={`Creation tools inside ${activeWorkspace?.name ?? "this workspace"}.`}
     >
       <form className="panel grid gap-[var(--space-5)]" onSubmit={handleSubmit}>
         <div className="section-toolbar">
@@ -518,15 +510,7 @@ export function CreateToolsPage() {
         >
           <section className="grid min-w-0 max-w-[68rem] content-start gap-[var(--space-5)]">
             {mode === "workflow" ? (
-              <div className="grid min-w-0 gap-[var(--space-3)] lg:grid-cols-[minmax(12rem,18rem)_minmax(14rem,1fr)]">
-                <Select label="Brand" value={selectedWorkflowBrandId} onChange={setBrandId}>
-                  <option value="">No brand</option>
-                  {brands?.map((brand) => (
-                    <option key={brand._id} value={brand._id}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </Select>
+              <div className="grid min-w-0 gap-[var(--space-3)] lg:grid-cols-[minmax(14rem,1fr)]">
                 <Field
                   label="Workflow name"
                   value={name}

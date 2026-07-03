@@ -9,7 +9,6 @@ export type LibraryOutput = {
   type: string;
   source: "create" | "workflow" | "creative_asset";
   createdAt: number;
-  brandId?: string;
   workflowId?: string;
   workflowRunId?: string;
   provider?: string;

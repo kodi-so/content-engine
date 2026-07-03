@@ -7,6 +7,7 @@ export type CreateToolCategory =
   | "test"
   | "analysis"
   | "references"
+  | "media"
   | "generation"
   | "slideshow"
   | "studio"
@@ -68,7 +69,6 @@ export type CreateToolExecutionContext = {
   ctx?: ActionCtx;
   userId?: string;
   workspaceId?: Id<"workspaces">;
-  brandId?: Id<"brands">;
   createThreadId?: string;
   createMessageId?: string;
   checkpointMode?: "debug" | "auto";

@@ -47,8 +47,6 @@ Static resources include:
 User-scoped resources include:
 
 - `content-engine://providers/model-catalog`
-- `content-engine://accounts/brands`
-- `content-engine://accounts/personas`
 - `content-engine://accounts/creative-assets`
 
 Resources should never expose provider secrets, OAuth tokens, environment
@@ -102,7 +100,7 @@ Current scope expectations:
 
 1. Read architecture, graph schema, and node catalog resources.
 2. Read relevant prompt knowledge resources for the requested content type.
-3. Read user-scoped brand, persona, creative asset, and model catalog resources.
+3. Read user-scoped creative asset and model catalog resources.
 4. Create or edit workflow graph nodes and edges.
 5. Validate the graph.
 6. Run only when the user explicitly wants execution.

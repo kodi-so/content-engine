@@ -63,6 +63,8 @@ export function referenceMentionOptionsFromConfig(
       return [{
         alias,
         kind,
+        mimeType: reference.mimeType,
+        storageUrl: reference.storageUrl,
         title: reference.title,
       }];
     })

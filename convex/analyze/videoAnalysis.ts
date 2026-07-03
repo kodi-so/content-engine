@@ -38,6 +38,15 @@ import {
   type VideoAnalysisJob,
 } from "./videoAnalysisModel";
 
+function sourceHostForLog(sourceUrl?: string) {
+  if (!sourceUrl) return undefined;
+  try {
+    return new URL(sourceUrl).hostname;
+  } catch {
+    return "invalid-url";
+  }
+}
+
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
   return identity.subject;
@@ -283,12 +292,28 @@ export const executeJob = internalAction({
     });
 
     try {
+      console.info("[analyze.videoAnalysis] execute_job_start", {
+        jobId: args.jobId,
+        sourceType: job.sourceType,
+        sourcePlatform: job.sourcePlatform,
+        sourceHost: sourceHostForLog(job.sourceUrl),
+        hasStorageUrl: Boolean(job.storageUrl),
+        mimeType: job.mimeType,
+        byteLength: job.byteLength,
+        mode: job.mode,
+        model: job.model,
+      });
       const analysis = job.sourceType === "upload"
         ? await analyzeUploadedSource(job, job.storageUrl ?? "")
         : job.sourcePlatform === "youtube"
           ? await analyzeYoutubeUrl(job)
           : await analyzeRemoteUrlSource(job);
       const fallbackTitle = job.fileName ?? job.sourceUrl ?? "Video analysis";
+      console.info("[analyze.videoAnalysis] execute_job_complete", {
+        jobId: args.jobId,
+        title: analysisTitle(analysis.result, fallbackTitle),
+        hasTranscript: Boolean(analysisTranscript(analysis.result)),
+      });
 
       await ctx.runMutation(internal.analyze.videoAnalysis.patchJob, {
         jobId: args.jobId,
@@ -303,6 +328,15 @@ export const executeJob = internalAction({
         completedAt: Date.now(),
       });
     } catch (error) {
+      console.error("[analyze.videoAnalysis] execute_job_failed", {
+        jobId: args.jobId,
+        sourceType: job.sourceType,
+        sourcePlatform: job.sourcePlatform,
+        sourceHost: sourceHostForLog(job.sourceUrl),
+        error: error instanceof Error
+          ? { message: error.message, name: error.name, stack: error.stack }
+          : { message: String(error) },
+      });
       await ctx.runMutation(internal.analyze.videoAnalysis.patchJob, {
         jobId: args.jobId,
         status: "failed",

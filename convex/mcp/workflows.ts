@@ -98,7 +98,6 @@ export const validateGraphForMcp = internalQuery({
 
 export const createBlank = mutation({
   args: {
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
@@ -110,7 +109,6 @@ export const createBlank = mutation({
 
     return await createWorkflow(ctx, {
       userId,
-      brandId: args.brandId,
       socialAccountId: args.socialAccountId,
       name: args.name,
       description: args.description,
@@ -127,7 +125,6 @@ export const createBlank = mutation({
 export const createBlankForMcp = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
@@ -137,7 +134,6 @@ export const createBlankForMcp = internalMutation({
   handler: async (ctx, args) => {
     return await createWorkflow(ctx, {
       userId: args.userId,
-      brandId: args.brandId,
       socialAccountId: args.socialAccountId,
       name: args.name,
       description: args.description,

@@ -2,7 +2,7 @@ import {
   CreateGenerationConfigField,
   type CreateLocalFileFieldMeta,
 } from "../../components/create/CreateGenerationConfigField";
-import type { SelectableLibraryAsset } from "../../components/library/ReferenceAssetField";
+import type { SelectableLibraryAsset } from "../assets/assetTypes";
 import type { ReferenceMentionOption } from "../../components/references/ReferenceAliasTextarea";
 import { TextArea } from "../../components/ui";
 import { WorkflowSelect, type WorkflowSelectOption } from "../../components/workflow/WorkflowSelect";

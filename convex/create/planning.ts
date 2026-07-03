@@ -8,7 +8,7 @@ export type InferredOutputType = "image" | "video" | "audio" | "slideshow" | "an
 export type CreateReferenceMention = {
   token: string;
   label: string;
-  entityType: "creative_asset" | "persona" | "artifact" | "analysis";
+  entityType: "creative_asset" | "artifact" | "analysis";
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
   instruction?: string;
@@ -125,7 +125,7 @@ function analyzeSourceInput(args: PlannedToolInputArgs) {
     };
   }
 
-  if (firstReference && firstReference.entityType !== "persona") {
+  if (firstReference) {
     return {
       sourceType: firstReference.entityType === "artifact" ? "artifact" : "library_asset",
       source: firstReference.entityId,

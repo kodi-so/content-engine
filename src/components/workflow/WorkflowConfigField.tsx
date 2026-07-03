@@ -1,8 +1,6 @@
-import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import {
-  ReferenceAssetField,
-  type SelectableLibraryAsset,
-} from "../library/ReferenceAssetField";
+import type { Doc } from "../../../convex/_generated/dataModel";
+import type { SelectableLibraryAsset } from "../../features/assets/assetTypes";
+import { ReferenceAssetField } from "../library/ReferenceAssetField";
 import type { WorkflowFlowNode } from "../../lib/workflow/workflowCanvasGraph";
 import {
   coerceConfigFieldValue,
@@ -58,8 +56,6 @@ export type WorkflowConfigFieldProps = {
   ) => void;
   selectedImageModelUiContract: ImageModelUiContract | null;
   selectedNode: WorkflowFlowNode;
-  workflowBrandId?: Id<"brands">;
-  workflowPersonas: Doc<"personas">[] | undefined;
   workflowSocialAccounts: Doc<"socialAccounts">[] | undefined;
 };
 
@@ -85,8 +81,6 @@ export function WorkflowConfigField({
   onUpdateLocalReferenceAlias,
   selectedImageModelUiContract,
   selectedNode,
-  workflowBrandId,
-  workflowPersonas,
   workflowSocialAccounts,
 }: WorkflowConfigFieldProps) {
   const value = configFieldValue(field, selectedNode.data.config);
@@ -109,7 +103,7 @@ export function WorkflowConfigField({
     return (
       <div className="workflow-inspector-field">
         <span>{field.label}</span>
-        <div className="workflow-persona-picker">
+        <div className="workflow-option-picker">
           {!workflowSocialAccounts && (
             <small>
               <LoadingSignal label="Loading accounts" showLabel size="sm" />
@@ -138,57 +132,6 @@ export function WorkflowConfigField({
                 <strong>{account.displayName || account.username}</strong>
                 <span>
                   {account.platform.replace(/_/g, " ")} · {account.provider}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {field.description ? <small>{field.description}</small> : null}
-      </div>
-    );
-  }
-
-  if (field.key === "personaIds") {
-    const selectedPersonaIds = Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === "string")
-      : [];
-
-    return (
-      <div className="workflow-inspector-field">
-        <span>{field.label}</span>
-        <div className="workflow-persona-picker">
-          {!workflowBrandId && <small>Select a brand to use personas.</small>}
-          {workflowBrandId && !workflowPersonas && (
-            <small>
-              <LoadingSignal label="Loading personas" showLabel size="sm" />
-            </small>
-          )}
-          {workflowPersonas?.length === 0 && (
-            <small>No personas exist for this workflow brand.</small>
-          )}
-          {workflowPersonas?.map((persona) => {
-            const personaId = String(persona._id);
-            const selected = selectedPersonaIds.includes(personaId);
-            return (
-              <button
-                className={selected ? "selected" : ""}
-                key={persona._id}
-                type="button"
-                onClick={() =>
-                  onConfigChange(
-                    field.key,
-                    selected
-                      ? selectedPersonaIds.filter((id) => id !== personaId)
-                      : [...selectedPersonaIds, personaId]
-                  )
-                }
-              >
-                <strong>{persona.name}</strong>
-                <span>
-                  {persona.personaType.replace(/_/g, " ")} ·{" "}
-                  {persona.sourceAssetIds.length +
-                    persona.generatedAssetIds.length +
-                    persona.voiceAssetIds.length} assets
                 </span>
               </button>
             );

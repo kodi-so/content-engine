@@ -187,17 +187,17 @@ export function AnalyzePage() {
             {sourceMode === "url" ? (
               <label className="grid gap-[var(--space-2)]">
                 <span className="text-[0.78rem] font-[780] uppercase tracking-[0.06em] text-[var(--color-muted)]">
-                  Video URL
+                  Source URL
                 </span>
                 <input
                   className="min-h-[2.85rem] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-[var(--space-3)] text-[0.92rem] text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_oklch(57%_0.14_166_/_0.13)]"
-                  placeholder="Paste a video link"
+                  placeholder="Paste a TikTok, Instagram, Facebook, YouTube, or direct media link"
                   value={url}
                   onChange={(event) => setUrl(event.target.value)}
                 />
                 {socialUrl ? (
                   <span className="text-[0.78rem] leading-[1.45] text-[var(--color-muted)]">
-                    Social links use the media resolver first, then Analyze reads transcript, frames, scenes, and audio cues.
+                    Social links use the media resolver first, then Analyze reads slides, frames, text, transcript, and audio cues.
                   </span>
                 ) : unsupportedUrl ? (
                   <span className="text-[0.78rem] leading-[1.45] text-[var(--color-muted)]">

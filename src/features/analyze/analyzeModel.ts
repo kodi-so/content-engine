@@ -1,4 +1,6 @@
 import type { Doc } from "../../../convex/_generated/dataModel";
+import type { ReferenceBrief } from "./referenceBriefModel";
+export type { ReferenceBrief, ReferenceBriefSourceType } from "./referenceBriefModel";
 
 export type AnalysisJob = Doc<"videoAnalysisJobs">;
 export type AnalysisQuestion = Doc<"videoAnalysisQuestions">;
@@ -12,11 +14,27 @@ export type Scene = {
   creatorPurpose?: string;
 };
 
+export type SlideAnalysis = {
+  index?: number;
+  imageDescription?: string;
+  visibleText?: string[];
+  textLayout?: string;
+  subjects?: string[];
+  visualStyle?: string;
+  creatorPurpose?: string;
+  audioNotes?: string;
+};
+
 export type AnalysisResult = {
   title?: string;
   summary?: string;
   platformRead?: string;
   durationEstimate?: string;
+  referenceBrief?: ReferenceBrief;
+  slideshow?: {
+    slideCount?: number;
+    slides?: SlideAnalysis[];
+  };
   transcript?: {
     text?: string;
     confidenceNotes?: string;

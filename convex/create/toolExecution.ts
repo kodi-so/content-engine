@@ -35,6 +35,7 @@ import {
   buildCreateAgentStudioDraft,
   selectCreateAgentStudioVisualArtifacts,
 } from "./studioComposition";
+import { updateMediaTextOverlaysForToolCall } from "./mediaOverlayEditing";
 import { createStudioRenderRequest } from "./studioRenderRequests";
 import type { CreateToolName } from "./tools";
 import { createWorkflowDraftFromThread } from "./workflowExport";
@@ -2332,6 +2333,24 @@ export async function executeRunnableQueuedTools(
           content: references.length
             ? `Found ${references.length} reusable reference${references.length === 1 ? "" : "s"} in the library for this thread.`
             : "I did not find matching reusable references in the library.",
+          kind: "tool_result",
+        });
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "mediaOverlay.updateText") {
+        const result = await updateMediaTextOverlaysForToolCall(ctx, thread, toolCall.input);
+        const now = Date.now();
+        await ctx.db.patch(toolCall._id, {
+          status: "succeeded",
+          output: result,
+          completedAt: now,
+          updatedAt: now,
+        });
+        await appendAgentMessage(ctx, thread, {
+          content: result.targetKind === "slideshow"
+            ? `Updated ${result.textOverlayCount} text overlay${result.textOverlayCount === 1 ? "" : "s"} on the slideshow.`
+            : `Updated ${result.textOverlayCount} text overlay${result.textOverlayCount === 1 ? "" : "s"} on the Studio video project.`,
           kind: "tool_result",
         });
         executedCount += 1;

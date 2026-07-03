@@ -1,5 +1,12 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import { artifactDurationSeconds, artifactMimeType, isRecord } from "./referenceResolution";
+import {
+  clampNumber,
+  finiteNumber,
+  normalizeMediaTextOverlayBlock,
+  optionalText,
+  type TimedMediaTextOverlayBlock,
+} from "../lib/mediaTextOverlays";
 
 type StudioVideoArtifact = Pick<
   Doc<"artifacts">,
@@ -15,41 +22,6 @@ type StudioAudioArtifact = Pick<
   Doc<"artifacts">,
   "_id" | "storageUrl" | "title" | "data"
 >;
-
-type StudioTextOverlay = {
-  id: string;
-  role: "headline" | "body";
-  text: string;
-  items: string[];
-  emphasis: "primary" | "secondary";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  align: "left" | "center" | "right";
-  fontSize: number;
-  fontWeight: number;
-  color: string;
-  strokeColor: string;
-  strokeWidth: number;
-  backgroundStyle: "none" | "solid";
-  backgroundColor: string;
-  backgroundOpacity: number;
-  startSeconds: number;
-  endSeconds?: number;
-};
-
-function optionalText(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function finiteNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
 
 function textFromOverlayRecord(record: Record<string, unknown>) {
   const text = optionalText(record.text) ??
@@ -116,7 +88,7 @@ function buildTextOverlay(args: {
   text: string;
   total: number;
   totalDurationSeconds: number;
-}): StudioTextOverlay {
+}): TimedMediaTextOverlayBlock {
   const segmentDuration = args.total > 0
     ? args.totalDurationSeconds / args.total
     : args.totalDurationSeconds;
@@ -124,38 +96,40 @@ function buildTextOverlay(args: {
   const defaultEnd = args.index === args.total - 1
     ? args.totalDurationSeconds
     : segmentDuration * (args.index + 1);
-  const startSeconds = clamp(
-    finiteNumber(args.record.startSeconds) ?? finiteNumber(args.record.start) ?? defaultStart,
+  const startSeconds = clampNumber(
+    args.record.startSeconds ?? args.record.start,
+    defaultStart,
     0,
     args.totalDurationSeconds
   );
   const endCandidate = finiteNumber(args.record.endSeconds) ?? finiteNumber(args.record.end) ?? defaultEnd;
-  const endSeconds = clamp(endCandidate, startSeconds + 0.1, args.totalDurationSeconds);
+  const endSeconds = clampNumber(endCandidate, defaultEnd, startSeconds + 0.1, args.totalDurationSeconds);
   const frame = defaultOverlayFrame(args.index, args.total);
   const emphasis = args.index === 0 ? "primary" : "secondary";
-
+  const block = normalizeMediaTextOverlayBlock(
+    {
+      ...args.record,
+      id: optionalText(args.record.id) ?? `create-agent-text-${args.index + 1}`,
+      role: args.index === 0 ? "headline" : "body",
+      text: args.text,
+      items: [],
+      emphasis,
+      x: finiteNumber(args.record.x) ?? 8,
+      y: finiteNumber(args.record.y) ?? frame.y,
+      width: finiteNumber(args.record.width) ?? 84,
+      height: finiteNumber(args.record.height) ?? frame.height,
+      fontSize: finiteNumber(args.record.fontSize) ?? (emphasis === "primary" ? 68 : 46),
+      fontWeight: finiteNumber(args.record.fontWeight) ?? (emphasis === "primary" ? 850 : 760),
+      strokeWidth: finiteNumber(args.record.strokeWidth) ?? (emphasis === "primary" ? 8 : 5),
+    },
+    args.index,
+    { defaultIdPrefix: "create-agent-text" }
+  );
+  if (!block) {
+    throw new Error("Text overlay is missing text");
+  }
   return {
-    id: `create-agent-text-${args.index + 1}`,
-    role: args.index === 0 ? "headline" : "body",
-    text: args.text,
-    items: [],
-    emphasis,
-    x: clamp(finiteNumber(args.record.x) ?? 8, 0, 88),
-    y: clamp(finiteNumber(args.record.y) ?? frame.y, 0, 92),
-    width: clamp(finiteNumber(args.record.width) ?? 84, 12, 100),
-    height: clamp(finiteNumber(args.record.height) ?? frame.height, 4, 40),
-    align:
-      args.record.align === "left" || args.record.align === "right"
-        ? args.record.align
-        : "center",
-    fontSize: clamp(finiteNumber(args.record.fontSize) ?? (emphasis === "primary" ? 68 : 46), 20, 120),
-    fontWeight: clamp(finiteNumber(args.record.fontWeight) ?? (emphasis === "primary" ? 850 : 760), 300, 950),
-    color: optionalText(args.record.color) ?? "#FFFFFF",
-    strokeColor: optionalText(args.record.strokeColor) ?? "#111111",
-    strokeWidth: clamp(finiteNumber(args.record.strokeWidth) ?? (emphasis === "primary" ? 8 : 5), 0, 16),
-    backgroundStyle: args.record.backgroundStyle === "solid" ? "solid" : "none",
-    backgroundColor: optionalText(args.record.backgroundColor) ?? "#000000",
-    backgroundOpacity: clamp(finiteNumber(args.record.backgroundOpacity) ?? 0, 0, 1),
+    ...block,
     startSeconds,
     endSeconds,
   };

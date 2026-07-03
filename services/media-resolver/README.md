@@ -27,6 +27,31 @@ POST /resolve
 }
 ```
 
+Regular video posts resolve to a single `mediaUrl`. TikTok photo posts and
+supported Instagram photo/carousel posts resolve to ordered slideshow media:
+
+```json
+{
+  "status": "resolved",
+  "mediaType": "slideshow",
+  "platform": "tiktok",
+  "sourceUrl": "https://www.tiktok.com/@example/photo/123",
+  "slides": [
+    {
+      "url": "https://...",
+      "mimeType": "image/jpeg",
+      "fileName": "tiktok-slide-01.jpg",
+      "metadata": { "slideIndex": 1 }
+    }
+  ],
+  "audio": {
+    "url": "https://...",
+    "mimeType": "audio/mpeg",
+    "fileName": "slideshow-audio.mp3"
+  }
+}
+```
+
 Set `MEDIA_RESOLVER_API_KEY` in Railway and in Convex. Convex sends it as:
 
 ```text

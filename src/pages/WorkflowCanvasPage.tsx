@@ -11,7 +11,7 @@ import { WorkflowConfigField } from "../components/workflow/WorkflowConfigField"
 import { WorkflowExecutionPanel } from "../components/workflow/WorkflowExecutionPanel";
 import { WorkflowNodeInspector } from "../components/workflow/WorkflowNodeInspector";
 import { WorkflowNodePalette } from "../components/workflow/WorkflowNodePalette";
-import type { SelectableLibraryAsset } from "../components/library/ReferenceAssetField";
+import type { SelectableLibraryAsset } from "../features/assets/assetTypes";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import {
   localReferenceFilesFromConfig,
@@ -35,10 +35,6 @@ export function WorkflowCanvasPage() {
     api.workflows.definitions.get,
     workflowId ? { id: workflowId as Id<"workflows"> } : "skip"
   );
-  const workflowPersonas = useQuery(
-    api.accounts.personas.list,
-    workflow?.brandId ? { brandId: workflow.brandId } : "skip"
-  );
   const workflowSocialAccounts = useQuery(
     api.accounts.socialAccounts.list,
     workflow
@@ -53,7 +49,7 @@ export function WorkflowCanvasPage() {
   );
   const selectableLibraryAssets = useQuery(
     api.library.assets.listSelectable,
-    workflow?.brandId ? { brandId: workflow.brandId } : {}
+    workflow?.workspaceId ? { workspaceId: workflow.workspaceId } : {}
   );
   const updateGraph = useMutation(api.workflows.definitions.updateGraph);
   const createManualRun = useMutation(api.workflows.runs.createManualRun);
@@ -282,8 +278,6 @@ export function WorkflowCanvasPage() {
         onUpdateLocalReferenceAlias={updateLocalReferenceAlias}
         selectedImageModelUiContract={selectedImageModelUiContract}
         selectedNode={selectedNode}
-        workflowBrandId={workflow?.brandId}
-        workflowPersonas={workflowPersonas}
         workflowSocialAccounts={workflowSocialAccounts}
       />
     ) : null;

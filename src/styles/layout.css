@@ -21,7 +21,7 @@
   color: var(--color-sidebar-text);
 }
 
-.brand-mark {
+.app-mark {
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr);
   align-items: center;
@@ -33,20 +33,20 @@
   letter-spacing: 0;
 }
 
-.brand-mark span:last-child {
+.app-mark span:last-child {
   display: grid;
   gap: 0.05rem;
   min-width: 0;
 }
 
-.brand-mark small {
+.app-mark small {
   color: var(--color-sidebar-muted);
   font-size: 0.72rem;
   font-weight: 500;
   line-height: 1.15;
 }
 
-.brand-symbol {
+.app-symbol {
   display: block;
   width: 2rem;
   height: 2rem;
@@ -160,13 +160,13 @@
   padding: var(--space-4) var(--space-2);
 }
 
-.app-shell-canvas .brand-mark {
+.app-shell-canvas .app-mark {
   grid-template-columns: 1fr;
   justify-items: center;
   padding: 0 0 var(--space-4);
 }
 
-.app-shell-canvas .brand-mark span:last-child,
+.app-shell-canvas .app-mark span:last-child,
 .app-shell-canvas .nav-link-label,
 .app-shell-canvas .user-meta > div:not(.avatar),
 .app-shell-canvas .quiet-button {

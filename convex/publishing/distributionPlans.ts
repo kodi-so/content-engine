@@ -82,7 +82,6 @@ export const getPublishContext = internalQuery({
 export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.id("brands"),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     artifactIds: v.array(v.id("artifacts")),
@@ -97,21 +96,9 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
-    const brand = await ctx.db.get(args.brandId);
-    if (!brand) {
-      throw new Error("Brand not found");
-    }
-    if (brand.workspaceId) {
-      await requireWorkspaceMember(ctx, brand.workspaceId, userId);
-    } else if (brand.userId !== userId) {
-      throw new Error("Brand not found");
-    }
-    const workspace = args.workspaceId || brand.workspaceId
-      ? await resolveWritableWorkspace(ctx, userId, args.workspaceId ?? brand.workspaceId)
+    const workspace = args.workspaceId
+      ? await resolveWritableWorkspace(ctx, userId, args.workspaceId)
       : defaultWorkspace;
-    if (brand.workspaceId && brand.workspaceId !== workspace._id) {
-      throw new Error("Brand does not belong to this workspace");
-    }
 
     for (const artifactId of args.artifactIds) {
       const artifact = await ctx.db.get(artifactId);
@@ -154,7 +141,6 @@ export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     artifactIds: v.array(v.id("artifacts")),
@@ -169,12 +155,10 @@ export const createFromRunner = internalMutation({
   handler: async (ctx, args) => {
     const run = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
     const workflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
-    const brand = args.brandId ? await ctx.db.get(args.brandId) : null;
     const workspaceId =
       args.workspaceId ??
       run?.workspaceId ??
-      workflow?.workspaceId ??
-      brand?.workspaceId;
+      workflow?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("distributionPlans", {
       ...args,
@@ -438,7 +422,6 @@ export const syncMetrics = action({
     for (const metric of result.metrics) {
       await ctx.runMutation(internal.publishing.metrics.recordFromProvider, {
         userId: identity.subject,
-        brandId: context.plan.brandId,
         workflowId: context.plan.workflowId,
         workflowRunId: context.plan.workflowRunId,
         distributionPlanId: context.plan._id,

@@ -303,7 +303,6 @@ export const get = query({
 export const createGeneration = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     mode: createGenerationModeValidator,
     prompt: v.string(),
@@ -334,16 +333,6 @@ export const createGeneration = mutation({
     const prompt = args.prompt.trim();
     if (!prompt) throw new Error("Prompt is required");
 
-    const brand = args.brandId ? await ctx.db.get(args.brandId) : null;
-    if (args.brandId) {
-      if (!brand) throw new Error("Brand not found");
-      if (brand.workspaceId) {
-        await requireWorkspaceMember(ctx, brand.workspaceId, userId);
-      } else if (brand.userId !== userId) {
-        throw new Error("Brand not found");
-      }
-    }
-
     const account = args.socialAccountId ? await ctx.db.get(args.socialAccountId) : null;
     if (args.socialAccountId) {
       if (!account) throw new Error("Social account not found");
@@ -352,20 +341,14 @@ export const createGeneration = mutation({
       } else if (account.userId !== userId) {
         throw new Error("Social account not found");
       }
-      if (brand && account.brandId && account.brandId !== brand._id) {
-        throw new Error("Social account does not belong to the selected brand");
-      }
     }
-    const workspace = args.workspaceId || brand?.workspaceId || account?.workspaceId
+    const workspace = args.workspaceId || account?.workspaceId
       ? await resolveWritableWorkspace(
         ctx,
         userId,
-        args.workspaceId ?? brand?.workspaceId ?? account?.workspaceId
+        args.workspaceId ?? account?.workspaceId
       )
       : defaultWorkspace;
-    if (brand?.workspaceId && brand.workspaceId !== workspace._id) {
-      throw new Error("Brand does not belong to this workspace");
-    }
     if (account?.workspaceId && account.workspaceId !== workspace._id) {
       throw new Error("Social account does not belong to this workspace");
     }
@@ -375,8 +358,7 @@ export const createGeneration = mutation({
       const asset = await ctx.db.get(reference.assetId);
       if (
         !asset ||
-        (asset.workspaceId ? asset.workspaceId !== workspace._id : asset.userId !== userId) ||
-        (args.brandId && asset.brandId && asset.brandId !== args.brandId)
+        (asset.workspaceId ? asset.workspaceId !== workspace._id : asset.userId !== userId)
       ) {
         throw new Error("Reference asset not found");
       }
@@ -391,7 +373,6 @@ export const createGeneration = mutation({
     const requestId = await ctx.db.insert("contentRequests", {
       userId,
       workspaceId: workspace._id,
-      brandId: args.brandId,
       socialAccountId: args.socialAccountId,
       contentFormat: contentFormatForGenerationMode(args.mode),
       prompt,
@@ -531,12 +512,10 @@ export const getExecutionContext = internalQuery({
     const request = await ctx.db.get(args.requestId);
     if (!request) return null;
 
-    const brand = request.brandId ? await ctx.db.get(request.brandId) : null;
     const socialAccount = request.socialAccountId
       ? await ctx.db.get(request.socialAccountId)
       : null;
 
-    if (request.brandId && !brand) return null;
     const referenceAssets = [];
     for (const reference of request.referenceAssets ?? []) {
       const asset = await ctx.db.get(reference.assetId);
@@ -544,8 +523,7 @@ export const getExecutionContext = internalQuery({
         !asset ||
         (asset.workspaceId
           ? asset.workspaceId !== request.workspaceId
-          : asset.userId !== request.userId) ||
-        (request.brandId && asset.brandId && asset.brandId !== request.brandId)
+          : asset.userId !== request.userId)
       ) continue;
       referenceAssets.push({
         asset,
@@ -553,7 +531,7 @@ export const getExecutionContext = internalQuery({
       });
     }
 
-    return { request, brand, socialAccount, referenceAssets };
+    return { request, socialAccount, referenceAssets };
   },
 });
 
@@ -582,8 +560,7 @@ export const getSlideRegenerationContext = internalQuery({
       const asset = await ctx.db.get(reference.assetId);
       if (
         !asset ||
-        asset.userId !== args.userId ||
-        (request.brandId && asset.brandId && asset.brandId !== request.brandId)
+        asset.userId !== args.userId
       ) continue;
       referenceAssets.push(asset);
     }
@@ -849,7 +826,6 @@ export const execute = internalAction({
           const result = await runCreateImageRequest(ctx, {
             userId: context.request.userId,
             workspaceId: context.request.workspaceId,
-            brandId: context.request.brandId,
             contentRequestId: context.request._id,
             prompt: context.request.prompt,
             provider: generation.provider,
@@ -873,7 +849,6 @@ export const execute = internalAction({
           const result = await runCreateVideoRequest(ctx, {
             userId: context.request.userId,
             workspaceId: context.request.workspaceId,
-            brandId: context.request.brandId,
             contentRequestId: context.request._id,
             prompt: context.request.prompt,
             provider: generation.provider,
@@ -898,7 +873,6 @@ export const execute = internalAction({
           const result = await runCreateAudioRequest(ctx, {
             userId: context.request.userId,
             workspaceId: context.request.workspaceId,
-            brandId: context.request.brandId,
             contentRequestId: context.request._id,
             text: context.request.prompt,
             provider: generation.provider,
@@ -921,7 +895,6 @@ export const execute = internalAction({
           const result = await runCreateLipsyncRequest(ctx, {
             userId: context.request.userId,
             workspaceId: context.request.workspaceId,
-            brandId: context.request.brandId,
             contentRequestId: context.request._id,
             prompt: context.request.prompt,
             provider: generation.provider,
@@ -961,7 +934,6 @@ export const execute = internalAction({
           prompt: planPromptForMode({
             prompt: context.request.prompt,
             revisionPrompt: context.request.revisionPrompt,
-            brand: context.brand,
             socialAccount: context.socialAccount,
             requestedRenderingMode,
             references: plannerReferences,
@@ -981,7 +953,6 @@ export const execute = internalAction({
             prompt: buildSingleImagePromptWriterPrompt({
               prompt: context.request.prompt,
               revisionPrompt: context.request.revisionPrompt,
-              brand: context.brand,
               socialAccount: context.socialAccount,
               requestedRenderingMode,
               references: plannerReferences,
@@ -1223,7 +1194,6 @@ export const execute = internalAction({
       });
       await ctx.runMutation(internal.content.slideshows.createFromRunner, {
         userId: context.request.userId,
-        brandId: context.request.brandId,
         socialAccountId: context.request.socialAccountId,
         contentRequestId: context.request._id,
         title: canonicalSpec.title,

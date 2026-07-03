@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { SelectableLibraryAsset } from "../../components/library/ReferenceAssetField";
+import type { SelectableLibraryAsset } from "../assets/assetTypes";
 import { fileToDataUrl } from "../../lib/browser/dataUrl";
 import { assignReferenceAliases } from "../../lib/references/referenceAliases";
 import {

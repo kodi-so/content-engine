@@ -128,7 +128,6 @@ const primaryConfigFieldKeys = new Set([
   "name",
   "optimizeFor",
   "platform",
-  "personaIds",
   "postType",
   "publishIntent",
   "prompt",
@@ -347,7 +346,7 @@ function friendlyConfigFieldKeysForNode(
     case "comment":
       return ["text"];
     case "media":
-      return ["uploadedMedia", "personaIds"];
+      return ["uploadedMedia"];
     case "llm":
       return ["systemPrompt", "promptFromInputNode", "prompt", "responseFormat", "temperature", "maxTokens"];
     case "ai_agent":
@@ -503,7 +502,6 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
     case "assetIds":
     case "artifactIds":
     case "creativeAssetIds":
-    case "personaIds":
     case "knowledgeBase":
     case "localEndFrameImages":
     case "localReferenceAudios":
@@ -528,9 +526,7 @@ function friendlyConfigFieldForKey(key: string, config: Record<string, unknown>)
                   ? "Reference audio"
                   : key === "uploadedMedia"
                     ? "Reference files"
-                    : key === "personaIds"
-                      ? "Personas"
-                      : defaultField.label,
+                    : defaultField.label,
         type: "json",
         advanced: ![
           "localEndFrameImages",

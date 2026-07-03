@@ -1,30 +1,23 @@
 import {
-  Check,
   ClipboardPaste,
   Library,
-  Music,
   Search,
   Upload,
   X,
 } from "lucide-react";
 import { useMemo, useState, type ChangeEvent, type ClipboardEvent } from "react";
+import { AssetCard } from "../../features/assets/AssetCard";
+import { assetMatchesQuery, isImageAsset, isVideoAsset } from "../../features/assets/assetMedia";
+import { AssetPreviewModal } from "../../features/assets/AssetPreviewModal";
+import { AssetThumbnail } from "../../features/assets/AssetThumbnail";
+import {
+  assetSourceLabels,
+  type AssetPreviewItem,
+  type SelectableLibraryAsset,
+} from "../../features/assets/assetTypes";
 import type { LocalReferenceFileKind } from "../../lib/workflow/workflowConfigFields";
-import { MediaLightbox, type MediaLightboxItem } from "../MediaLightbox";
 import { LoadingSignal } from "../ui";
-
-export type SelectableLibraryAsset = {
-  id: string;
-  source: "create" | "workflow_export" | "creative_asset";
-  sourceId: string;
-  title: string;
-  storageUrl: string;
-  mimeType?: string;
-  mediaKind: LocalReferenceFileKind;
-  prompt?: string;
-  provider?: string;
-  model?: string;
-  createdAt: number;
-};
+export type { SelectableLibraryAsset } from "../../features/assets/assetTypes";
 
 export type SelectedReferenceFile = {
   alias?: string;
@@ -53,35 +46,6 @@ type ReferenceAssetFieldProps = {
   onUpload: (files: File[]) => void | Promise<void>;
   required?: boolean;
 };
-
-const sourceLabels: Record<SelectableLibraryAsset["source"], string> = {
-  create: "Create",
-  creative_asset: "Asset",
-  workflow_export: "Workflow",
-};
-
-function isImage(asset: { mimeType?: string; mediaKind?: string; kind?: string }) {
-  return asset.mimeType?.startsWith("image/") || asset.mediaKind === "image" || asset.kind === "image";
-}
-
-function isVideo(asset: { mimeType?: string; mediaKind?: string; kind?: string }) {
-  return asset.mimeType?.startsWith("video/") || asset.mediaKind === "video" || asset.kind === "video";
-}
-
-function libraryAssetMatches(asset: SelectableLibraryAsset, query: string) {
-  const cleanQuery = query.trim().toLowerCase();
-  if (!cleanQuery) return true;
-
-  return [
-    asset.title,
-    asset.prompt,
-    asset.provider,
-    asset.model,
-    sourceLabels[asset.source],
-  ]
-    .filter(Boolean)
-    .some((value) => value!.toLowerCase().includes(cleanQuery));
-}
 
 function extensionFromMimeType(mimeType: string) {
   const subtype = mimeType.split("/")[1]?.split("+")[0];
@@ -133,41 +97,6 @@ async function clipboardFilesFromRead() {
   return files;
 }
 
-function AssetPreview({
-  asset,
-  className = "",
-}: {
-  asset: Pick<SelectableLibraryAsset, "storageUrl" | "title" | "mimeType" | "mediaKind">;
-  className?: string;
-}) {
-  if (isImage(asset)) {
-    return (
-      <img
-        alt=""
-        className={`h-full w-full object-cover ${className}`}
-        src={asset.storageUrl}
-      />
-    );
-  }
-
-  if (isVideo(asset)) {
-    return (
-      <video
-        className={`h-full w-full object-cover ${className}`}
-        muted
-        playsInline
-        src={asset.storageUrl}
-      />
-    );
-  }
-
-  return (
-    <div className={`grid h-full w-full place-items-center bg-[var(--color-page-quiet)] text-[var(--color-ink-muted)] ${className}`}>
-      <Music size={18} />
-    </div>
-  );
-}
-
 export function ReferenceAssetField({
   accept,
   disabled = false,
@@ -189,7 +118,7 @@ export function ReferenceAssetField({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pasteStatus, setPasteStatus] = useState("");
   const [query, setQuery] = useState("");
-  const [lightboxImage, setLightboxImage] = useState<MediaLightboxItem | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<AssetPreviewItem | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const remainingSlots = maxCount
     ? Math.max(0, maxCount - files.length)
@@ -203,12 +132,18 @@ export function ReferenceAssetField({
     () =>
       (libraryAssets ?? [])
         .filter((asset) => kind === "media" || asset.mediaKind === kind)
-        .filter((asset) => libraryAssetMatches(asset, query)),
+        .filter((asset) => assetMatchesQuery(asset, query, assetSourceLabels[asset.source])),
     [kind, libraryAssets, query]
   );
   const selectedAssets = filteredAssets.filter((asset) =>
     selectedAssetIds.includes(asset.id)
   );
+  const previewMeta =
+    previewAsset &&
+    "alias" in previewAsset &&
+    typeof previewAsset.alias === "string"
+      ? previewAsset.alias
+      : undefined;
 
   const openPicker = () => {
     setQuery("");
@@ -333,27 +268,17 @@ export function ReferenceAssetField({
               key={file.id}
             >
               <div className="relative aspect-square overflow-hidden rounded-[var(--radius-xs)] bg-[var(--color-page-quiet)]">
-                {isImage(file) ? (
+                {isImageAsset(file) || isVideoAsset(file) ? (
                   <button
                     aria-label={`View ${file.title}`}
                     className="block h-full w-full cursor-zoom-in border-0 bg-transparent p-0 text-left"
-                    onClick={() =>
-                      setLightboxImage({
-                        src: file.storageUrl,
-                        title: file.title,
-                        meta: file.alias,
-                      })
-                    }
+                    onClick={() => setPreviewAsset(file)}
                     type="button"
                   >
-                    <img alt="" className="h-full w-full object-cover" src={file.storageUrl} />
+                    <AssetThumbnail asset={file} />
                   </button>
-                ) : isVideo(file) ? (
-                  <video className="h-full w-full object-cover" muted playsInline src={file.storageUrl} />
                 ) : (
-                  <div className="grid h-full place-items-center text-[var(--color-ink-muted)]">
-                    <Music size={18} />
-                  </div>
+                  <AssetThumbnail asset={file} />
                 )}
 
                 <label className="absolute bottom-2 left-2 max-w-[calc(100%-3.35rem)]">
@@ -402,7 +327,11 @@ export function ReferenceAssetField({
         </small>
       )}
 
-      <MediaLightbox media={lightboxImage} onClose={() => setLightboxImage(null)} />
+      <AssetPreviewModal
+        asset={previewAsset}
+        meta={previewMeta}
+        onClose={() => setPreviewAsset(null)}
+      />
 
       {disabled && files.length ? (
         <small className="text-[0.72rem] leading-[1.35] text-[var(--color-ink-muted)]">
@@ -450,39 +379,16 @@ export function ReferenceAssetField({
               <div className="max-h-[25rem] overflow-auto">
                 {filteredAssets.length ? (
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-[var(--space-3)]">
-                    {filteredAssets.map((asset) => {
-                      const selected = selectedAssetIds.includes(asset.id);
-                      return (
-                        <button
-                          className={`grid min-w-0 gap-[var(--space-2)] rounded-[var(--radius-md)] border p-[var(--space-2)] text-left transition ${
-                            selected
-                              ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]"
-                              : "border-[var(--color-border)] bg-[var(--color-page)] hover:border-[var(--color-border-strong)]"
-                          }`}
-                          key={asset.id}
-                          onClick={() => toggleSelectedAsset(asset)}
-                          type="button"
-                        >
-                          <div className="relative aspect-square overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-page-quiet)]">
-                            <AssetPreview asset={asset} />
-                            {selected ? (
-                              <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-[var(--color-primary)] text-white">
-                                <Check size={14} />
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-[0.78rem] font-[760] text-[var(--color-ink)]">
-                              {asset.title}
-                            </div>
-                            <div className="truncate text-[0.7rem] text-[var(--color-ink-muted)]">
-                              {sourceLabels[asset.source]}
-                              {asset.model ? ` · ${asset.model}` : ""}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {filteredAssets.map((asset) => (
+                      <AssetCard
+                        asset={asset}
+                        key={asset.id}
+                        meta={`${assetSourceLabels[asset.source]}${asset.model ? ` · ${asset.model}` : ""}`}
+                        onPreview={setPreviewAsset}
+                        onSelect={() => toggleSelectedAsset(asset)}
+                        selected={selectedAssetIds.includes(asset.id)}
+                      />
+                    ))}
                   </div>
                 ) : (
                   <div className="empty-state">

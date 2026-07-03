@@ -77,7 +77,7 @@ const RESOURCE_DEFINITIONS = [
     uri: "content-engine://knowledge/prompting/ai-ugc",
     name: "ai-ugc-prompting-guide",
     title: "AI UGC Prompting Guide",
-    description: "Creative guidance for persona-led AI UGC ads and organic UGC content workflows.",
+    description: "Creative guidance for platform-native UGC ads and organic UGC content workflows.",
     mimeType: JSON_MIME_TYPE,
     access: "static",
     annotations: { audience: ["assistant"], priority: 0.9 },
@@ -126,24 +126,6 @@ const RESOURCE_DEFINITIONS = [
     mimeType: JSON_MIME_TYPE,
     access: "user",
     annotations: { audience: ["assistant"], priority: 0.9 },
-  },
-  {
-    uri: "content-engine://accounts/brands",
-    name: "brand-summaries",
-    title: "Brand Summaries",
-    description: "Authenticated user's brands and content strategy context.",
-    mimeType: JSON_MIME_TYPE,
-    access: "user",
-    annotations: { audience: ["assistant"], priority: 0.85 },
-  },
-  {
-    uri: "content-engine://accounts/personas",
-    name: "persona-summaries",
-    title: "Persona Summaries",
-    description: "Authenticated user's AI people, mascots, customer avatars, and attached asset references.",
-    mimeType: JSON_MIME_TYPE,
-    access: "user",
-    annotations: { audience: ["assistant"], priority: 0.85 },
   },
   {
     uri: "content-engine://accounts/creative-assets",
@@ -208,7 +190,7 @@ function architectureGuide() {
     "Recommended workflow-building loop:",
     "",
     "1. Read the architecture guide, workflow graph schema, and node catalog.",
-    "2. Read brand, persona, creative asset, and model catalog summaries for the authenticated user.",
+    "2. Read creative asset and model catalog summaries for the authenticated user.",
     "3. Create a blank workflow draft.",
     "4. Add and configure nodes from the catalog, then connect typed ports.",
     "5. Validate the graph before saving larger graph replacements or running.",
@@ -258,7 +240,7 @@ function workflowGraphSchema() {
       provider: "optional provider name",
       model: "optional provider model id",
       config: "node-specific JSON object",
-      inputBindings: "optional map from input key to literal/node/artifact/media/persona binding",
+      inputBindings: "optional map from input key to literal/node/artifact/media binding",
       retention: "optional node retention override",
     },
     edgeShape: {
@@ -297,16 +279,16 @@ function agentRecipes(presets: WorkflowAgentPreset[]) {
 function aiUgcPromptingGuide() {
   return {
     purpose:
-      "Create persona-led short-form content that feels like platform-native UGC rather than a polished ad.",
+      "Create short-form content that feels like platform-native UGC rather than a polished ad.",
     preferredWorkflowShape: [
-      "runner -> media/persona references",
-      "media/persona references -> script_writer AI agent",
+      "runner -> media references",
+      "media references -> script_writer AI agent",
       "script_writer -> video_prompting AI agent",
-      "media/persona references + video prompt -> video_generation or lipsync",
+      "media references + video prompt -> video_generation or lipsync",
       "script/caption + media -> post_compiler -> export or auto_post",
     ],
     promptPrinciples: [
-      "Lock persona identity before varying setting, outfit, pose, and camera details.",
+      "Lock any required subject details before varying setting, outfit, pose, and camera details.",
       "Name the platform and content style, such as TikTok selfie, iPhone front camera, or casual screen-recorded app demo.",
       "Make the content emotionally specific: pain point, realization, proof moment, and CTA.",
       "Prefer everyday imperfections over generic quality language.",
@@ -321,10 +303,10 @@ function aiUgcPromptingGuide() {
       "End with a soft CTA that fits the platform.",
     ],
     agentPromptTemplate:
-      "Write one natural short-form UGC script/prompt for {brand_or_product}. Keep the persona identity consistent: {persona_lock}. Vary the setting, camera, lighting, and everyday imperfections. Make it platform-native for {platform}. Output only {script_or_prompt_output}.",
+      "Write one natural short-form UGC script/prompt for {product_or_topic}. Keep required subject details consistent. Vary the setting, camera, lighting, and everyday imperfections. Make it platform-native for {platform}. Output only {script_or_prompt_output}.",
     usefulInputs: [
-      "brand voice and offer",
-      "persona identity prompt",
+      "product or topic context",
+      "subject reference media",
       "source images or video",
       "product context",
       "platform target",
@@ -332,9 +314,9 @@ function aiUgcPromptingGuide() {
     ],
     commonMistakes: [
       "Building a single generic LLM prompt when a script agent plus video prompt agent would make the workflow reusable.",
-      "Skipping persona references, then asking a video model to preserve identity from text alone.",
+      "Skipping reference media, then asking a video model to preserve continuity from text alone.",
       "Using ad-copy language that sounds like a landing page instead of spoken UGC.",
-      "Letting every run create totally different characters instead of locking identity and varying context.",
+      "Letting every run drift from required subject details instead of varying context.",
     ],
   };
 }
@@ -344,16 +326,16 @@ function transformationPromptingGuide() {
     purpose:
       "Create credible before/after content that preserves identity while varying scene, condition, mood, and story context.",
     preferredWorkflowShape: [
-      "runner -> persona media",
-      "runner + persona media -> before prompt agent",
-      "runner + persona media -> after prompt agent",
-      "before prompt + persona reference -> image_generation",
-      "after prompt + persona reference -> image_generation",
+      "runner -> reference media",
+      "runner + reference media -> before prompt agent",
+      "runner + reference media -> after prompt agent",
+      "before prompt + reference image -> image_generation",
+      "after prompt + reference image -> image_generation",
       "before/after images -> ai_video_editor or post_compiler",
       "post_compiler -> export or auto_post",
     ],
     identityRules: [
-      "Treat the persona as the same person across before and after states.",
+      "Treat the subject as the same person or object across before and after states.",
       "Keep face, age, skin tone, hair, body type baseline, and recognizable features consistent.",
       "Vary only the transformation-relevant traits and context.",
       "Do not overstate results. Credibility matters more than dramatic contrast.",
@@ -371,7 +353,7 @@ function transformationPromptingGuide() {
       "Maintain the same approximate age and recognizable features.",
     ],
     agentPromptTemplate:
-      "Output one {before_or_after} image prompt for a transformation story about {transformation_context}. Identity is locked: {persona_lock}. Vary setting, clothing, pose, lighting, camera, and environmental details. Keep the image natural, everyday, and believable. Output the full prompt only.",
+      "Output one {before_or_after} image prompt for a transformation story about {transformation_context}. Required subject details are locked: {subject_lock}. Vary setting, clothing, pose, lighting, camera, and environmental details. Keep the image natural, everyday, and believable. Output the full prompt only.",
     commonMistakes: [
       "Letting before and after prompts describe two different people.",
       "Making the before image cruel or stigmatizing.",
@@ -386,7 +368,7 @@ function slideshowPromptingGuide() {
     purpose:
       "Create native carousel/slideshow content with a strong hook, coherent slide sequence, and renderer-friendly slide specs.",
     preferredWorkflowShape: [
-      "runner + brand/media context -> native_slideshow_planner",
+      "runner + media context -> native_slideshow_planner",
       "native_slideshow_planner + reference media -> native_slideshow_renderer",
       "native_slideshow_renderer -> post_compiler",
       "post_compiler -> export or auto_post",
@@ -408,7 +390,7 @@ function slideshowPromptingGuide() {
       "textBlocks when precise text placement matters",
     ],
     promptTemplate:
-      "Plan a {slide_count}-slide vertical carousel for {topic}. Use brand context: {brand_context}. Create one clear job per slide, concise visible text, and specific visual direction. Output structured slide specs for the native renderer.",
+      "Plan a {slide_count}-slide vertical carousel for {topic}. Use the supplied content context. Create one clear job per slide, concise visible text, and specific visual direction. Output structured slide specs for the native renderer.",
     commonMistakes: [
       "Putting too much text on each slide.",
       "Skipping the native slideshow renderer and trying to generate each slide as unrelated images.",
@@ -426,7 +408,7 @@ function videoPromptingGuide() {
       imageToVideo:
         "runner -> prompt agent -> image_generation -> video_generation -> post_compiler -> export",
       ugcVideo:
-        "runner + persona media -> script agent -> video prompt agent -> video_generation/lipsync -> post_compiler -> export",
+        "runner + reference media -> script agent -> video prompt agent -> video_generation/lipsync -> post_compiler -> export",
       editedVideo:
         "runner + media -> script/prompt agent -> audio_generation optional -> ai_video_editor -> post_compiler -> export",
       talkingAvatar:
@@ -442,7 +424,7 @@ function videoPromptingGuide() {
     videoPromptTemplate:
       "Create one vertical short-form video prompt for {content_goal}. Subject: {subject_lock}. Scene: {scene}. Motion: {motion}. Camera: {camera}. Timing: {duration}. Preserve continuity with references. Output the video prompt only.",
     editorPromptTemplate:
-      "Assemble the provided assets into one {aspect_ratio} video for {platform}. Follow this story beat order: {beats}. Match visuals to script/audio, keep pacing fast, preserve app/persona legibility, and leave room for captions.",
+      "Assemble the provided assets into one {aspect_ratio} video for {platform}. Follow this story beat order: {beats}. Match visuals to script/audio, keep pacing fast, preserve app or subject legibility, and leave room for captions.",
     commonMistakes: [
       "Asking a single video generation node to do editing, captioning, scripting, and identity preservation all at once.",
       "Using video_generation when ai_video_editor is the better fit for stitching assets.",
@@ -471,14 +453,14 @@ function nodeSelectionHeuristics() {
         notes: "Use ai_agent for opinionated content-production roles; use llm for generic text/JSON generation.",
       },
       {
-        when: "The workflow needs uploaded references, creative assets, persona media, app captures, voice references, or b-roll.",
+        when: "The workflow needs uploaded references, creative assets, app captures, voice references, or b-roll.",
         choose: "media",
         notes: "Connect media outputs to agent context and generation reference ports.",
       },
       {
         when: "The workflow needs new still images.",
         choose: "image_generation",
-        notes: "Feed prompt from ai_agent/llm and reference_image from media/persona outputs when identity matters.",
+        notes: "Feed prompt from ai_agent/llm and reference_image from media outputs when continuity matters.",
       },
       {
         when: "The workflow needs one generated clip from prompt or image references.",
@@ -513,7 +495,7 @@ function nodeSelectionHeuristics() {
     ],
     debugTips: [
       "If a node has bad output, inspect its inputs first, then its prompt/config.",
-      "If identity drifts, add stronger persona/media reference bindings upstream.",
+      "If continuity drifts, add stronger media reference bindings upstream.",
       "If a workflow is hard to tune, split a generic node into a script agent, prompt agent, and generation node.",
       "If the library gets noisy, set intermediate nodes to discard or keep_on_failure.",
     ],
@@ -539,55 +521,6 @@ async function modelCatalog(ctx: QueryCtx) {
     }));
 }
 
-async function brandSummaries(ctx: QueryCtx, userId: string) {
-  const brands = await ctx.db
-    .query("brands")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  return brands
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((brand) => ({
-      brandId: brand._id,
-      name: brand.name,
-      description: brand.description,
-      niche: brand.niche,
-      audience: brand.audience,
-      voice: brand.voice,
-      visualStyle: brand.visualStyle,
-      offer: brand.offer,
-      constraints: brand.constraints,
-      examplePosts: brand.examplePosts,
-      performanceNotes: brand.performanceNotes,
-      isActive: brand.isActive,
-      updatedAt: brand.updatedAt,
-    }));
-}
-
-async function personaSummaries(ctx: QueryCtx, userId: string) {
-  const personas = await ctx.db
-    .query("personas")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  return personas
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((persona) => ({
-      personaId: persona._id,
-      brandId: persona.brandId,
-      name: persona.name,
-      personaType: persona.personaType,
-      description: persona.description,
-      identityPrompt: persona.identityPrompt,
-      visualConstraints: persona.visualConstraints,
-      sourceAssetIds: persona.sourceAssetIds,
-      generatedAssetIds: persona.generatedAssetIds,
-      voiceAssetIds: persona.voiceAssetIds,
-      usageNotes: persona.usageNotes,
-      updatedAt: persona.updatedAt,
-    }));
-}
-
 async function creativeAssetSummaries(ctx: QueryCtx, userId: string) {
   const assets = await ctx.db
     .query("creativeAssets")
@@ -598,7 +531,6 @@ async function creativeAssetSummaries(ctx: QueryCtx, userId: string) {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((asset) => ({
       creativeAssetId: asset._id,
-      brandId: asset.brandId,
       name: asset.name,
       assetKind: asset.assetKind,
       mediaType: asset.mediaType,
@@ -652,10 +584,6 @@ async function readResourceForUser(ctx: QueryCtx, userId: string, uri: string) {
       return jsonResource(resource, nodeSelectionHeuristics());
     case "content-engine://providers/model-catalog":
       return jsonResource(resource, await modelCatalog(ctx));
-    case "content-engine://accounts/brands":
-      return jsonResource(resource, await brandSummaries(ctx, userId));
-    case "content-engine://accounts/personas":
-      return jsonResource(resource, await personaSummaries(ctx, userId));
     case "content-engine://accounts/creative-assets":
       return jsonResource(resource, await creativeAssetSummaries(ctx, userId));
     default:

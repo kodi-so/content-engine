@@ -147,7 +147,7 @@ const toolDefinitions = [
   agentRuntimeTool({
     name: "analyze.source",
     label: "Analyze Source",
-    description: "Analyze an uploaded file, media asset, or URL for reusable creative context.",
+    description: "Analyze an uploaded file, media asset, or URL for source-grounded creative understanding, including videos and social slideshows.",
     category: "analysis",
     inputSchema: fieldsSchema("Source to analyze.", {
       sourceType: "One of url, file, artifact, or library_asset.",
@@ -156,6 +156,7 @@ const toolDefinitions = [
     }),
     outputSchema: fieldsSchema("Structured source analysis.", {
       summary: "Human-readable analysis summary.",
+      referenceBrief: "Compact reusable understanding for Agent context and follow-up questions.",
       observations: "Important visual, audio, textual, or strategic findings.",
       artifactIds: "Optional emitted analysis artifact ids.",
     }),
@@ -168,7 +169,7 @@ const toolDefinitions = [
   agentRuntimeTool({
     name: "references.list",
     label: "Find References",
-    description: "List reusable library assets, personas, and artifacts for planner context.",
+    description: "List reusable library assets and artifacts for planner context.",
     category: "references",
     inputSchema: fieldsSchema("Reference search filters.", {
       query: "Optional semantic or text filter.",
@@ -211,6 +212,40 @@ const toolDefinitions = [
       emitsArtifacts: true,
       artifactTypes: ["file"],
       intermediate: true,
+    },
+  }),
+  agentRuntimeTool({
+    name: "mediaOverlay.updateText",
+    label: "Update Media Text",
+    description: "Add, remove, replace, or update editable text overlays on the current slideshow or Studio video project. Use this for follow-up chat edits to slide text, video captions, titles, subtitles, lower thirds, CTA text, position, size, color, or style. The model should decide the intended edits from the conversation and pass concrete text overlay operations; the runtime only applies those operations to the existing media object.",
+    category: "media",
+    inputSchema: fieldsSchema("Media text overlay edit request.", {
+      targetKind: "Optional target kind: slideshow, video_project, or auto for the latest editable media in the thread.",
+      targetId: "Optional slideshow id or Studio video project id. Use when the user references a specific artifact.",
+      slideId: "Optional slideshow slide id to edit.",
+      slideIndex: "Optional 1-based slideshow slide number to edit.",
+      replaceTextBlocks: "Optional full replacement array of editable text overlay blocks for the target slide or video.",
+      addTextBlocks: "Optional text overlay blocks to add.",
+      updateTextBlocks: "Optional objects with id and patch fields for existing text overlays.",
+      textBlockPatch: "Optional patch to apply to all text overlays on the target slide or video when specific text block ids are not needed.",
+      adjustTextBlocks: "Optional relative adjustment for target text overlays. Use negative deltaY to move text upward, positive deltaY to move down, deltaX for horizontal movement, deltaFontSize or fontSizeMultiplier for size changes.",
+      removeTextBlockIds: "Optional text overlay ids to remove.",
+      instruction: "Short natural-language summary of the user's edit request.",
+    }),
+    outputSchema: fieldsSchema("Updated media text overlays.", {
+      targetKind: "Updated media type.",
+      targetId: "Updated slideshow or Studio video project id.",
+      slideId: "Updated slide id when editing a slideshow.",
+      textOverlayCount: "Number of editable text overlays after the update.",
+    }),
+    checkpoint: {
+      behavior: "none",
+      defaultInDebugMode: false,
+      label: "Update text overlays",
+      description: "Text overlay edits update the existing media object directly.",
+    },
+    artifactBehavior: {
+      emitsArtifacts: false,
     },
   }),
   agentRuntimeTool({
@@ -283,9 +318,9 @@ const toolDefinitions = [
     inputSchema: fieldsSchema("AI video render request.", {
       prompt: "Production or edit prompt for the video renderer.",
       mediaAssets: "Optional image, video, or audio reference assets.",
-      references: "Optional library, persona, or artifact references.",
+      references: "Optional library or artifact references.",
       systemPrompt: "Optional higher-level render instructions.",
-      knowledgeBase: "Optional source analysis, brand, or creative context.",
+      knowledgeBase: "Optional source analysis or creative context.",
       aspectRatio: "Optional output aspect ratio.",
       width: "Optional output width in pixels.",
       height: "Optional output height in pixels.",

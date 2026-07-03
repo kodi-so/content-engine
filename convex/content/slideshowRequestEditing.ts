@@ -6,6 +6,11 @@ import type {
   CanonicalSlideshowSpec,
   SlideshowTextBlock,
 } from "./types";
+import {
+  clampNumber,
+  normalizeHexColor,
+  normalizeMediaTextOverlayBlocks,
+} from "../lib/mediaTextOverlays";
 export function normalizeCanonicalSpec(value: unknown): CanonicalSlideshowSpec {
   if (!value || typeof value !== "object") {
     throw new Error("Slideshow spec is missing");
@@ -57,59 +62,11 @@ export async function getOwnedSlideshow(
   return slideshow;
 }
 
-export function clampNumber(value: unknown, fallback: number, min: number, max: number) {
-  const number = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(Math.max(number, min), max);
-}
-
-export function normalizeHexColor(value: unknown, fallback: string) {
-  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
-    ? value.toUpperCase()
-    : fallback;
-}
+export { clampNumber, normalizeHexColor };
 
 export function normalizeEditableTextBlocks(value: unknown): SlideshowTextBlock[] {
   if (!Array.isArray(value)) throw new Error("Text blocks are required");
-
-  const blocks = value.map((item, index): SlideshowTextBlock | null => {
-    if (!item || typeof item !== "object") return null;
-    const block = item as Record<string, unknown>;
-    const text = typeof block.text === "string"
-      ? block.text.trim()
-      : Array.isArray(block.items)
-        ? block.items.filter((line) => typeof line === "string" && line.trim()).join("\n")
-        : "";
-    if (!text) return null;
-
-    const role = index === 0 ? "headline" : "body";
-    const emphasis = index === 0 ? "primary" : "secondary";
-    const backgroundStyle = block.backgroundStyle === "solid" ? "solid" : "none";
-
-    return {
-      id: typeof block.id === "string" && block.id.trim()
-        ? block.id.trim().slice(0, 64)
-        : `text-${index + 1}`,
-      role,
-      text: text.slice(0, 280),
-      items: [],
-      emphasis,
-      x: clampNumber(block.x, 10, 0, 96),
-      y: clampNumber(block.y, index === 0 ? 42 : 56, 0, 96),
-      width: clampNumber(block.width, 80, 12, 100),
-      height: clampNumber(block.height, index === 0 ? 14 : 10, 4, 100),
-      align: block.align === "left" || block.align === "right" ? block.align : "center",
-      fontSize: clampNumber(block.fontSize, index === 0 ? 72 : 44, 20, 150),
-      fontWeight: clampNumber(block.fontWeight, role === "body" ? 700 : 800, 400, 900),
-      color: normalizeHexColor(block.color, "#FFFFFF"),
-      strokeColor: normalizeHexColor(block.strokeColor, "#000000"),
-      strokeWidth: clampNumber(block.strokeWidth, 16, 0, 48),
-      backgroundStyle,
-      backgroundColor: backgroundStyle === "solid" ? normalizeHexColor(block.backgroundColor, "#FFFFFF") : "#000000",
-      backgroundOpacity: backgroundStyle === "solid" ? 1 : 0,
-    };
-  }).filter((block): block is SlideshowTextBlock => Boolean(block));
-
-  return blocks.slice(0, 12);
+  return normalizeMediaTextOverlayBlocks(value) as SlideshowTextBlock[];
 }
 
 export async function cleanupArtifactStorage(ctx: MutationCtx, artifact: Doc<"artifacts">) {

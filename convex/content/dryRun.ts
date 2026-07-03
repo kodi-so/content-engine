@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { action } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
+import { action } from "../_generated/server";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { getModelProvider } from "../providers/index";
 import {
@@ -25,7 +25,6 @@ import {
 function planPromptForMode(args: {
   prompt: string;
   revisionPrompt?: string;
-  brand: Doc<"brands">;
   socialAccount?: Doc<"socialAccounts"> | null;
   requestedRenderingMode: RequestedRenderingMode;
   references: PlannerReference[];
@@ -55,13 +54,6 @@ export const slideshowPromptPlan = action({
       v.literal("full_graphic_generation")
     ),
     revisionPrompt: v.optional(v.string()),
-    brand: v.optional(v.object({
-      name: v.string(),
-      audience: v.optional(v.string()),
-      voice: v.optional(v.string()),
-      visualStyle: v.optional(v.string()),
-      constraints: v.optional(v.array(v.string())),
-    })),
     references: v.optional(v.array(v.object({
       assetId: v.optional(v.string()),
       name: v.string(),
@@ -73,13 +65,6 @@ export const slideshowPromptPlan = action({
   handler: async (ctx, args) => {
     await requireBetaAccessForAction(ctx);
     const requestedRenderingMode = args.requestedRenderingMode;
-    const brand = {
-      name: args.brand?.name ?? "Contour",
-      audience: args.brand?.audience,
-      voice: args.brand?.voice,
-      visualStyle: args.brand?.visualStyle,
-      constraints: args.brand?.constraints,
-    } as Doc<"brands">;
     const references: PlannerReference[] = (args.references ?? []).map((reference, index) => ({
       assetId: reference.assetId ?? `dry-run-reference-${index + 1}`,
       name: reference.name,
@@ -92,7 +77,6 @@ export const slideshowPromptPlan = action({
     const plannerPrompt = planPromptForMode({
       prompt: args.prompt,
       revisionPrompt: args.revisionPrompt,
-      brand,
       socialAccount: null,
       requestedRenderingMode,
       references,
@@ -116,7 +100,6 @@ export const slideshowPromptPlan = action({
         prompt: buildSingleImagePromptWriterPrompt({
           prompt: args.prompt,
           revisionPrompt: args.revisionPrompt,
-          brand,
           socialAccount: null,
           requestedRenderingMode,
           references,

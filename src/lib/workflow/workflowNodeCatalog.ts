@@ -118,7 +118,6 @@ export const WORKFLOW_NODE_CATALOG = [
     defaultConfig: {
       artifactIds: [],
       creativeAssetIds: [],
-      personaIds: [],
       uploadedMedia: [],
     },
     defaultRetention: { mode: "keep", exposeInLibrary: false },
@@ -310,7 +309,6 @@ export const WORKFLOW_NODE_CATALOG = [
     defaultProvider: "bulkapis",
     inputPorts: [
       port("prompt", "Prompt", "prompt"),
-      port("brand_context", "Brand Context", "json"),
       port("media", "Media", "media", { multiple: true }),
     ],
     outputPorts: [port("slide_spec", "Slide Spec", "slide_spec")],

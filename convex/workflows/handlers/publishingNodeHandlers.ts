@@ -70,7 +70,6 @@ export async function executePublishingNode({
       internal.workflows.runner.createPostPackageArtifact,
       {
         userId: context.run.userId,
-        brandId: context.run.brandId,
         workflowId: context.workflow._id,
         workflowRunId: context.run._id,
         nodeId: node.id,
@@ -144,7 +143,6 @@ export async function executePublishingNode({
         internal.workflows.runner.createPostPackageArtifact,
         {
           userId: context.run.userId,
-          brandId: context.run.brandId,
           workflowId: context.workflow._id,
           workflowRunId: context.run._id,
           nodeId: node.id,
@@ -251,7 +249,6 @@ export async function executePublishingNode({
         internal.workflows.runner.createPostPackageArtifact,
         {
           userId: context.run.userId,
-          brandId: context.run.brandId,
           workflowId: context.workflow._id,
           workflowRunId: context.run._id,
           nodeId: node.id,
@@ -285,7 +282,6 @@ export async function executePublishingNode({
       internal.publishing.distributionPlans.createFromRunner,
       {
         userId: context.run.userId,
-        brandId: context.run.brandId,
         workflowId: context.workflow._id,
         workflowRunId: context.run._id,
         artifactIds: distributionArtifactIds,

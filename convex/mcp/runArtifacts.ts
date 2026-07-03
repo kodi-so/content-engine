@@ -29,7 +29,6 @@ function runSummary(run: RunDoc) {
   return {
     workflowRunId: run._id,
     workflowId: run.workflowId,
-    brandId: run.brandId,
     socialAccountId: run.socialAccountId,
     trigger: run.trigger,
     status: run.status,
@@ -51,7 +50,6 @@ function runSummary(run: RunDoc) {
 function artifactSummary(artifact: ArtifactDoc) {
   return {
     artifactId: artifact._id,
-    brandId: artifact.brandId,
     workflowId: artifact.workflowId,
     workflowRunId: artifact.workflowRunId,
     parentArtifactIds: artifact.parentArtifactIds,
@@ -72,7 +70,6 @@ function artifactSummary(artifact: ArtifactDoc) {
 function distributionPlanSummary(plan: DistributionPlanDoc) {
   return {
     distributionPlanId: plan._id,
-    brandId: plan.brandId,
     workflowId: plan.workflowId,
     workflowRunId: plan.workflowRunId,
     artifactIds: plan.artifactIds,
@@ -445,15 +442,11 @@ export const createDistributionPlan = mutation({
       if (!account || account.userId !== userId) {
         throw new Error("Social account not found");
       }
-      if (run.brandId && account.brandId && account.brandId !== run.brandId) {
-        throw new Error("Social account does not belong to the run brand");
-      }
     }
 
     const now = Date.now();
     return await ctx.db.insert("distributionPlans", {
       userId,
-      brandId: run.brandId,
       workflowId: run.workflowId,
       workflowRunId: run._id,
       artifactIds,

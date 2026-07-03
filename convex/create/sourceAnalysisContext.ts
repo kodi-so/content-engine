@@ -17,7 +17,74 @@ function stringArrayValue(value: unknown) {
     : [];
 }
 
+function arrayLine(label: string, items: string[]) {
+  return items.length ? `${label}: ${items.join(" | ")}` : undefined;
+}
+
+function referenceBriefContext(result: Record<string, unknown>) {
+  const referenceBrief = isRecord(result.referenceBrief) ? result.referenceBrief : {};
+  const transcript = isRecord(result.transcript) ? result.transcript : {};
+  const visuals = isRecord(result.visuals) ? result.visuals : {};
+  const audio = isRecord(result.audio) ? result.audio : {};
+  const creativeAnalysis = isRecord(result.creativeAnalysis) ? result.creativeAnalysis : {};
+  const reuseBrief = isRecord(result.reuseBrief) ? result.reuseBrief : {};
+  const slideshow = isRecord(result.slideshow) ? result.slideshow : {};
+  const slides = Array.isArray(slideshow.slides) ? slideshow.slides.filter(isRecord).slice(0, 8) : [];
+  const slideText = slides.flatMap((slide) => stringArrayValue(slide.visibleText));
+  const slideVisuals = slides.map((slide, index) => {
+    const description = stringValue(slide.imageDescription);
+    return description ? `Slide ${index + 1}: ${description}` : "";
+  }).filter(Boolean);
+  const visibleText = [
+    ...stringArrayValue(referenceBrief.visibleText),
+    ...stringArrayValue(visuals.onScreenText),
+    ...slideText,
+  ].filter(Boolean);
+  const keyVisuals = [
+    ...stringArrayValue(referenceBrief.keyVisuals),
+    ...stringArrayValue(visuals.subjects),
+    ...slideVisuals,
+  ].filter(Boolean);
+  const lines = [
+    stringValue(referenceBrief.sourceType) ? `Source type: ${stringValue(referenceBrief.sourceType)}` : undefined,
+    stringValue(referenceBrief.oneLineSummary)
+      ? `Reference brief: ${stringValue(referenceBrief.oneLineSummary)}`
+      : stringValue(result.summary)
+        ? `Reference brief: ${stringValue(result.summary)}`
+        : undefined,
+    stringValue(referenceBrief.coreIdea) ? `Core idea: ${stringValue(referenceBrief.coreIdea)}` : undefined,
+    stringValue(referenceBrief.hook) || stringValue(creativeAnalysis.hook)
+      ? `Hook: ${stringValue(referenceBrief.hook) || stringValue(creativeAnalysis.hook)}`
+      : undefined,
+    arrayLine("Structure", [
+      ...stringArrayValue(referenceBrief.structure),
+      ...stringArrayValue(creativeAnalysis.structure),
+    ]),
+    arrayLine("Key visuals", keyVisuals),
+    arrayLine("Visible text", visibleText),
+    stringValue(referenceBrief.audioRole) ||
+      stringValue(audio.musicAndSound) ||
+      stringValue(audio.speechDelivery)
+      ? `Audio role: ${stringValue(referenceBrief.audioRole) || stringValue(audio.musicAndSound) || stringValue(audio.speechDelivery)}`
+      : undefined,
+    stringValue(referenceBrief.reusablePattern) || stringValue(reuseBrief.copyablePattern)
+      ? `Reusable pattern: ${stringValue(referenceBrief.reusablePattern) || stringValue(reuseBrief.copyablePattern)}`
+      : undefined,
+    arrayLine("Do not copy", [
+      ...stringArrayValue(referenceBrief.doNotCopy),
+      ...stringArrayValue(creativeAnalysis.risksToAvoid),
+    ]),
+    arrayLine("Suggested uses", stringArrayValue(referenceBrief.suggestedUses)),
+    stringValue(transcript.text) ? `Transcript: ${stringValue(transcript.text).slice(0, 1800)}` : undefined,
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
 function analysisResultContext(result: Record<string, unknown>) {
+  const referenceContext = referenceBriefContext(result);
+  if (referenceContext.trim()) return referenceContext;
+
   const transcript = isRecord(result.transcript) ? result.transcript : {};
   const visuals = isRecord(result.visuals) ? result.visuals : {};
   const audio = isRecord(result.audio) ? result.audio : {};

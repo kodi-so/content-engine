@@ -73,7 +73,6 @@ export function assertValidGraph(
 export function workflowSummary(workflow: WorkflowDoc) {
   return {
     workflowId: workflow._id,
-    brandId: workflow.brandId,
     socialAccountId: workflow.socialAccountId,
     name: workflow.name,
     description: workflow.description,
@@ -99,25 +98,10 @@ export async function getOwnedWorkflow(
   return workflow;
 }
 
-async function assertOwnedBrand(ctx: MutationCtx, brandId: Id<"brands">, userId: string) {
-  const brand = await ctx.db.get(brandId);
-  if (!brand || brand.userId !== userId) throw new Error("Brand not found");
-  return brand;
-}
-
-async function resolveWorkflowBrand(
-  ctx: MutationCtx,
-  userId: string,
-  brandId?: Id<"brands">
-) {
-  return brandId ? await assertOwnedBrand(ctx, brandId, userId) : undefined;
-}
-
 export async function assertOwnedSocialAccount(
   ctx: MutationCtx,
   args: {
     socialAccountId?: Id<"socialAccounts">;
-    brandId?: Id<"brands">;
     userId: string;
   }
 ) {
@@ -127,16 +111,12 @@ export async function assertOwnedSocialAccount(
   if (!account || account.userId !== args.userId) {
     throw new Error("Social account not found");
   }
-  if (args.brandId && account.brandId && account.brandId !== args.brandId) {
-    throw new Error("Social account does not belong to the workflow brand");
-  }
 }
 
 export async function createWorkflow(
   ctx: MutationCtx,
   args: {
     userId: string;
-    brandId?: Id<"brands">;
     socialAccountId?: Id<"socialAccounts">;
     name: string;
     description?: string;
@@ -147,10 +127,8 @@ export async function createWorkflow(
     graph: WorkflowGraphDoc;
   }
 ) {
-  const brand = await resolveWorkflowBrand(ctx, args.userId, args.brandId);
   await assertOwnedSocialAccount(ctx, {
     socialAccountId: args.socialAccountId,
-    brandId: brand?._id,
     userId: args.userId,
   });
   assertValidGraph(args.graph, "draft");
@@ -161,7 +139,6 @@ export async function createWorkflow(
   const now = Date.now();
   return await ctx.db.insert("workflows", {
     userId: args.userId,
-    brandId: brand?._id,
     socialAccountId: args.socialAccountId,
     name,
     description: args.description?.trim() || undefined,
@@ -214,7 +191,6 @@ export async function updateWorkflowMetadata(
   if (args.socialAccountId) {
     await assertOwnedSocialAccount(ctx, {
       socialAccountId: args.socialAccountId,
-      brandId: workflow.brandId,
       userId: args.userId,
     });
   }

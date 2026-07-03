@@ -67,7 +67,6 @@ function singleImagePromptSchemaForMode(renderingMode: RequestedRenderingMode) {
 function buildPlannerPromptForMode(args: {
   prompt: string;
   revisionPrompt?: string;
-  brand: Parameters<typeof buildOverlayPlannerPrompt>[0]["brand"];
   socialAccount?: Parameters<typeof buildOverlayPlannerPrompt>[0]["socialAccount"];
   requestedRenderingMode: RequestedRenderingMode;
   references: PlannerReference[];
@@ -389,22 +388,6 @@ export async function executeSlideshowNode({
     const aspectRatio = textFromInputValue(inputs.aspectRatio?.value);
     const platform = textFromInputValue(inputs.platform?.value);
     const tone = textFromInputValue(inputs.tone?.value);
-    const brandContext = objectValue(inputs.brand_context?.value);
-    const fallbackBrand = context.brand;
-    const planningBrand = {
-      ...fallbackBrand,
-      name: textFromInputValue(brandContext.name) ?? fallbackBrand?.name ?? "Unbranded",
-      audience: textFromInputValue(brandContext.audience) ?? fallbackBrand?.audience,
-      voice: textFromInputValue(brandContext.voice) ?? fallbackBrand?.voice,
-      visualStyle:
-        textFromInputValue(brandContext.visualStyle) ?? fallbackBrand?.visualStyle,
-      constraints: Array.isArray(brandContext.constraints)
-        ? brandContext.constraints.flatMap((constraint) => {
-            const text = textFromInputValue(constraint);
-            return text ? [text] : [];
-          })
-        : fallbackBrand?.constraints,
-    };
     const references = plannerReferencesFromInputs(resolvedInputs);
     const sourceArtifactIds = artifactIdsFromInputs(resolvedInputs, [
       "media",
@@ -438,7 +421,6 @@ export async function executeSlideshowNode({
       prompt: buildPlannerPromptForMode({
         prompt,
         revisionPrompt,
-        brand: planningBrand,
         socialAccount: context.socialAccount,
         requestedRenderingMode,
         references,
@@ -465,7 +447,6 @@ export async function executeSlideshowNode({
         prompt: buildSingleImagePromptWriterPrompt({
           prompt,
           revisionPrompt,
-          brand: planningBrand,
           socialAccount: context.socialAccount,
           requestedRenderingMode,
           references,
@@ -502,7 +483,6 @@ export async function executeSlideshowNode({
       internal.artifacts.records.createFromRunner,
       {
         userId: context.run.userId,
-        brandId: context.run.brandId,
         workflowId: context.workflow._id,
         workflowRunId: context.run._id,
         parentArtifactIds: sourceArtifactIds.length ? sourceArtifactIds : undefined,
@@ -609,7 +589,6 @@ export async function executeSlideshowNode({
       internal.content.slideshows.createFromRunner,
       {
         userId: context.run.userId,
-        brandId: context.run.brandId,
         workflowId: context.workflow._id,
         workflowRunId: context.run._id,
         title: canonicalSpec.title,
@@ -621,7 +600,6 @@ export async function executeSlideshowNode({
       internal.artifacts.records.createFromRunner,
       {
         userId: context.run.userId,
-        brandId: context.run.brandId,
         workflowId: context.workflow._id,
         workflowRunId: context.run._id,
         parentArtifactIds: sourceArtifactIds.length ? sourceArtifactIds : undefined,

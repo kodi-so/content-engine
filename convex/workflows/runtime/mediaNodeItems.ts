@@ -92,7 +92,6 @@ export async function resolveMediaNodeItemsForRun(
   const config = objectValue(node.config);
   const artifactIds = stringArrayFromConfig(config.artifactIds);
   const creativeAssetIds = stringArrayFromConfig(config.creativeAssetIds);
-  const personaIds = stringArrayFromConfig(config.personaIds);
   const items: MediaNodeItemForRun[] = [];
 
   for (const artifactId of artifactIds) {
@@ -131,46 +130,6 @@ export async function resolveMediaNodeItemsForRun(
         metadata: asset.metadata,
       },
     });
-  }
-
-  for (const personaId of personaIds) {
-    const persona = await ctx.db.get(personaId as Id<"personas">);
-    if (!persona || persona.userId !== run.userId) continue;
-
-    const attachedAssets = [
-      ...persona.sourceAssetIds.map((assetId) => ({ assetId, role: "source" })),
-      ...persona.generatedAssetIds.map((assetId) => ({ assetId, role: "generated" })),
-      ...persona.voiceAssetIds.map((assetId) => ({ assetId, role: "voice" })),
-    ];
-
-    for (const { assetId, role } of attachedAssets) {
-      const asset = await ctx.db.get(assetId);
-      if (!asset || asset.userId !== run.userId) continue;
-
-      items.push({
-        id: `${String(persona._id)}:${String(asset._id)}`,
-        source: "persona",
-        kind: mediaKindFromAsset(asset),
-        title: `${persona.name} · ${asset.name}`,
-        storageUrl: asset.storageUrl,
-        metadata: {
-          personaId: persona._id,
-          personaName: persona.name,
-          personaType: persona.personaType,
-          personaDescription: persona.description,
-          identityPrompt: persona.identityPrompt,
-          visualConstraints: persona.visualConstraints,
-          personaUsageNotes: persona.usageNotes,
-          personaAssetRole: role,
-          assetId: asset._id,
-          assetKind: asset.assetKind,
-          mediaType: asset.mediaType,
-          description: asset.description,
-          usageNotes: asset.usageNotes,
-          metadata: asset.metadata,
-        },
-      });
-    }
   }
 
   items.push(...uploadedMediaItemsFromConfig(config.uploadedMedia));

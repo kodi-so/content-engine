@@ -1,26 +1,11 @@
-import {
-  AtSign,
-  Bug,
-  Image,
-  Mic,
-  Paperclip,
-  Send,
-  Square,
-  UserRound,
-  Video,
-  X,
-} from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { Bug, Send, Square } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { AssetListItem } from "../assets/AssetListItem";
+import { AssetPreviewModal } from "../assets/AssetPreviewModal";
+import type { AssetPreviewItem } from "../assets/assetTypes";
+import { RichMentionTextarea } from "../../components/references/RichMentionTextarea";
 import type {
   AgentCreateCheckpointMode,
-  AgentCreateMentionMediaType,
   AgentCreateMentionOption,
   AgentCreateSelectedMention,
 } from "./agentCreateTypes";
@@ -30,12 +15,6 @@ import {
   mentionTokenForLabel,
 } from "./agentCreateUi";
 
-type ActiveMention = {
-  start: number;
-  end: number;
-  query: string;
-};
-
 type MentionSelection = {
   mention: AgentCreateSelectedMention;
   option: AgentCreateMentionOption;
@@ -44,25 +23,6 @@ type MentionSelection = {
     start: number;
   };
 };
-
-const mentionMediaIcons: Record<AgentCreateMentionMediaType, typeof Image> = {
-  audio: Mic,
-  file: Paperclip,
-  image: Image,
-  video: Video,
-};
-
-function mentionAtCursor(value: string, selectionStart: number): ActiveMention | null {
-  const beforeCursor = value.slice(0, selectionStart);
-  const match = beforeCursor.match(/(^|[\s([{])@([a-zA-Z0-9_-]*)$/);
-  if (!match) return null;
-
-  return {
-    start: selectionStart - match[2].length - 1,
-    end: selectionStart,
-    query: match[2].toLowerCase(),
-  };
-}
 
 function optionMatchesQuery(option: AgentCreateMentionOption, query: string) {
   if (!query) return true;
@@ -98,7 +58,6 @@ export function AgentCreatePrompt({
   mentionOptions = [],
   onChange,
   onCheckpointModeChange,
-  onMentionRemove,
   onMentionSelect,
   onStop,
   onSubmit,
@@ -116,7 +75,6 @@ export function AgentCreatePrompt({
   mentionOptions?: AgentCreateMentionOption[];
   onChange: (value: string) => void;
   onCheckpointModeChange?: (mode: AgentCreateCheckpointMode) => void;
-  onMentionRemove?: (mention: AgentCreateSelectedMention) => void;
   onMentionSelect?: (selection: MentionSelection) => void;
   onStop?: () => void;
   onSubmit?: () => void;
@@ -125,113 +83,41 @@ export function AgentCreatePrompt({
   submitLabel?: string;
   value: string;
 }) {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [activeMention, setActiveMention] = useState<ActiveMention | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [previewAsset, setPreviewAsset] = useState<AssetPreviewItem | null>(null);
   const availableOptions = useMemo(() => uniqueMentionOptions(mentionOptions), [mentionOptions]);
-  const filteredOptions = useMemo(
+  const inlineMentionTokens = useMemo(
     () =>
-      activeMention
-        ? availableOptions.filter((option) => optionMatchesQuery(option, activeMention.query))
-        : [],
-    [activeMention, availableOptions]
+      selectedMentions.map((mention) => ({
+        token: mention.token,
+        asset: {
+          id: mention.entityId,
+          title: mention.label,
+          storageUrl: mention.previewUrl ?? mention.thumbnailUrl,
+          thumbnailUrl: mention.thumbnailUrl,
+          mimeType: mention.mimeType,
+          mediaKind: mention.mediaType,
+        },
+        meta: [mention.token, mention.sourceLabel].filter(Boolean).join(" · "),
+      })),
+    [selectedMentions]
   );
-  const showMentionMenu = Boolean(activeMention && filteredOptions.length);
   const canStop = isWorking && !isStopping && Boolean(onStop);
   const canSubmit = Boolean(value.trim()) && !disabled && !isSubmitting && !isWorking;
   const debugMode = checkpointMode === "debug";
 
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 240)}px`;
-  }, [value]);
-
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [activeMention?.query, filteredOptions.length]);
-
-  const refreshMention = (textarea: HTMLTextAreaElement) => {
-    setActiveMention(mentionAtCursor(textarea.value, textarea.selectionStart));
-  };
-
-  const insertMention = (option: AgentCreateMentionOption) => {
-    if (!activeMention || option.disabled) return;
-
-    const token = option.token ?? mentionTokenForLabel(option.label);
-    const nextCharacter = value.slice(activeMention.end, activeMention.end + 1);
-    const needsSpace = nextCharacter && !/\s/.test(nextCharacter);
-    const nextValue =
-      value.slice(0, activeMention.start) +
-      token +
-      (needsSpace ? " " : "") +
-      value.slice(activeMention.end);
-    const nextCursor = activeMention.start + token.length + (needsSpace ? 1 : 0);
-    const mention: AgentCreateSelectedMention = {
-      token,
-      label: option.label,
-      entityType: option.entityType,
-      entityId: option.id,
-      mediaType: option.mediaType,
-    };
-
-    onChange(nextValue);
-    onMentionSelect?.({
-      mention,
-      option,
-      range: {
-        start: activeMention.start,
-        end: activeMention.end,
-      },
-    });
-    setActiveMention(null);
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
-    });
-  };
+  const assetForMentionOption = (option: AgentCreateMentionOption): AssetPreviewItem => ({
+    id: option.id,
+    title: option.label,
+    storageUrl: option.previewUrl ?? option.thumbnailUrl,
+    thumbnailUrl: option.thumbnailUrl,
+    mimeType: option.mimeType,
+    mediaKind: option.mediaType,
+  });
 
   const handleSubmit = (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit) return;
     onSubmit?.();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showMentionMenu) {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setActiveIndex((index) => (index + 1) % filteredOptions.length);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setActiveIndex((index) => (index === 0 ? filteredOptions.length - 1 : index - 1));
-        return;
-      }
-      if (event.key === "Enter" || event.key === "Tab") {
-        event.preventDefault();
-        insertMention(filteredOptions[activeIndex]);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setActiveMention(null);
-        return;
-      }
-    }
-
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      handleSubmit();
-    }
-  };
-
-  const handleKeyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) return;
-    refreshMention(event.currentTarget);
   };
 
   return (
@@ -244,73 +130,56 @@ export function AgentCreatePrompt({
     >
       <label className="grid min-w-0 gap-[var(--space-1)]">
         <span className="sr-only">{placeholder}</span>
-        <div className="relative min-w-0">
-          <textarea
-            className="max-h-[15rem] min-h-[3.35rem] w-full resize-none overflow-y-auto rounded-[0.9rem] border-0 bg-[var(--color-page-quiet)] px-[var(--space-3)] py-[var(--space-2)] pr-[3.25rem] text-[0.92rem] leading-[1.45] text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-ink-muted)] focus:bg-[var(--color-page)] focus:shadow-[0_0_0_2px_oklch(57%_0.14_166_/_0.16)] disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={disabled}
-            onBlur={() => window.setTimeout(() => setActiveMention(null), 120)}
-            onChange={(event) => {
-              onChange(event.target.value);
-              refreshMention(event.target);
-            }}
-            onClick={(event) => refreshMention(event.currentTarget)}
-            onKeyDown={handleKeyDown}
-            onKeyUp={handleKeyUp}
-            placeholder={placeholder}
-            ref={textareaRef}
-            value={value}
-          />
-          {showMentionMenu ? (
-            <div
-              className="absolute bottom-[calc(100%+0.55rem)] left-2 z-30 grid max-h-72 w-[min(30rem,calc(100%-1rem))] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-1)] shadow-[var(--shadow-lg)]"
-              role="listbox"
-            >
-              {filteredOptions.map((option, index) => {
-                const Icon = option.mediaType ? mentionMediaIcons[option.mediaType] : UserRound;
-                const active = index === activeIndex;
+        <RichMentionTextarea
+          className="max-h-[15rem] min-h-[3.35rem] w-full overflow-y-auto whitespace-pre-wrap break-words rounded-[0.9rem] border-0 bg-[var(--color-page-quiet)] px-[var(--space-3)] py-[var(--space-2)] pr-[3.25rem] text-[0.92rem] leading-[1.45] text-[var(--color-ink)] outline-none transition focus:bg-[var(--color-page)] focus:shadow-[0_0_0_2px_oklch(57%_0.14_166_/_0.16)] aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+          disabled={disabled}
+          getReplacement={(option) => option.token ?? mentionTokenForLabel(option.label)}
+          menuClassName="absolute bottom-[calc(100%+0.55rem)] left-2 z-30 grid max-h-72 w-[min(30rem,calc(100%-1rem))] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-1)] shadow-[var(--shadow-lg)]"
+          onChange={onChange}
+          onSelect={({ option, range, replacement }) => {
+            const mention: AgentCreateSelectedMention = {
+              token: replacement,
+              label: option.label,
+              entityType: option.entityType,
+              entityId: option.id,
+              mediaType: option.mediaType,
+              mimeType: option.mimeType,
+              previewUrl: option.previewUrl,
+              sourceLabel: option.sourceLabel,
+              thumbnailUrl: option.thumbnailUrl,
+            };
 
-                return (
-                  <button
-                    aria-selected={active}
-                    className={agentCreateClassNames(
-                      "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-[var(--space-2)] rounded-[var(--radius-xs)] px-[var(--space-2)] py-[var(--space-2)] text-left transition disabled:cursor-not-allowed disabled:opacity-45",
-                      active ? "bg-[var(--color-primary-soft)]" : "hover:bg-[var(--color-page-quiet)]"
-                    )}
-                    disabled={option.disabled}
-                    key={option.id}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      insertMention(option);
-                    }}
-                    role="option"
-                    type="button"
-                  >
-                    {option.thumbnailUrl ? (
-                      <img
-                        alt=""
-                        className="size-9 rounded-[var(--radius-xs)] object-cover"
-                        src={option.thumbnailUrl}
-                      />
-                    ) : (
-                      <span className="grid size-9 place-items-center rounded-[var(--radius-xs)] border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-primary)]">
-                        <Icon size={16} />
-                      </span>
-                    )}
-                    <span className="grid min-w-0 gap-[0.08rem]">
-                      <span className="truncate text-[0.84rem] font-[780] text-[var(--color-ink)]">
-                        {option.label}
-                      </span>
-                      <span className="truncate text-[0.72rem] text-[var(--color-ink-muted)]">
-                        {option.sourceLabel ?? formatAgentCreateEntityType(option.entityType)}
-                        {option.description ? ` - ${option.description}` : ""}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
+            onMentionSelect?.({
+              mention,
+              option,
+              range,
+            });
+          }}
+          onSubmitShortcut={() => handleSubmit()}
+          optionKey={(option) => option.id}
+          optionMatchesQuery={optionMatchesQuery}
+          options={availableOptions}
+          placeholder={placeholder}
+          renderOption={({ active, option, select }) => {
+            const optionAsset = assetForMentionOption(option);
+            const meta = `${option.sourceLabel ?? formatAgentCreateEntityType(option.entityType)}${
+              option.description ? ` - ${option.description}` : ""
+            }`;
+
+            return (
+              <AssetListItem
+                active={active}
+                asset={optionAsset}
+                disabled={option.disabled}
+                meta={meta}
+                onPreview={setPreviewAsset}
+                onSelect={select}
+              />
+            );
+          }}
+          tokens={inlineMentionTokens}
+          value={value}
+        />
       </label>
 
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-[var(--space-2)] px-1">
@@ -345,34 +214,6 @@ export function AgentCreatePrompt({
               />
             </span>
           </button>
-          <span className="inline-flex items-center gap-[0.35rem] text-[0.73rem] font-[690] text-[var(--color-ink-muted)]">
-            <AtSign size={14} />
-            References
-          </span>
-          {selectedMentions.length ? (
-            selectedMentions.map((mention) => (
-              <span
-                className="inline-flex min-h-8 max-w-full items-center gap-[0.35rem] rounded-full border border-[var(--color-border)] bg-[var(--color-page)] px-[var(--space-2)] text-[0.76rem] font-[720] text-[var(--color-ink)]"
-                key={`${mention.entityType}:${mention.entityId}:${mention.token}`}
-              >
-                <span className="max-w-[13rem] truncate">{mention.token}</span>
-                {onMentionRemove ? (
-                  <button
-                    aria-label={`Remove ${mention.label}`}
-                    className="grid size-5 place-items-center rounded-full text-[var(--color-ink-muted)] transition hover:bg-[var(--color-page-quiet)] hover:text-[var(--color-danger)]"
-                    onClick={() => onMentionRemove(mention)}
-                    type="button"
-                  >
-                    <X size={12} />
-                  </button>
-                ) : null}
-              </span>
-            ))
-          ) : (
-            <span className="text-[0.73rem] text-[var(--color-ink-muted)]">
-              Type @ for library assets, personas, or prior outputs.
-            </span>
-          )}
         </div>
 
         {isWorking ? (
@@ -397,6 +238,7 @@ export function AgentCreatePrompt({
           </button>
         )}
       </div>
+      <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
     </form>
   );
 }

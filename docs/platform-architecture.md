@@ -7,18 +7,13 @@ It replaces the older rearchitecture plans and task trackers.
 
 The main app navigation is:
 
-- Dashboard: workspace overview.
 - Create: one-off content generation for images, videos, audio, lipsync, video
   rendering, and slideshow/carousel style outputs.
 - Analyze: reference source analysis from upload, YouTube URL, direct media URL,
   and future social URL resolver support.
-- Brands: brand strategy context.
-- Personas: reusable AI people, mascots, customer avatars, source media, and
-  voice references.
 - Accounts: social/publishing account records.
 - Workflows: canvas-native automation graphs.
 - Library: saved assets, artifacts, slideshow outputs, and publishing actions.
-- Analytics: metrics summaries.
 - Settings: provider defaults, video analysis provider, and MCP API keys.
 
 ## Durable Data Boundaries
@@ -27,9 +22,7 @@ Core Convex tables own these responsibilities:
 
 - `workspaces` and `workspaceMembers`: workspace ownership, membership, and
   workspace-level provider defaults.
-- `brands`: brand strategy, audience, voice, offer, and constraints.
 - `creativeAssets`: reusable uploaded or generated reference media.
-- `personas`: reusable identities linked to creative assets.
 - `providerConnections`: publishing provider account/workspace links.
 - `providerModels`: cached provider model catalog snapshots and schema metadata.
 - `contentRequests`: one-off Create jobs and their generation status.

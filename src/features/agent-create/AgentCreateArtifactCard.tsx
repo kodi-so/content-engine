@@ -11,6 +11,7 @@ import {
   AgentCreateSlideshowArtifact,
   isInlineSlideshowArtifact,
 } from "./AgentCreateSlideshowArtifact";
+import { ReferenceBriefPanel } from "../analyze/ReferenceBriefPanel";
 import type { AgentCreateArtifact } from "./agentCreateTypes";
 import { agentCreateClassNames } from "./agentCreateUi";
 
@@ -137,6 +138,17 @@ export function AgentCreateArtifactCard({
       ) : null}
     </div>
   ) : null;
+
+  if (artifact.referenceBrief && !compact) {
+    return (
+      <ReferenceBriefPanel
+        brief={artifact.referenceBrief}
+        summary={artifact.description}
+        title={artifact.title}
+        variant="embedded"
+      />
+    );
+  }
 
   if (!compact && isReady && mediaUrl && (artifact.kind === "image" || artifact.kind === "video")) {
     return (

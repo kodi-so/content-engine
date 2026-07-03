@@ -16,7 +16,6 @@ export type SelectableLibraryAsset = {
   prompt?: string;
   provider?: string;
   model?: string;
-  brandId?: string;
   createdAt: number;
 };
 
@@ -96,7 +95,6 @@ function createAssetFromArtifact(artifact: Doc<"artifacts">): SelectableLibraryA
     prompt: artifact.prompt,
     provider: artifact.provider,
     model: artifact.model,
-    brandId: artifact.brandId ? String(artifact.brandId) : undefined,
     createdAt: artifact.createdAt,
   };
 }
@@ -114,7 +112,6 @@ function creativeAssetToSelectable(asset: Doc<"creativeAssets">): SelectableLibr
     mimeType,
     mediaKind: mediaKindFromAsset(asset),
     prompt: asset.description ?? asset.usageNotes,
-    brandId: asset.brandId ? String(asset.brandId) : undefined,
     createdAt: asset.createdAt,
   };
 }
@@ -164,7 +161,6 @@ function workflowExportAssetsFromArtifacts(
       prompt: sourceArtifact?.prompt,
       provider: typeof item.provider === "string" ? item.provider : sourceArtifact?.provider,
       model: typeof item.model === "string" ? item.model : sourceArtifact?.model,
-      brandId: artifact.brandId ? String(artifact.brandId) : undefined,
       createdAt: exportTimestamp(artifact),
     }];
   });
@@ -175,15 +171,9 @@ function matchesMediaKind(asset: SelectableLibraryAsset, mediaKind?: SelectableM
   return asset.mediaKind === mediaKind;
 }
 
-function matchesBrand(asset: SelectableLibraryAsset, brandId?: Id<"brands">) {
-  if (!brandId) return true;
-  return !asset.brandId || asset.brandId === String(brandId);
-}
-
 export async function listSelectableLibraryAssets(
   ctx: QueryCtx | MutationCtx,
   args: {
-    brandId?: Id<"brands">;
     mediaKind?: SelectableMediaKind;
     userId: string;
     workspaceId?: Id<"workspaces">;
@@ -235,14 +225,12 @@ export async function listSelectableLibraryAssets(
     ...creativeAssets.map(creativeAssetToSelectable),
   ]
     .filter((asset) => matchesMediaKind(asset, args.mediaKind))
-    .filter((asset) => matchesBrand(asset, args.brandId))
     .sort((first, second) => second.createdAt - first.createdAt);
 }
 
 export const listSelectable = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     mediaKind: v.optional(
       v.union(
         v.literal("image"),

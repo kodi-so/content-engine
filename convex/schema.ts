@@ -20,7 +20,6 @@ import {
   distributionStatusValidator,
   metricsValidator,
   modelProviderValidator,
-  personaTypeValidator,
   platformValidator,
   providerModelCapabilitiesValidator,
   providerModelCategoryValidator,
@@ -113,31 +112,9 @@ export default defineSchema({
     .index("by_workspace_user", ["workspaceId", "userId"])
     .index("by_user_status", ["userId", "status"]),
 
-  brands: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    name: v.string(),
-    description: v.optional(v.string()),
-    niche: v.optional(v.string()),
-    audience: v.optional(v.string()),
-    voice: v.optional(v.string()),
-    visualStyle: v.optional(v.string()),
-    offer: v.optional(v.string()),
-    constraints: v.optional(v.array(v.string())),
-    examplePosts: v.optional(v.array(v.string())),
-    performanceNotes: v.optional(v.string()),
-    isActive: v.boolean(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_workspace", ["workspaceId"])
-    .index("by_user_active", ["userId", "isActive"]),
-
   creativeAssets: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     name: v.string(),
     assetKind: creativeAssetKindValidator,
     mediaType: creativeAssetMediaTypeValidator,
@@ -149,31 +126,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
-    .index("by_brand_kind", ["brandId", "assetKind"]),
-
-  personas: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.id("brands"),
-    name: v.string(),
-    personaType: personaTypeValidator,
-    description: v.optional(v.string()),
-    identityPrompt: v.string(),
-    visualConstraints: v.optional(v.array(v.string())),
-    sourceAssetIds: v.array(v.id("creativeAssets")),
-    generatedAssetIds: v.array(v.id("creativeAssets")),
-    voiceAssetIds: v.array(v.id("creativeAssets")),
-    usageNotes: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
-    .index("by_brand_type", ["brandId", "personaType"]),
+    .index("by_workspace", ["workspaceId"]),
 
   providerConnections: defineTable({
     userId: v.string(),
@@ -278,7 +231,6 @@ export default defineSchema({
   socialAccounts: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     providerConnectionId: v.optional(v.id("providerConnections")),
     provider: publishingProviderValidator,
     platform: platformValidator,
@@ -295,14 +247,12 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_user_provider", ["userId", "provider"])
     .index("by_external_account", ["provider", "externalAccountId"]),
 
   workflows: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
@@ -327,13 +277,11 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_active_next_run", ["isActive", "nextRunAt"]),
 
   contentRequests: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentFormat: contentFormatValidator,
     prompt: v.string(),
@@ -367,7 +315,6 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_user_status", ["userId", "status"]),
 
   createThreads: defineTable({
@@ -448,7 +395,6 @@ export default defineSchema({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     workflowId: v.id("workflows"),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     trigger: workflowTriggerValidator,
     status: workflowRunStatusValidator,
@@ -515,7 +461,6 @@ export default defineSchema({
   artifacts: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
@@ -534,7 +479,6 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_content_request", ["contentRequestId"])
     .index("by_workflow_run", ["workflowRunId"])
     .index("by_type", ["type"]),
@@ -542,7 +486,6 @@ export default defineSchema({
   slideshows: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
@@ -556,7 +499,6 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_content_request", ["contentRequestId"])
     .index("by_workflow_run", ["workflowRunId"]),
 
@@ -600,7 +542,6 @@ export default defineSchema({
   distributionPlans: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     artifactIds: v.array(v.id("artifacts")),
@@ -619,14 +560,12 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_workflow_run", ["workflowRunId"])
     .index("by_status", ["status"]),
 
   postMetrics: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     distributionPlanId: v.optional(v.id("distributionPlans")),
@@ -640,7 +579,6 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_brand", ["brandId"])
     .index("by_workflow_run", ["workflowRunId"])
     .index("by_distribution_plan", ["distributionPlanId"])
     .index("by_social_account", ["socialAccountId"])

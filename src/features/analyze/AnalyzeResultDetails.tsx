@@ -3,8 +3,10 @@ import {
   AudioLines,
   Clipboard,
   Eye,
+  ExternalLink,
   FileText,
   HelpCircle,
+  Images,
   Layers3,
   MessageSquare,
   Sparkles,
@@ -12,6 +14,7 @@ import {
 import type { FormEvent, ReactNode } from "react";
 import { LoadingSignal, LoadingState } from "../../components/ui";
 import { JobStatusIcon } from "./AnalyzeJobList";
+import { ReferenceBriefPanel } from "./ReferenceBriefPanel";
 import {
   formatDateTime,
   sourceLabel,
@@ -22,7 +25,42 @@ import {
   type AnalysisQuestion,
   type AnalysisResult,
   type Scene,
+  type SlideAnalysis,
 } from "./analyzeModel";
+import { referenceBriefFromResult } from "./referenceBriefModel";
+
+function SourceReference({ job }: { job: AnalysisJob }) {
+  const sourceUrl = job.sourceUrl?.trim();
+  const sourceName = sourceLabel(job);
+
+  return (
+    <div className="mt-[var(--space-4)] grid gap-[var(--space-1)] border-t border-[var(--color-border)] pt-[var(--space-3)]">
+      <span className="text-[0.74rem] font-[820] uppercase tracking-[0.06em] text-[var(--color-muted)]">
+        Source
+      </span>
+      {sourceUrl ? (
+        <a
+          className="inline-flex min-w-0 items-center gap-[var(--space-2)] text-[0.88rem] font-[720] leading-[1.45] text-[var(--color-accent-strong)] underline-offset-4 hover:underline"
+          href={sourceUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span className="min-w-0 break-all">{sourceUrl}</span>
+          <ExternalLink size={14} className="shrink-0" />
+        </a>
+      ) : (
+        <span className="text-[0.88rem] font-[720] text-[var(--color-ink)]">
+          {sourceName}
+        </span>
+      )}
+      {job.sourceType === "upload" && job.fileName ? (
+        <span className="text-[0.78rem] leading-[1.45] text-[var(--color-muted)]">
+          Uploaded file: {job.fileName}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 function ListSection({
   empty = "Nothing detected.",
@@ -116,6 +154,99 @@ function SceneBreakdown({ scenes }: { scenes?: Scene[] }) {
   );
 }
 
+function cleanRows(items?: string[]) {
+  return items?.filter((item) => item.trim()) ?? [];
+}
+
+function SlideDetailRow({ label, value }: { label: string; value?: string }) {
+  if (!value?.trim()) return null;
+
+  return (
+    <div className="grid gap-[0.18rem]">
+      <span className="text-[0.72rem] font-[820] uppercase tracking-[0.06em] text-[var(--color-muted)]">
+        {label}
+      </span>
+      <span className="text-[0.86rem] leading-[1.5] text-[var(--color-ink)]">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SlideAnalysisSection({ slides }: { slides?: SlideAnalysis[] }) {
+  const rows = slides?.filter((slide) =>
+    [
+      slide.imageDescription,
+      slide.textLayout,
+      slide.visualStyle,
+      slide.creatorPurpose,
+      slide.audioNotes,
+      ...(slide.visibleText ?? []),
+      ...(slide.subjects ?? []),
+    ].some(Boolean)
+  ) ?? [];
+
+  if (!rows.length) return null;
+
+  return (
+    <AnalysisSection icon={Images} title="Slides">
+      <div className="grid gap-[var(--space-3)]">
+        {rows.map((slide, index) => {
+          const visibleText = cleanRows(slide.visibleText);
+          const subjects = cleanRows(slide.subjects);
+
+          return (
+            <article
+              className="grid gap-[var(--space-3)] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-3)]"
+              key={`${slide.index ?? index + 1}-${slide.imageDescription ?? index}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-[var(--space-2)]">
+                <h3 className="m-0 text-[0.96rem] font-[820] leading-[1.3] text-[var(--color-ink)]">
+                  Slide {slide.index ?? index + 1}
+                </h3>
+                {visibleText.length ? (
+                  <span className="rounded-full border border-[var(--color-border)] px-[var(--space-2)] py-[0.18rem] text-[0.72rem] font-[760] text-[var(--color-muted)]">
+                    {visibleText.length} text {visibleText.length === 1 ? "item" : "items"}
+                  </span>
+                ) : null}
+              </div>
+
+              <p className="m-0 text-[0.9rem] leading-[1.55] text-[var(--color-ink)]">
+                {textOrFallback(slide.imageDescription, "No image description returned.")}
+              </p>
+
+              {visibleText.length ? (
+                <div>
+                  <span className="mb-[var(--space-2)] block text-[0.72rem] font-[820] uppercase tracking-[0.06em] text-[var(--color-muted)]">
+                    Visible Text
+                  </span>
+                  <ListSection items={visibleText} />
+                </div>
+              ) : null}
+
+              <div className="grid gap-[var(--space-3)] md:grid-cols-2">
+                <SlideDetailRow label="Text layout" value={slide.textLayout} />
+                <SlideDetailRow label="Visual style" value={slide.visualStyle} />
+                <SlideDetailRow label="Purpose" value={slide.creatorPurpose} />
+                <SlideDetailRow label="Audio" value={slide.audioNotes} />
+              </div>
+
+              {subjects.length ? (
+                <div>
+                  <span className="mb-[var(--space-2)] block text-[0.72rem] font-[820] uppercase tracking-[0.06em] text-[var(--color-muted)]">
+                    Subjects
+                  </span>
+                  <ListSection items={subjects} />
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </AnalysisSection>
+  );
+}
+
 function CompletedAnalysis({
   isAsking,
   onQuestionChange,
@@ -131,8 +262,12 @@ function CompletedAnalysis({
   result: AnalysisResult;
   sortedQuestions: AnalysisQuestion[];
 }) {
+  const referenceBrief = referenceBriefFromResult(result);
+
   return (
     <>
+      <ReferenceBriefPanel brief={referenceBrief} summary={result.summary} />
+
       <AnalysisSection icon={FileText} title="Transcript">
         <TextPanel>
           {textOrFallback(result.transcript?.text, "No transcript detected.")}
@@ -164,6 +299,8 @@ function CompletedAnalysis({
           </div>
         </div>
       </AnalysisSection>
+
+      <SlideAnalysisSection slides={result.slideshow?.slides} />
 
       <AnalysisSection icon={Layers3} title="Scenes">
         <SceneBreakdown scenes={result.visuals?.sceneBreakdown} />
@@ -299,6 +436,7 @@ export function AnalyzeResultDetails({
             <p className="mt-[var(--space-2)] max-w-[52rem] text-[0.94rem] leading-[1.58] text-[var(--color-muted)]">
               {selectedJob.summary ?? "Analysis is being prepared."}
             </p>
+            <SourceReference job={selectedJob} />
           </div>
         </div>
 

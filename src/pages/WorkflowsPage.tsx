@@ -15,14 +15,13 @@ import { LoadingSignal, LoadingState, Page, Select } from "../components/ui";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import { createStarterWorkflowGraph } from "../lib/workflow/workflowGraph";
 import { DEFAULT_PUBLISHING_PROVIDER } from "../lib/publishingRouting";
-import type { BrandId, WorkflowId } from "../types";
+import type { WorkflowId } from "../types";
 
 type WorkflowStatusFilter = "all" | "active" | "paused";
 type WorkflowScheduleFilter = "all" | "manual" | "scheduled";
 type WorkflowCreateDraft = {
   isOpen: boolean;
   name: string;
-  brandId: string;
 };
 
 function formatDate(value?: number) {
@@ -52,14 +51,12 @@ export function WorkflowsPage() {
   const navigate = useNavigate();
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
   const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
-  const brands = useQuery(api.accounts.brands.list, workspaceArgs);
   const accounts = useQuery(api.accounts.socialAccounts.list, workspaceArgs);
   const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
   const createWorkflow = useMutation(api.workflows.definitions.create);
   const updateWorkflowMetadata = useMutation(api.workflows.definitions.updateMetadata);
   const duplicateWorkflow = useMutation(api.workflows.definitions.duplicate);
   const deleteWorkflow = useMutation(api.workflows.definitions.remove);
-  const [brandFilter, setBrandFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<WorkflowStatusFilter>("all");
   const [scheduleFilter, setScheduleFilter] = useState<WorkflowScheduleFilter>("all");
   const [actionStatus, setActionStatus] = useState("");
@@ -68,13 +65,8 @@ export function WorkflowsPage() {
   const [createDraft, setCreateDraft] = useState<WorkflowCreateDraft>({
     isOpen: false,
     name: "",
-    brandId: "",
   });
 
-  const brandsById = useMemo(
-    () => new Map((brands ?? []).map((brand) => [String(brand._id), brand.name])),
-    [brands]
-  );
   const accountsById = useMemo(
     () => new Map((accounts ?? []).map((account) => [String(account._id), account.username])),
     [accounts]
@@ -83,14 +75,6 @@ export function WorkflowsPage() {
     if (!workflows) return undefined;
 
     return workflows.filter((workflow) => {
-      if (brandFilter === "unbranded" && workflow.brandId) return false;
-      if (
-        brandFilter !== "all" &&
-        brandFilter !== "unbranded" &&
-        workflow.brandId !== brandFilter
-      ) {
-        return false;
-      }
       if (statusFilter === "active" && !workflow.isActive) return false;
       if (statusFilter === "paused" && workflow.isActive) return false;
       if (scheduleFilter === "manual" && workflow.trigger !== "manual") return false;
@@ -104,13 +88,12 @@ export function WorkflowsPage() {
 
       return true;
     });
-  }, [brandFilter, scheduleFilter, statusFilter, workflows]);
+  }, [scheduleFilter, statusFilter, workflows]);
 
   const openCreateWorkflowModal = () => {
     setCreateDraft({
       isOpen: true,
       name: "",
-      brandId: brandFilter !== "all" && brandFilter !== "unbranded" ? brandFilter : "",
     });
   };
 
@@ -118,7 +101,6 @@ export function WorkflowsPage() {
     setCreateDraft({
       isOpen: false,
       name: "",
-      brandId: "",
     });
   };
 
@@ -128,13 +110,10 @@ export function WorkflowsPage() {
     const name = createDraft.name.trim();
     if (!name) return;
 
-    const brandId = createDraft.brandId ? (createDraft.brandId as BrandId) : undefined;
-
     setActionStatus("Creating workflow");
     try {
       const workflowId = await createWorkflow({
         ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-        ...(brandId ? { brandId } : {}),
         name,
         trigger: "manual",
         approvalPolicy: { mode: "always" },
@@ -222,15 +201,6 @@ export function WorkflowsPage() {
         </div>
 
         <div className="workflow-index-filters">
-          <Select label="Brand" value={brandFilter} onChange={setBrandFilter}>
-            <option value="all">All brands</option>
-            <option value="unbranded">No brand</option>
-            {brands?.map((brand) => (
-              <option key={brand._id} value={brand._id}>
-                {brand.name}
-              </option>
-            ))}
-          </Select>
           <Select
             label="Status"
             value={statusFilter}
@@ -271,7 +241,7 @@ export function WorkflowsPage() {
               <div className="workflow-create-modal-header">
                 <div>
                   <h3 id="workflow-create-title">Create Workflow</h3>
-                  <p>Name it now. Attach a brand only if this workflow needs one.</p>
+                  <p>Name it now. You can tune the canvas after it opens.</p>
                 </div>
                 <button
                   aria-label="Close create workflow dialog"
@@ -298,24 +268,6 @@ export function WorkflowsPage() {
                 />
               </label>
 
-              <Select
-                label="Brand"
-                value={createDraft.brandId}
-                onChange={(brandId) =>
-                  setCreateDraft((current) => ({
-                    ...current,
-                    brandId,
-                  }))
-                }
-              >
-                <option value="">No brand</option>
-                {brands?.map((brand) => (
-                  <option key={brand._id} value={brand._id}>
-                    {brand.name}
-                  </option>
-                ))}
-              </Select>
-
               <div className="workflow-create-modal-actions">
                 <button className="secondary-button" onClick={closeCreateWorkflowModal} type="button">
                   Cancel
@@ -332,7 +284,7 @@ export function WorkflowsPage() {
         <div className="workflow-table" role="table" aria-label="Workflows">
           <div className="workflow-table-header" role="row">
             <span>Name</span>
-            <span>Brand</span>
+            <span>Account</span>
             <span>Schedule</span>
             <span>Status</span>
             <span>Actions</span>
@@ -363,9 +315,6 @@ export function WorkflowsPage() {
           {filteredWorkflows?.map((workflow) => {
             const workflowId = workflow._id as WorkflowId;
             const isRenaming = renamingWorkflowId === workflowId;
-            const brandName = workflow.brandId
-              ? brandsById.get(String(workflow.brandId)) ?? "Unknown brand"
-              : "No brand";
             const accountName = workflow.socialAccountId
               ? accountsById.get(String(workflow.socialAccountId))
               : undefined;
@@ -402,7 +351,7 @@ export function WorkflowsPage() {
                     </Link>
                   )}
                 </div>
-                <span>{accountName ? `${brandName} / ${accountName}` : brandName}</span>
+                <span>{accountName ?? "No account"}</span>
                 <span>{formatSchedule(workflow)}</span>
                 <span>
                   <mark className={workflow.isActive ? "workflow-status-active" : "workflow-status-paused"}>

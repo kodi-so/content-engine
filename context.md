@@ -56,7 +56,7 @@ These preferences were repeated many times and should guide future work:
 - Prefer generalizable prompt guidance: describe placement, camera angle, character positioning, typography, object relationships, scene details, and topic-specific visual details.
 - Background plus overlay mode should not ask the image model to render text.
 - Full graphic mode may ask the image model to render text.
-- UGC/persona/camera-roll style content usually belongs in `background_plus_overlay`, because app-rendered text is more reliable and UGC imagery should feel like real photos.
+- UGC/camera-roll style content usually belongs in `background_plus_overlay`, because app-rendered text is more reliable and UGC imagery should feel like real photos.
 - Captions belong to post artifacts, not slideshow plans.
 - Slide count should be semantically determined, with minimum 2 slides.
 - Reference image usage should be per slide, explicit, and binary.
@@ -208,7 +208,7 @@ The conclusion:
 - For authentic UGC-like slideshows, the user prompt needs to explicitly ask for camera-roll imagery and varied per-slide scene types.
 - The system prompt should preserve that specificity, not invent its own visual interpretation.
 - A reference image of a person should only be used on slides where that person is visible.
-- Object-only slides should not send the persona reference image.
+- Object-only slides should not send unrelated subject reference images.
 
 ## Reference Image Architecture
 
@@ -555,7 +555,7 @@ The platform should become a general content generation engine where:
 
 - User intent is explicit and preserved.
 - The system compiles intent into production artifacts.
-- References are reusable brand/persona/assets, but applied per slide.
+- References are reusable assets, but applied per slide.
 - Slideshows are artifacts.
 - Posts are separate artifacts that can include captions, platform metadata, CTA context, and distribution plans.
 - CTA/fixed-media slides become first-class.
@@ -652,7 +652,7 @@ Fix:
 
 ### Create Page Layout Fix
 
-The create/dashboard pages briefly had horizontal overflow and clipped content after reference assets were added and layout tweaks were attempted.
+The create page briefly had horizontal overflow and clipped content after reference assets were added and layout tweaks were attempted.
 
 Current intent:
 

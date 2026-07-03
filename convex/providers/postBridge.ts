@@ -34,6 +34,17 @@ type PostBridgePage<T> = {
 
 type PostBridgeSocialAccount = {
   id: number;
+  avatarUrl?: string;
+  avatar_url?: string;
+  displayName?: string;
+  display_name?: string;
+  image?: string;
+  image_url?: string;
+  name?: string;
+  picture?: string;
+  profilePictureUrl?: string;
+  profile_image_url?: string;
+  profile_picture_url?: string;
   platform: string;
   username: string;
 };
@@ -133,7 +144,14 @@ function createPostBridgeHttpError(
   statusCode: number,
   details: string
 ): ProviderError {
-  return new ProviderError(`PostBridge API error during ${operation}`, {
+  const summary = summarizePostBridgeError(details);
+  const message = [
+    `PostBridge API error during ${operation}`,
+    `status ${statusCode}`,
+    summary,
+  ].filter(Boolean).join(": ");
+
+  return new ProviderError(message, {
     kind: "publishing",
     provider: POST_BRIDGE_PROVIDER,
     operation,
@@ -142,6 +160,28 @@ function createPostBridgeHttpError(
     retryable: statusCode === 429 || statusCode >= 500,
     details,
   });
+}
+
+function summarizePostBridgeError(details: string): string {
+  const trimmed = details.trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      const parts = [
+        typeof record.message === "string" ? record.message : undefined,
+        typeof record.error === "string" ? record.error : undefined,
+      ].filter((part): part is string => Boolean(part));
+
+      if (parts.length > 0) return parts.join(" ");
+    }
+  } catch {
+    // Fall back to the raw response body below.
+  }
+
+  return trimmed.length > 240 ? `${trimmed.slice(0, 240)}...` : trimmed;
 }
 
 async function postBridgeRequest<T>(
@@ -229,15 +269,37 @@ function mapPostBridgePlatform(platform: string): PublishingAccount["platform"] 
   return null;
 }
 
+function firstString(...values: Array<string | undefined>) {
+  return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim();
+}
+
 function mapPostBridgeAccount(account: PostBridgeSocialAccount): PublishingAccount | null {
   const platform = mapPostBridgePlatform(account.platform);
   if (!platform) return null;
+
+  const displayName = firstString(
+    account.displayName,
+    account.display_name,
+    account.name,
+    account.username
+  );
+  const avatarUrl = firstString(
+    account.avatarUrl,
+    account.avatar_url,
+    account.profilePictureUrl,
+    account.profile_picture_url,
+    account.profile_image_url,
+    account.picture,
+    account.image_url,
+    account.image
+  );
 
   return {
     externalAccountId: String(account.id),
     platform,
     username: account.username,
-    displayName: account.username,
+    displayName,
+    avatarUrl,
     status: "connected",
     capabilities: ["publish", "schedule", "draft", "upload_media", "analytics"],
     metadata: {

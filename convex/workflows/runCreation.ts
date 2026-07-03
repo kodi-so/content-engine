@@ -38,7 +38,6 @@ export async function createWorkflowRun(
     userId: args.userId,
     workspaceId: args.workflow.workspaceId,
     workflowId: args.workflow._id,
-    brandId: args.workflow.brandId,
     socialAccountId: args.workflow.socialAccountId,
     trigger,
     status: "queued",

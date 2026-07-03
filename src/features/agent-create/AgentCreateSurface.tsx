@@ -10,8 +10,11 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import type { SelectableLibraryAsset } from "../../components/library/ReferenceAssetField";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
+import {
+  assetSourceLongLabels,
+  type SelectableLibraryAsset,
+} from "../assets/assetTypes";
 import { AgentCreateMessageList } from "./AgentCreateMessageList";
 import { AgentCreatePrompt } from "./AgentCreatePrompt";
 import { CheckpointPrompt } from "./CheckpointPrompt";
@@ -42,7 +45,6 @@ import { agentCreateClassNames } from "./agentCreateUi";
 type CreateThreadId = Id<"createThreads">;
 type CreateCheckpointId = Id<"createCheckpoints">;
 type ArtifactId = Id<"artifacts">;
-type PersonaId = Id<"personas">;
 type VideoProjectId = Id<"videoProjects">;
 
 type PendingAgentTurn = {
@@ -52,12 +54,6 @@ type PendingAgentTurn = {
   content: string;
   createdAt: number;
   referenceMentions?: AgentCreateSelectedMention[];
-};
-
-const sourceLabels: Record<SelectableLibraryAsset["source"], string> = {
-  create: "Create",
-  creative_asset: "Library asset",
-  workflow_export: "Workflow export",
 };
 
 function mediaTypeFromAsset(asset: SelectableLibraryAsset): AgentCreateMentionMediaType {
@@ -75,32 +71,10 @@ function mentionOptionFromAsset(asset: SelectableLibraryAsset): AgentCreateMenti
     entityType: asset.source === "creative_asset" ? "creative_asset" : "artifact",
     description: asset.prompt,
     mediaType: mediaTypeFromAsset(asset),
-    sourceLabel: sourceLabels[asset.source],
-    thumbnailUrl: asset.mediaKind === "image" || asset.mediaKind === "video"
-      ? asset.storageUrl
-      : undefined,
-  };
-}
-
-function mentionOptionFromPersona(persona: {
-  _id: PersonaId;
-  description?: string;
-  identityPrompt?: string;
-  name: string;
-  personaType: string;
-  usageNotes?: string;
-  visualConstraints?: string[];
-}): AgentCreateMentionOption {
-  return {
-    id: persona._id,
-    label: persona.name,
-    entityType: "persona",
-    description:
-      persona.description ||
-      persona.usageNotes ||
-      persona.identityPrompt ||
-      persona.visualConstraints?.join(", "),
-    sourceLabel: "Persona",
+    mimeType: asset.mimeType,
+    previewUrl: asset.storageUrl,
+    sourceLabel: assetSourceLongLabels[asset.source],
+    thumbnailUrl: asset.mediaKind === "image" ? asset.storageUrl : undefined,
   };
 }
 
@@ -113,6 +87,17 @@ function uniqueMentions(mentions: AgentCreateSelectedMention[]) {
     seen.add(key);
     return true;
   });
+}
+
+function backendReferenceMention(mention: AgentCreateSelectedMention): AgentCreateSelectedMention {
+  return {
+    token: mention.token,
+    label: mention.label,
+    entityType: mention.entityType,
+    entityId: mention.entityId,
+    ...(mention.mediaType ? { mediaType: mention.mediaType } : {}),
+    ...(mention.instruction ? { instruction: mention.instruction } : {}),
+  };
 }
 
 function videoProjectIdFromStudioArtifact(artifact?: AgentCreateArtifact): VideoProjectId | undefined {
@@ -217,6 +202,7 @@ function isRoutineProgressMessage(message: {
 
 function shouldAttachToolArtifactsToChat(toolName: string) {
   return (
+    toolName === "analyze.source" ||
     toolName === "slideshow.render" ||
     toolName === "artifact.export" ||
     toolName === "publishing.prepare" ||
@@ -232,7 +218,6 @@ export function AgentCreateSurface() {
   );
   const threads = useQuery(api.create.threads.list, workspaceArgs);
   const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
-  const personas = useQuery(api.accounts.personas.list, workspaceArgs);
   const createThread = useMutation(api.create.threads.create);
   const deleteThread = useMutation(api.create.threads.remove);
   const renameThread = useMutation(api.create.threads.rename);
@@ -370,11 +355,12 @@ export function AgentCreateSurface() {
   }, [chatMenuOpen]);
 
   const mentionOptions = useMemo(
-    () => [
-      ...(selectableLibraryAssets ?? []).map(mentionOptionFromAsset),
-      ...(personas ?? []).map(mentionOptionFromPersona),
-    ],
-    [personas, selectableLibraryAssets]
+    () => (selectableLibraryAssets ?? []).map(mentionOptionFromAsset),
+    [selectableLibraryAssets]
+  );
+  const mentionOptionById = useMemo(
+    () => new Map(mentionOptions.map((option) => [option.id, option])),
+    [mentionOptions]
   );
 
   const outputArtifacts = useMemo<AgentCreateArtifact[]>(
@@ -535,12 +521,22 @@ export function AgentCreateSurface() {
             content: message.content,
             kind: message.kind,
             createdAt: message.createdAt,
-            referenceMentions: message.referenceMentions,
+            referenceMentions: message.referenceMentions?.map((mention) => {
+              const option = mentionOptionById.get(mention.entityId);
+              if (!option) return mention;
+              return {
+                ...mention,
+                mimeType: option.mimeType,
+                previewUrl: option.previewUrl,
+                sourceLabel: option.sourceLabel,
+                thumbnailUrl: option.thumbnailUrl,
+              };
+            }),
             artifacts: uniqueArtifacts([...explicitArtifacts, ...toolArtifacts]),
             toolSteps: toolStepsByMessageId.get(String(message._id)),
           };
         }),
-    [artifactById, artifactsByMessageId, messages, toolStepsByMessageId]
+    [artifactById, artifactsByMessageId, mentionOptionById, messages, toolStepsByMessageId]
   );
   const visibleMessages = useMemo<AgentCreateMessage[]>(() => {
     if (!pendingAgentTurn) return renderedMessages;
@@ -667,22 +663,11 @@ export function AgentCreateSurface() {
     );
   };
 
-  const removeMention = (mentionToRemove: AgentCreateSelectedMention) => {
-    setSelectedMentions((current) =>
-      current.filter((mention) =>
-        !(
-          mention.entityType === mentionToRemove.entityType &&
-          mention.entityId === mentionToRemove.entityId &&
-          mention.token === mentionToRemove.token
-        )
-      )
-    );
-  };
-
   const submitMessage = async () => {
     const content = prompt.trim();
     if (!content || isSubmitting) return;
     const activeMentions = selectedMentions.filter((mention) => content.includes(mention.token));
+    const submitMentions = activeMentions.map(backendReferenceMention);
     const now = Date.now();
     const localMessageId = `pending:${now}`;
 
@@ -702,7 +687,7 @@ export function AgentCreateSurface() {
         ...(activeThreadId ? { threadId: activeThreadId } : workspaceArgs),
         checkpointMode,
         content,
-        referenceMentions: activeMentions,
+        referenceMentions: submitMentions,
       });
       setPendingAgentTurn((current) =>
         current?.localMessageId === localMessageId
@@ -1192,7 +1177,6 @@ export function AgentCreateSurface() {
               mentionOptions={mentionOptions}
               onChange={handlePromptChange}
               onCheckpointModeChange={setCheckpointMode}
-              onMentionRemove={removeMention}
               onMentionSelect={(selection) => handleMentionSelect(selection.mention)}
               onStop={() => {
                 void stopActiveThread();

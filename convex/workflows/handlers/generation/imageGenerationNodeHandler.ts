@@ -219,7 +219,6 @@ export async function executeImageGenerationNode({
         internal.artifacts.records.createFromRunner,
         {
           userId: context.run.userId,
-          brandId: context.run.brandId,
           workflowId: context.workflow._id,
           workflowRunId: context.run._id,
           parentArtifactIds: sourceArtifactIds.length ? sourceArtifactIds : undefined,

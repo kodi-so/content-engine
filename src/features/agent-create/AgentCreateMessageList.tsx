@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { MediaLightbox, type MediaLightboxItem } from "../../components/MediaLightbox";
+import { AssetMentionChip } from "../assets/AssetMentionChip";
 import { AgentCreateArtifactGrid } from "./AgentCreateArtifactCard";
 import { isInlineSlideshowArtifact } from "./AgentCreateSlideshowArtifact";
 import type {
@@ -377,20 +378,22 @@ export function AgentCreateMessageList({
                 {message.referenceMentions?.length ? (
                   <div className="flex min-w-0 flex-wrap gap-[var(--space-2)]">
                     {message.referenceMentions.map((mention) => (
-                      <span
-                        className={agentCreateClassNames(
-                          "inline-flex min-h-7 max-w-full items-center gap-[0.35rem] rounded-full px-[var(--space-2)] text-[0.72rem] font-[720]",
-                          isUser
-                            ? "bg-[oklch(100%_0_0_/_0.14)] text-[var(--color-surface)]"
-                            : "border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-ink-soft)]"
-                        )}
+                      <AssetMentionChip
+                        asset={{
+                          id: mention.entityId,
+                          title: mention.label,
+                          storageUrl: mention.previewUrl ?? mention.thumbnailUrl,
+                          thumbnailUrl: mention.thumbnailUrl,
+                          mimeType: mention.mimeType,
+                          mediaKind: mention.mediaType,
+                        }}
                         key={`${message.id}:${mention.entityType}:${mention.entityId}:${mention.token}`}
-                      >
-                        <span className="truncate">{mention.token}</span>
-                        <span className={isUser ? "opacity-70" : "text-[var(--color-ink-muted)]"}>
-                          {formatAgentCreateEntityType(mention.entityType)}
-                        </span>
-                      </span>
+                        meta={[
+                          mention.token,
+                          mention.sourceLabel ?? formatAgentCreateEntityType(mention.entityType),
+                        ].filter(Boolean).join(" · ")}
+                        tone={isUser ? "inverse" : "default"}
+                      />
                     ))}
                   </div>
                 ) : null}

@@ -104,7 +104,6 @@ export const creativeAssetKindValidator = v.union(
   v.literal("product"),
   v.literal("style_reference"),
   v.literal("mascot"),
-  v.literal("persona"),
   v.literal("voice"),
   v.literal("logo"),
   v.literal("character"),
@@ -117,16 +116,6 @@ export const creativeAssetMediaTypeValidator = v.union(
   v.literal("video"),
   v.literal("audio"),
   v.literal("file")
-);
-
-export const personaTypeValidator = v.union(
-  v.literal("ai_influencer"),
-  v.literal("ugc_actor"),
-  v.literal("transformation_identity"),
-  v.literal("mascot"),
-  v.literal("spokesperson"),
-  v.literal("customer_avatar"),
-  v.literal("other")
 );
 
 export const socialAccountStatusValidator = v.union(
@@ -224,11 +213,6 @@ export const nodeInputBindingValidator = v.union(
   v.object({
     type: v.literal("media_asset"),
     assetId: v.string(),
-  }),
-  v.object({
-    type: v.literal("persona"),
-    personaId: v.string(),
-    assetKey: v.optional(v.string()),
   })
 );
 
@@ -315,7 +299,6 @@ export const createReferenceMentionValidator = v.object({
   label: v.string(),
   entityType: v.union(
     v.literal("creative_asset"),
-    v.literal("persona"),
     v.literal("artifact"),
     v.literal("analysis")
   ),

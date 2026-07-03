@@ -13,15 +13,11 @@ import { Sidebar } from "./components/AppShell";
 import { LoadingScreen, PrivateBetaScreen, SignInScreen } from "./components/ui";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { AccountsPage } from "./pages/AccountsPage";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { AnalyzePage } from "./pages/AnalyzePage";
-import { BrandsPage } from "./pages/BrandsPage";
 import { CreatePage } from "./pages/CreatePage";
 import { CreateToolsPage } from "./pages/CreateToolsPage";
-import { Dashboard } from "./pages/Dashboard";
 import { LandingPage } from "./pages/LandingPage";
 import { LibraryPage } from "./pages/LibraryPage";
-import { PersonasPage } from "./pages/PersonasPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SlideshowEditorPage } from "./pages/SlideshowEditorPage";
 import { VideoComposerPage } from "./pages/VideoComposerPage";
@@ -81,7 +77,7 @@ function AppContent() {
   if (accessStatus === "pending") return <PrivateBetaScreen />;
 
   if (location.pathname === "/") {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/create" replace />;
   }
 
   return (
@@ -91,21 +87,17 @@ function AppContent() {
         <main className="workspace">
           <Routes>
             <Route path="/" element={<LandingPage />} />
-            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/create" element={<CreatePage />} />
             <Route path="/tools" element={<CreateToolsPage />} />
             <Route path="/analyze" element={<AnalyzePage />} />
             <Route path="/studio" element={<VideoComposerPage />} />
-            <Route path="/brands" element={<BrandsPage />} />
-            <Route path="/personas" element={<PersonasPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/workflows" element={<WorkflowsPage />} />
             <Route path="/workflows/:workflowId" element={<WorkflowCanvasPage />} />
             <Route path="/slideshows/:slideshowId" element={<SlideshowEditorPage />} />
             <Route path="/library" element={<LibraryPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/create" replace />} />
           </Routes>
         </main>
       </div>

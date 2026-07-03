@@ -130,7 +130,6 @@ export async function executeLlmNode({
     internal.artifacts.records.createFromRunner,
     {
       userId: context.run.userId,
-      brandId: context.run.brandId,
       workflowId: context.workflow._id,
       workflowRunId: context.run._id,
       parentArtifactIds: artifactIdsFromInputs(resolvedInputs, [
@@ -279,7 +278,6 @@ export async function executeAiAgentNode({
     internal.artifacts.records.createFromRunner,
     {
       userId: context.run.userId,
-      brandId: context.run.brandId,
       workflowId: context.workflow._id,
       workflowRunId: context.run._id,
       parentArtifactIds: artifactIdsFromInputs(resolvedInputs, [

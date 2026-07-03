@@ -1,7 +1,5 @@
 import { v } from "convex/values";
-import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import type { ActionCtx } from "../_generated/server";
 import { action } from "../_generated/server";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { modelProviderValidator } from "../validators";
@@ -30,22 +28,9 @@ function currentUserId(identity: { subject: string } | null) {
   return identity.subject;
 }
 
-async function assertOwnedBrand(
-  ctx: ActionCtx,
-  brandId: Id<"brands"> | undefined,
-  userId: string
-) {
-  if (!brandId) return;
-  const brand = await ctx.runQuery(internal.accounts.brands.getForRunner, {
-    id: brandId,
-  }) as { userId?: string } | null;
-  if (!brand || brand.userId !== userId) throw new Error("Brand not found");
-}
-
 export const generateImage = action({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     prompt: v.string(),
     provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
@@ -59,7 +44,6 @@ export const generateImage = action({
     assets: Array<{ artifactId: Id<"artifacts">; storageUrl: string; title: string }>;
   }> => {
     const userId = currentUserId(await requireBetaAccessForAction(ctx));
-    await assertOwnedBrand(ctx, args.brandId, userId);
     const { costUsd: _costUsd, ...result } = await runCreateImageRequest(ctx, {
       ...args,
       userId,
@@ -71,7 +55,6 @@ export const generateImage = action({
 export const generateVideo = action({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     prompt: v.string(),
     provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
@@ -87,7 +70,6 @@ export const generateVideo = action({
     title: string;
   }> => {
     const userId = currentUserId(await requireBetaAccessForAction(ctx));
-    await assertOwnedBrand(ctx, args.brandId, userId);
     const { costUsd: _costUsd, ...result } = await runCreateVideoRequest(ctx, {
       ...args,
       userId,
@@ -99,7 +81,6 @@ export const generateVideo = action({
 export const generateAudio = action({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     text: v.string(),
     provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
@@ -113,7 +94,6 @@ export const generateAudio = action({
     title: string;
   }> => {
     const userId = currentUserId(await requireBetaAccessForAction(ctx));
-    await assertOwnedBrand(ctx, args.brandId, userId);
     const { costUsd: _costUsd, ...result } = await runCreateAudioRequest(ctx, {
       ...args,
       userId,

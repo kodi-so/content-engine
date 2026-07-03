@@ -90,7 +90,6 @@ export function referenceAssetIdsForSlide(
 export function planPromptForMode(args: {
   prompt: string;
   revisionPrompt?: string;
-  brand?: Doc<"brands"> | null;
   socialAccount?: Doc<"socialAccounts"> | null;
   requestedRenderingMode: RequestedRenderingMode;
   references: PlannerReference[];
@@ -169,7 +168,6 @@ export async function createRequestArtifact(
   return await ctx.runMutation(internal.artifacts.records.createFromRunner, {
     userId: args.request.userId,
     workspaceId: args.request.workspaceId,
-    brandId: args.request.brandId,
     contentRequestId: args.request._id,
     parentArtifactIds: args.parentArtifactIds,
     type: args.type,

@@ -7,7 +7,6 @@ import { requireWorkspaceMember } from "../workspaces/workspaces";
 export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
@@ -23,24 +22,6 @@ export const list = query({
         .collect();
     }
 
-    if (args.brandId) {
-      const brand = await ctx.db.get(args.brandId);
-      if (!brand) return [];
-      if (brand.workspaceId) {
-        await requireWorkspaceMember(ctx, brand.workspaceId, userId);
-      } else if (brand.userId !== userId) {
-        return [];
-      }
-
-      const metrics = await ctx.db
-        .query("postMetrics")
-        .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
-        .collect();
-      return metrics.filter((metric) =>
-        brand.workspaceId ? metric.workspaceId === brand.workspaceId : metric.userId === userId
-      );
-    }
-
     return await ctx.db
       .query("postMetrics")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -51,7 +32,6 @@ export const list = query({
 
 export const record = mutation({
   args: {
-    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     distributionPlanId: v.optional(v.id("distributionPlans")),
@@ -94,7 +74,6 @@ export const record = mutation({
 export const recordFromProvider = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.optional(v.id("brands")),
     workflowId: v.optional(v.id("workflows")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     distributionPlanId: v.optional(v.id("distributionPlans")),
@@ -112,13 +91,12 @@ export const recordFromProvider = internalMutation({
     const plan = args.distributionPlanId ? await ctx.db.get(args.distributionPlanId) : null;
     const run = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
     const workflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
-    const brand = args.brandId ? await ctx.db.get(args.brandId) : null;
     if (!account.workspaceId && account.userId !== args.userId) {
       throw new Error("Social account not found");
     }
     if (account.workspaceId) {
       const expectedWorkspaceId =
-        plan?.workspaceId ?? run?.workspaceId ?? workflow?.workspaceId ?? brand?.workspaceId;
+        plan?.workspaceId ?? run?.workspaceId ?? workflow?.workspaceId;
       if (expectedWorkspaceId && account.workspaceId !== expectedWorkspaceId) {
         throw new Error("Social account does not belong to this workspace");
       }
@@ -127,8 +105,7 @@ export const recordFromProvider = internalMutation({
       account.workspaceId ??
       plan?.workspaceId ??
       run?.workspaceId ??
-      workflow?.workspaceId ??
-      brand?.workspaceId;
+      workflow?.workspaceId;
 
     const now = Date.now();
     return await ctx.db.insert("postMetrics", {

@@ -1,5 +1,6 @@
-import { Clapperboard, ExternalLink, Music, Trash2, Wand2 } from "lucide-react";
+import { Clapperboard, ExternalLink, Trash2, Wand2 } from "lucide-react";
 import { useState } from "react";
+import { AssetThumbnail } from "../assets/AssetThumbnail";
 import type { LibraryOutput } from "./libraryTypes";
 import { isImageOutput, isVideoOutput } from "./libraryMedia";
 
@@ -13,44 +14,22 @@ export function LibraryMediaPreview({
   const [naturalAspectRatio, setNaturalAspectRatio] = useState<string | undefined>();
   const resolvedAspectRatio = output.aspectRatio ?? naturalAspectRatio;
   const canOpenMedia = Boolean(onOpenMedia && (isImageOutput(output) || isVideoOutput(output)));
-  const preview = (
-    <>
-      {output.mimeType?.startsWith("audio/") || output.type === "audio" ? (
-        <div className="grid place-items-center gap-[var(--space-3)] p-[var(--space-3)]">
-          <Music size={28} className="text-[var(--color-ink-muted)]" />
-          <audio src={output.storageUrl} controls className="w-full" />
-        </div>
-      ) : output.mimeType?.startsWith("video/") || output.type === "video" ? (
-        <video
-          className="h-full w-full object-cover"
-          src={output.storageUrl}
-          {...(canOpenMedia ? { muted: true, playsInline: true } : { controls: true })}
-          onLoadedMetadata={(event) => {
-            const video = event.currentTarget;
-            if (video.videoWidth && video.videoHeight) {
-              setNaturalAspectRatio(`${video.videoWidth} / ${video.videoHeight}`);
-            }
-          }}
-        />
-      ) : (
-        <img
-          className="h-full w-full object-cover"
-          src={output.storageUrl}
-          alt={output.title}
-          onLoad={(event) => {
-            const image = event.currentTarget;
-            if (image.naturalWidth && image.naturalHeight) {
-              setNaturalAspectRatio(`${image.naturalWidth} / ${image.naturalHeight}`);
-            }
-          }}
-        />
-      )}
-    </>
-  );
-
   const className =
     "grid max-h-[18rem] min-h-[9rem] w-full overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page-quiet)]";
   const style = resolvedAspectRatio ? { aspectRatio: resolvedAspectRatio } : undefined;
+  const preview = (
+    <AssetThumbnail
+      asset={{
+        id: output.id,
+        title: output.title,
+        storageUrl: output.storageUrl,
+        mimeType: output.mimeType,
+        mediaKind: output.type,
+      }}
+      audioControls={!canOpenMedia}
+      onAspectRatio={setNaturalAspectRatio}
+    />
+  );
 
   if (canOpenMedia) {
     return (

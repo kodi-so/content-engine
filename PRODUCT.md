@@ -1,9 +1,9 @@
 ## Design Context
 
 ### Users
-Content Engine is for creators, operators, and founders running agentic content workflows across social accounts. They use it to define brand memory, create one-off content, review generated assets, manage repeatable workflows, and inspect operational state.
+Content Engine is for creators, operators, and founders running agentic content workflows across social accounts. They use it to create one-off content, review generated assets, manage repeatable workflows, and inspect operational state.
 
-### Brand Personality
+### Product Personality
 Calm, capable, and editorial. The interface should feel like a creative control room: precise enough for operations, warm enough for content work, and confident enough that users trust the agent.
 
 ### Aesthetic Direction

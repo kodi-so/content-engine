@@ -1,6 +1,30 @@
-import type { SlideshowTextBlock } from "../../types";
+export type MediaTextOverlayRole = "eyebrow" | "headline" | "body" | "bullet_list" | "cta";
+export type MediaTextOverlayEmphasis = "primary" | "secondary" | "muted";
+export type MediaTextOverlayAlign = "left" | "center" | "right";
+export type MediaTextOverlayBackgroundStyle = "none" | "solid";
 
-export type TextOverlayBlock = SlideshowTextBlock;
+export type MediaTextOverlayBlock = {
+  id?: string;
+  role?: MediaTextOverlayRole;
+  text?: string;
+  items?: string[];
+  emphasis?: MediaTextOverlayEmphasis;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  align?: MediaTextOverlayAlign;
+  fontSize?: number;
+  fontWeight?: number;
+  color?: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  backgroundStyle?: MediaTextOverlayBackgroundStyle;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
+};
+
+export type TextOverlayBlock = MediaTextOverlayBlock;
 
 export type TextStylePreset =
   | "outline"

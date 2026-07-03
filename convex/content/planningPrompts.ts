@@ -16,18 +16,12 @@ export type PlannerReference = {
 };
 
 export type RequestedRenderingMode = SlideshowRenderingMode;
-export type BrandPromptContext = Pick<
-  Doc<"brands">,
-  "name" | "audience" | "voice" | "visualStyle" | "constraints"
->;
-
 export const IMAGE_PROMPT_WRITER_SYSTEM_PROMPT =
   "You are a specialist image prompt writer for short-form social visuals. You write natural, concrete image generation prompts that faithfully expand the user's creative brief without turning it into a rigid template.";
 
 type PromptArgs = {
   prompt: string;
   revisionPrompt?: string;
-  brand?: BrandPromptContext | null;
   socialAccount?: Doc<"socialAccounts"> | null;
   references: PlannerReference[];
 };
@@ -126,12 +120,6 @@ function sharedPromptLines(args: PromptArgs): Array<string | undefined> {
     "- Do not turn object closeups, POV shots, food, phone/app, sink, or routine detail scenes into person-visible scenes just because a person reference is selected.",
     "- Set useReferenceImage false for a slide when selected reference assets are background context for the slideshow.",
     "",
-    "BRAND CONTEXT:",
-    args.brand ? `Brand: ${args.brand.name}` : "Brand: none selected",
-    args.brand?.audience ? `Audience: ${args.brand.audience}` : undefined,
-    args.brand?.voice ? `Voice: ${args.brand.voice}` : undefined,
-    args.brand?.visualStyle ? `Visual style: ${args.brand.visualStyle}` : undefined,
-    args.brand?.constraints?.length ? `Constraints: ${args.brand.constraints.join("; ")}` : undefined,
     args.socialAccount ? `Account/platform: ${args.socialAccount.username} on ${args.socialAccount.platform}` : undefined,
     `User prompt: ${args.prompt}`,
     args.revisionPrompt ? `Revision request: ${args.revisionPrompt}` : undefined,
@@ -218,12 +206,6 @@ export function buildImagePromptWriterPrompt(args: ImagePromptWriterArgs): strin
     "- For useReferenceImage false, do not mention selected reference assets in the image prompt.",
     "- For useReferenceImage false object/detail scenes, do not add a creator, person, face, body, hand, or reflection unless the current slide purpose explicitly includes one.",
     "",
-    "BRAND CONTEXT:",
-    args.brand ? `Brand: ${args.brand.name}` : "Brand: none selected",
-    args.brand?.audience ? `Audience: ${args.brand.audience}` : undefined,
-    args.brand?.voice ? `Voice: ${args.brand.voice}` : undefined,
-    args.brand?.visualStyle ? `Visual style: ${args.brand.visualStyle}` : undefined,
-    args.brand?.constraints?.length ? `Constraints: ${args.brand.constraints.join("; ")}` : undefined,
     args.socialAccount ? `Account/platform: ${args.socialAccount.username} on ${args.socialAccount.platform}` : undefined,
     "",
     "SLIDESHOW PLAN:",
@@ -321,12 +303,6 @@ export function buildSingleImagePromptWriterPrompt(args: SingleImagePromptWriter
     "- For useReferenceImage false, do not mention selected reference assets in the image prompt.",
     "- For useReferenceImage false object/detail scenes, do not add a creator, person, face, body, hand, or reflection unless the current slide purpose explicitly includes one.",
     "",
-    "BRAND CONTEXT:",
-    args.brand ? `Brand: ${args.brand.name}` : "Brand: none selected",
-    args.brand?.audience ? `Audience: ${args.brand.audience}` : undefined,
-    args.brand?.voice ? `Voice: ${args.brand.voice}` : undefined,
-    args.brand?.visualStyle ? `Visual style: ${args.brand.visualStyle}` : undefined,
-    args.brand?.constraints?.length ? `Constraints: ${args.brand.constraints.join("; ")}` : undefined,
     args.socialAccount ? `Account/platform: ${args.socialAccount.username} on ${args.socialAccount.platform}` : undefined,
     "",
     "FULL SLIDESHOW PLAN:",

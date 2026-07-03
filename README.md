@@ -12,8 +12,8 @@ library, and publishing primitives.
 - **Analyze**: uploads, YouTube URLs, direct media URLs, and resolver-backed
   TikTok/Instagram/Facebook analysis.
 - **Studio**: video composition and timeline editing.
-- **Brands, Personas, Accounts**: reusable brand context, AI identities,
-  creative assets, and publishing connections.
+- **Accounts and Library**: publishing connections plus reusable creative
+  assets for generation and workflows.
 - **Workflows**: canvas-native automation graphs that run only when explicitly
   executed or scheduled.
 - **Library**: saved generated artifacts, slideshow outputs, and publishing
@@ -118,6 +118,29 @@ There is not currently a dedicated lint or test script in `package.json`; use
 `services/media-resolver/` contains a FastAPI service for resolving TikTok,
 Instagram, and Facebook post URLs into downloadable media for Analyze. It is
 designed for Railway and is optional unless you are testing social URL analysis.
+
+The resolver deploys independently from Convex and the React app. Changes under
+`services/media-resolver/` are not live until the Railway `media-resolver`
+service is deployed:
+
+```sh
+railway service media-resolver
+railway up services/media-resolver --path-as-root --service media-resolver
+```
+
+After deploying, smoke test the live resolver before trusting Analyze:
+
+```sh
+curl -sS -X POST https://media-resolver-production.up.railway.app/resolve \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <MEDIA_RESOLVER_API_KEY>" \
+  -d '{"platform":"tiktok","url":"https://www.tiktok.com/@stellas_diary202/photo/7645807131706314006"}'
+```
+
+For TikTok `/photo/...` URLs, the response must include
+`"mediaType":"slideshow"` and a non-empty `slides` array. If it returns ordinary
+`mediaUrl` audio/video, the deployed resolver is stale or broken and Analyze
+will correctly refuse to analyze the attached TikTok sound as the slideshow.
 
 See [`services/media-resolver/README.md`](services/media-resolver/README.md) and
 [`docs/social-media-resolver-plan.md`](docs/social-media-resolver-plan.md) for

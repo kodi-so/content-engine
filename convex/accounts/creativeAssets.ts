@@ -117,25 +117,9 @@ export const generatePreview = action({
 export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await requireBetaAccess(ctx));
-
-    if (args.brandId) {
-      const brand = await ctx.db.get(args.brandId);
-      if (!brand) return [];
-      if (brand.workspaceId) {
-        await requireWorkspaceMember(ctx, brand.workspaceId, userId);
-      } else if (brand.userId !== userId) {
-        return [];
-      }
-      return await ctx.db
-        .query("creativeAssets")
-        .withIndex("by_brand", (q) => q.eq("brandId", args.brandId!))
-        .order("desc")
-        .collect();
-    }
 
     if (args.workspaceId) {
       await requireWorkspaceMember(ctx, args.workspaceId, userId);
@@ -164,7 +148,6 @@ export const getForRunner = internalQuery({
 export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     name: v.string(),
     assetKind: v.optional(creativeAssetKindValidator),
     mediaType: v.optional(creativeAssetMediaTypeValidator),
@@ -176,21 +159,9 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
-    const brand = args.brandId ? await ctx.db.get(args.brandId) : null;
-    if (args.brandId) {
-      if (!brand) throw new Error("Brand not found");
-      if (brand.workspaceId) {
-        await requireWorkspaceMember(ctx, brand.workspaceId, userId);
-      } else if (brand.userId !== userId) {
-        throw new Error("Brand not found");
-      }
-    }
-    const workspaceId = args.workspaceId ?? brand?.workspaceId ?? defaultWorkspace._id;
+    const workspaceId = args.workspaceId ?? defaultWorkspace._id;
     if (workspaceId) {
       await requireWorkspaceMember(ctx, workspaceId, userId);
-    }
-    if (brand?.workspaceId && brand.workspaceId !== workspaceId) {
-      throw new Error("Brand does not belong to this workspace");
     }
 
     const name = args.name.trim();
@@ -202,7 +173,6 @@ export const create = mutation({
     return await ctx.db.insert("creativeAssets", {
       userId,
       workspaceId,
-      brandId: args.brandId,
       name,
       assetKind: args.assetKind ?? "other",
       mediaType: args.mediaType ?? inferMediaType({

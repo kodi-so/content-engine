@@ -60,7 +60,6 @@ const TOOL_DEFINITIONS = [
       properties: {
         name: { type: "string" },
         description: { type: "string" },
-        brandId: { type: "string" },
         socialAccountId: { type: "string" },
         publishingProvider: { type: "string" },
         defaultPlatforms: { type: "array", items: { type: "string" } },
@@ -393,7 +392,6 @@ async function callTool(
       assertScopes(session, ["workflows:read", "workflows:write"]);
       return await ctx.runMutation(internal.mcp.workflows.createBlankForMcp, {
         userId: session.userId,
-        brandId: toolArgs.brandId,
         socialAccountId: toolArgs.socialAccountId,
         name: toolArgs.name,
         description: toolArgs.description,

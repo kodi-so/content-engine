@@ -31,7 +31,6 @@ export type CreateReferenceAsset = {
 type CreateAssetRunnerScope = {
   userId: string;
   workspaceId?: Id<"workspaces">;
-  brandId?: Id<"brands">;
   contentRequestId?: Id<"contentRequests">;
 };
 
@@ -217,7 +216,6 @@ export async function runCreateImageRequest(
     const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
       userId: args.userId,
       workspaceId: args.workspaceId,
-      brandId: args.brandId,
       contentRequestId: args.contentRequestId,
       type: "image",
       title,
@@ -314,7 +312,6 @@ export async function runCreateVideoRequest(
   const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
     userId: args.userId,
     workspaceId: args.workspaceId,
-    brandId: args.brandId,
     contentRequestId: args.contentRequestId,
     type: "video",
     title,
@@ -417,7 +414,6 @@ export async function runCreateAudioRequest(
   const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
     userId: args.userId,
     workspaceId: args.workspaceId,
-    brandId: args.brandId,
     contentRequestId: args.contentRequestId,
     type: "rendered_asset",
     title,
@@ -509,7 +505,6 @@ export async function runCreateLipsyncRequest(
   const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
     userId: args.userId,
     workspaceId: args.workspaceId,
-    brandId: args.brandId,
     contentRequestId: args.contentRequestId,
     type: "video",
     title,

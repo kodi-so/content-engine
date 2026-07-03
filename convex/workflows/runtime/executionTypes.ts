@@ -1,6 +1,5 @@
 import type { ActionCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
-import type { buildOverlayPlannerPrompt } from "../../content/planning";
 import { workflowGraphValidator } from "../../validators";
 import type { ResolvedInputsForRun } from "./inputValues";
 
@@ -11,8 +10,7 @@ export type ArtifactDocForRun = Doc<"artifacts">;
 export type WorkflowRunExecutionContext = {
   run: Doc<"workflowRuns">;
   workflow: Doc<"workflows">;
-  brand: Parameters<typeof buildOverlayPlannerPrompt>[0]["brand"];
-  socialAccount?: Parameters<typeof buildOverlayPlannerPrompt>[0]["socialAccount"] | null;
+  socialAccount?: Doc<"socialAccounts"> | null;
 };
 
 export type WorkflowNodeHandlerArgs = {

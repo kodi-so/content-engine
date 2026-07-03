@@ -15,25 +15,6 @@ import {
 } from "../validators";
 import { nextScheduledRunAt } from "./scheduling";
 
-async function resolveWorkflowBrand(
-  ctx: MutationCtx | QueryCtx,
-  userId: string,
-  brandId?: Id<"brands">
-) {
-  if (!brandId) return undefined;
-
-  const brand = await ctx.db.get(brandId);
-  if (!brand) {
-    throw new Error("Brand not found");
-  }
-  if (brand.workspaceId) {
-    await requireWorkspaceMember(ctx, brand.workspaceId, userId);
-  } else if (brand.userId !== userId) {
-    throw new Error("Brand not found");
-  }
-  return brand;
-}
-
 async function resolveWorkflowAccess(
   ctx: MutationCtx | QueryCtx,
   workflowId: Id<"workflows">,
@@ -88,7 +69,6 @@ export const get = query({
 export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     name: v.string(),
     description: v.optional(v.string()),
@@ -101,8 +81,6 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
-    const brand = await resolveWorkflowBrand(ctx, userId, args.brandId);
-
     const account = args.socialAccountId ? await ctx.db.get(args.socialAccountId) : null;
     if (args.socialAccountId) {
       if (!account) {
@@ -113,20 +91,14 @@ export const create = mutation({
       } else if (account.userId !== userId) {
         throw new Error("Social account not found");
       }
-      if (brand && account.brandId && account.brandId !== brand._id) {
-        throw new Error("Social account does not belong to the workflow brand");
-      }
     }
-    const workspace = args.workspaceId || brand?.workspaceId || account?.workspaceId
+    const workspace = args.workspaceId || account?.workspaceId
       ? await resolveWritableWorkspace(
         ctx,
         userId,
-        args.workspaceId ?? brand?.workspaceId ?? account?.workspaceId
+        args.workspaceId ?? account?.workspaceId
       )
       : defaultWorkspace;
-    if (brand?.workspaceId && brand.workspaceId !== workspace._id) {
-      throw new Error("Brand does not belong to this workspace");
-    }
     if (account?.workspaceId && account.workspaceId !== workspace._id) {
       throw new Error("Social account does not belong to this workspace");
     }
@@ -135,7 +107,6 @@ export const create = mutation({
     const workflowId = await ctx.db.insert("workflows", {
       userId,
       workspaceId: workspace._id,
-      brandId: brand?._id,
       socialAccountId: args.socialAccountId,
       name: args.name,
       description: args.description,
@@ -202,7 +173,6 @@ export const duplicate = mutation({
     return await ctx.db.insert("workflows", {
       userId: workflow.userId,
       workspaceId: workflow.workspaceId,
-      brandId: workflow.brandId,
       socialAccountId: workflow.socialAccountId,
       name: args.name?.trim() || `${workflow.name} copy`,
       description: workflow.description,
@@ -249,10 +219,6 @@ export const createFromRun = mutation({
       throw new Error("Source workflow not found");
     }
 
-    if (workflow.brandId) {
-      await resolveWorkflowBrand(ctx, identity.subject, workflow.brandId);
-    }
-
     if (workflow.socialAccountId) {
       const account = await ctx.db.get(workflow.socialAccountId);
       if (!account) {
@@ -272,7 +238,6 @@ export const createFromRun = mutation({
     return await ctx.db.insert("workflows", {
       userId: identity.subject,
       workspaceId: workflow.workspaceId ?? run.workspaceId,
-      brandId: workflow.brandId,
       socialAccountId: workflow.socialAccountId,
       name,
       description: `Run draft: ${workflow.name}`,

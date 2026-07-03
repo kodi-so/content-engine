@@ -7,7 +7,7 @@ export type MediaKindForRun = "image" | "video" | "audio" | "media";
 
 export type MediaNodeItemForRun = {
   id: string;
-  source: "artifact" | "creative_asset" | "persona" | "uploaded";
+  source: "artifact" | "creative_asset" | "uploaded";
   kind: MediaKindForRun;
   title?: string;
   storageUrl?: string;

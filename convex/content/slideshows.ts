@@ -121,7 +121,6 @@ export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    brandId: v.optional(v.id("brands")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
     workflowId: v.optional(v.id("workflows")),
@@ -134,13 +133,11 @@ export const createFromRunner = internalMutation({
     const request = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
     const run = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
     const workflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
-    const brand = args.brandId ? await ctx.db.get(args.brandId) : null;
     const workspaceId =
       args.workspaceId ??
       request?.workspaceId ??
       run?.workspaceId ??
-      workflow?.workspaceId ??
-      brand?.workspaceId;
+      workflow?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("slideshows", {
       ...args,
@@ -270,7 +267,6 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
         await ctx.db.insert("artifacts", {
           userId,
           workspaceId: slideshow.workspaceId,
-          brandId: slideshow.brandId,
           contentRequestId: slideshow.contentRequestId,
           workflowId: slideshow.workflowId,
           workflowRunId: slideshow.workflowRunId,
@@ -304,7 +300,6 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
     return await ctx.db.insert("distributionPlans", {
       userId,
       workspaceId: slideshow.workspaceId,
-      brandId: slideshow.brandId,
       workflowId: slideshow.workflowId,
       workflowRunId: slideshow.workflowRunId,
       artifactIds,

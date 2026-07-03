@@ -20,8 +20,7 @@ type ResolvedInputSource =
   | "literal"
   | "node_output"
   | "artifact"
-  | "media_asset"
-  | "persona";
+  | "media_asset";
 
 type ResolvedInput = {
   source: ResolvedInputSource;
@@ -103,24 +102,6 @@ function creativeAssetValue(asset: {
     usageNotes: asset.usageNotes,
     metadata: asset.metadata,
   };
-}
-
-function isOwnedCreativeAsset(
-  asset: Doc<"creativeAssets"> | null,
-  userId: string
-): asset is Doc<"creativeAssets"> {
-  return Boolean(asset && asset.userId === userId);
-}
-
-async function personaAssetsForIds(
-  ctx: QueryCtx,
-  assetIds: Id<"creativeAssets">[],
-  userId: string
-) {
-  const assets = await Promise.all(assetIds.map((assetId) => ctx.db.get(assetId)));
-  return assets
-    .filter((asset) => isOwnedCreativeAsset(asset, userId))
-    .map((asset) => creativeAssetValue(asset));
 }
 
 function upstreamOutputRefsForNode(
@@ -302,30 +283,5 @@ async function resolveBinding(
     };
   }
 
-  const persona = await ctx.db.get(binding.personaId as Id<"personas">);
-  if (!persona || persona.userId !== userId) {
-    throw new Error("Bound persona not found");
-  }
-  const sourceAssets = await personaAssetsForIds(ctx, persona.sourceAssetIds, userId);
-  const generatedAssets = await personaAssetsForIds(ctx, persona.generatedAssetIds, userId);
-  const voiceAssets = await personaAssetsForIds(ctx, persona.voiceAssetIds, userId);
-
-  return {
-    source: "persona",
-    value: {
-      personaId: persona._id,
-      assetKey: binding.assetKey,
-      name: persona.name,
-      personaType: persona.personaType,
-      description: persona.description,
-      identityPrompt: persona.identityPrompt,
-      visualConstraints: persona.visualConstraints,
-      usageNotes: persona.usageNotes,
-      sourceAssets,
-      generatedAssets,
-      voiceAssets,
-      assets: [...sourceAssets, ...generatedAssets, ...voiceAssets],
-      metadata: persona.metadata,
-    },
-  };
+  throw new Error(`Unsupported input binding type: ${(binding as { type?: string }).type ?? "unknown"}`);
 }

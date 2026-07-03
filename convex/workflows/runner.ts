@@ -271,7 +271,6 @@ export const executeRun = internalAction({
           const createdPostPackageArtifactId = shouldCreatePostPackage
             ? await ctx.runMutation(internal.workflows.runner.createPostPackageArtifact, {
                 userId: context.run.userId,
-                brandId: context.run.brandId,
                 workflowId: context.workflow._id,
                 workflowRunId: context.run._id,
                 nodeId: node.id,
@@ -319,7 +318,6 @@ export const executeRun = internalAction({
                 internal.workflows.runner.createPlaceholderArtifact,
                 {
                   userId: context.run.userId,
-                  brandId: context.run.brandId,
                   workflowId: context.workflow._id,
                   workflowRunId: context.run._id,
                   nodeId: node.id,
@@ -405,7 +403,6 @@ export const executeRun = internalAction({
         internal.workflows.runner.createPostPackageArtifact,
         {
           userId: context.run.userId,
-          brandId: context.run.brandId,
           workflowId: context.workflow._id,
           workflowRunId: context.run._id,
           nodeId: "workflow",
@@ -461,7 +458,6 @@ export const executeRun = internalAction({
 export const createPlaceholderArtifact = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.optional(v.id("brands")),
     workflowId: v.id("workflows"),
     workflowRunId: v.id("workflowRuns"),
     nodeId: v.string(),
@@ -476,7 +472,6 @@ export const createPlaceholderArtifact = internalMutation({
     return await ctx.db.insert("artifacts", {
       userId: args.userId,
       workspaceId: run?.workspaceId,
-      brandId: args.brandId,
       workflowId: args.workflowId,
       workflowRunId: args.workflowRunId,
       type: "text_draft",
@@ -509,7 +504,6 @@ export const resolveMediaNodeItems = internalQuery({
 export const createPostPackageArtifact = internalMutation({
   args: {
     userId: v.string(),
-    brandId: v.optional(v.id("brands")),
     workflowId: v.id("workflows"),
     workflowRunId: v.id("workflowRuns"),
     nodeId: v.string(),
@@ -522,7 +516,6 @@ export const createPostPackageArtifact = internalMutation({
     return await ctx.db.insert("artifacts", {
       userId: args.userId,
       workspaceId: run?.workspaceId,
-      brandId: args.brandId,
       workflowId: args.workflowId,
       workflowRunId: args.workflowRunId,
       parentArtifactIds: args.sourceArtifactIds.length ? args.sourceArtifactIds : undefined,

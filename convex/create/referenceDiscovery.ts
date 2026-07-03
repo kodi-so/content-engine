@@ -1,5 +1,4 @@
 import type { Doc } from "../_generated/dataModel";
-import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import {
   listSelectableLibraryAssets,
@@ -40,98 +39,9 @@ function normalizedSearchText(asset: SelectableLibraryAsset) {
     .toLowerCase();
 }
 
-function normalizedPersonaSearchText(persona: Doc<"personas">) {
-  return [
-    persona.name,
-    persona.personaType,
-    persona.description,
-    persona.identityPrompt,
-    persona.usageNotes,
-    ...(persona.visualConstraints ?? []),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
 function matchesQuery(asset: SelectableLibraryAsset, query?: string) {
   if (!query) return true;
   return normalizedSearchText(asset).includes(query.toLowerCase());
-}
-
-function matchesPersonaQuery(persona: Doc<"personas">, query?: string) {
-  if (!query) return true;
-  return normalizedPersonaSearchText(persona).includes(query.toLowerCase());
-}
-
-function mediaKindForCreativeAsset(asset: Doc<"creativeAssets">): SelectableMediaKind {
-  if (asset.mediaType === "image" || asset.mediaType === "video" || asset.mediaType === "audio") {
-    return asset.mediaType;
-  }
-  return "media";
-}
-
-async function personaReferenceAssets(
-  ctx: MutationCtx,
-  thread: Doc<"createThreads">,
-  args: {
-    mediaKinds: Set<SelectableMediaKind>;
-    query?: string;
-  }
-) {
-  const personas = thread.workspaceId
-    ? await ctx.db
-        .query("personas")
-        .withIndex("by_workspace", (q) => q.eq("workspaceId", thread.workspaceId))
-        .collect()
-    : await ctx.db
-        .query("personas")
-        .withIndex("by_user", (q) => q.eq("userId", thread.userId))
-        .collect();
-
-  const references = [];
-  for (const persona of personas.filter((candidate) => matchesPersonaQuery(candidate, args.query))) {
-    const assetIds = [
-      ...persona.generatedAssetIds,
-      ...persona.sourceAssetIds,
-      ...persona.voiceAssetIds,
-    ];
-    for (const assetId of [...new Set(assetIds.map(String))] as Id<"creativeAssets">[]) {
-      const asset = await ctx.db.get(assetId);
-      if (!asset) continue;
-      if (thread.workspaceId ? asset.workspaceId !== thread.workspaceId : asset.userId !== thread.userId) {
-        continue;
-      }
-      const mediaKind = mediaKindForCreativeAsset(asset);
-      if (args.mediaKinds.size && !args.mediaKinds.has(mediaKind)) continue;
-      const metadata = isRecord(asset.metadata) ? asset.metadata : {};
-
-      references.push({
-        id: `persona:${String(persona._id)}:${String(asset._id)}`,
-        source: "persona",
-        sourceId: String(persona._id),
-        creativeAssetId: String(asset._id),
-        title: `${persona.name} - ${asset.name}`,
-        mediaKind,
-        storageUrl: asset.storageUrl,
-        mimeType: typeof metadata.mimeType === "string" ? metadata.mimeType : undefined,
-        prompt: [
-          persona.identityPrompt,
-          persona.description,
-          persona.usageNotes,
-          persona.visualConstraints?.length ? `Visual constraints: ${persona.visualConstraints.join(", ")}` : undefined,
-          asset.usageNotes,
-          asset.description,
-        ]
-          .map((value) => value?.trim())
-          .filter(Boolean)
-          .join("\n"),
-        createdAt: Math.max(persona.createdAt, asset.createdAt),
-      });
-    }
-  }
-
-  return references;
 }
 
 export async function listReferencesForToolCall(
@@ -166,11 +76,7 @@ export async function listReferencesForToolCall(
       model: asset.model,
       createdAt: asset.createdAt,
     }));
-  const personaReferences = await personaReferenceAssets(ctx, thread, {
-    mediaKinds,
-    query,
-  });
-  const references = [...libraryReferences, ...personaReferences]
+  const references = libraryReferences
     .sort((first, second) => second.createdAt - first.createdAt)
     .slice(0, limit);
 

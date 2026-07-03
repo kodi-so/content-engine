@@ -1,3 +1,5 @@
+import type { ReferenceBrief } from "../analyze/referenceBriefModel";
+
 export type AgentCreateCheckpointMode = "debug" | "auto";
 
 export type AgentCreateThreadStatus =
@@ -23,7 +25,6 @@ export type AgentCreateMessageKind =
 
 export type AgentCreateMentionEntityType =
   | "creative_asset"
-  | "persona"
   | "artifact"
   | "analysis";
 
@@ -36,6 +37,8 @@ export type AgentCreateMentionOption = {
   description?: string;
   disabled?: boolean;
   mediaType?: AgentCreateMentionMediaType;
+  mimeType?: string;
+  previewUrl?: string;
   sourceLabel?: string;
   thumbnailUrl?: string;
   token?: string;
@@ -48,6 +51,10 @@ export type AgentCreateSelectedMention = {
   entityId: string;
   instruction?: string;
   mediaType?: AgentCreateMentionMediaType;
+  mimeType?: string;
+  previewUrl?: string;
+  sourceLabel?: string;
+  thumbnailUrl?: string;
 };
 
 export type AgentCreateArtifactKind =
@@ -72,6 +79,7 @@ export type AgentCreateArtifact = {
   description?: string;
   mimeType?: string;
   modelLabel?: string;
+  referenceBrief?: ReferenceBrief;
   text?: string;
   thumbnailUrl?: string;
   url?: string;
