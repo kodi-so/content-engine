@@ -277,6 +277,8 @@ export function richModelPickerOptions(args: {
       value: args.selectedModel,
       label: args.selectedModel,
       description: "This model is saved but is not in the current catalog.",
+      meta: undefined,
+      recommendationTag: undefined,
       tags: ["Saved model"],
       rank: 0,
     });

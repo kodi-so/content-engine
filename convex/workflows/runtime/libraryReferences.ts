@@ -2,8 +2,6 @@ import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 
-type LibraryReferenceSource = "create" | "workflow_export" | "creative_asset";
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

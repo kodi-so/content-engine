@@ -223,6 +223,7 @@ function RawPackageCard({ artifact }: { artifact: Doc<"artifacts"> }) {
 }
 
 export type WorkflowExecutionPanelProps = {
+  actionStatus?: string;
   isOpen: boolean;
   onClose: () => void;
   onSelectRun: (runId: Id<"workflowRuns">) => void;
@@ -235,6 +236,7 @@ export type WorkflowExecutionPanelProps = {
 };
 
 export function WorkflowExecutionPanel({
+  actionStatus,
   isOpen,
   onClose,
   onSelectRun,
@@ -303,6 +305,12 @@ export function WorkflowExecutionPanel({
           </button>
         </div>
       </div>
+
+      {actionStatus ? (
+        <p className="mb-[var(--space-3)] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page)] px-[var(--space-3)] py-[var(--space-2)] text-[0.78rem] text-[var(--color-ink-muted)]">
+          {actionStatus}
+        </p>
+      ) : null}
 
       <div className="workflow-execution-grid pt-[var(--space-1)]">
         <div className="workflow-run-history rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-[var(--space-3)] shadow-[var(--shadow-sm)]">

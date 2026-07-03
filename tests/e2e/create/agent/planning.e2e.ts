@@ -7,7 +7,7 @@ import {
   normalizePlannedToolInputForToolCall,
   toolDescriptorMap,
 } from "../../../../convex/create/planning";
-import { normalizeFalVideoDurationForModel } from "../../../../convex/providers/fal";
+import { normalizeFalVideoDurationForModel } from "../../../../convex/providers/modelProviders/fal";
 
 function userMessage(
   content: string,

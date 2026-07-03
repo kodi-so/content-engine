@@ -1,7 +1,7 @@
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
-import { buildCanonicalSlideshowSpec } from "../../content/slideshowAdapter";
-import { getSlideDimensions } from "../../content/slideshowDimensions";
+import { buildCanonicalSlideshowSpec } from "../../content/slideshow/slideshowAdapter";
+import { getSlideDimensions } from "../../content/slideshow/slideshowDimensions";
 import {
   buildFullGraphicPlannerPrompt,
   buildOverlayPlannerPrompt,
@@ -44,7 +44,7 @@ import {
   nativeSlideshowOutputRefsForNode,
   slideSpecOutputRefsForNode,
 } from "../runtime/outputRefs";
-import { modelProviderNameForNode, providerOverridesFromConfig } from "../runtime/providerInputs";
+import { modelProviderNameForNode } from "../runtime/providerInputs";
 
 function requestedRenderingModeFromValue(value: unknown): RequestedRenderingMode {
   return value === "full_graphic_generation"

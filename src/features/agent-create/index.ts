@@ -1,11 +1,11 @@
-export { AgentCreateArtifactCard, AgentCreateArtifactGrid } from "./AgentCreateArtifactCard";
-export { AgentCreateMessageList } from "./AgentCreateMessageList";
-export { AgentCreatePrompt } from "./AgentCreatePrompt";
+export { AgentCreateArtifactCard, AgentCreateArtifactGrid } from "./components/AgentCreateArtifactCard";
+export { AgentCreateMessageList } from "./components/AgentCreateMessageList";
+export { AgentCreatePrompt } from "./components/AgentCreatePrompt";
 export { AgentCreateSurface } from "./AgentCreateSurface";
-export { CheckpointPrompt } from "./CheckpointPrompt";
-export { DebugModeToggle, NewChatButton } from "./AgentCreateControls";
-export { FinalReviewActions } from "./FinalReviewActions";
-export { ToolProgressTimeline } from "./ToolProgressTimeline";
+export { CheckpointPrompt } from "./components/CheckpointPrompt";
+export { DebugModeToggle, NewChatButton } from "./components/AgentCreateControls";
+export { FinalReviewActions } from "./components/FinalReviewActions";
+export { ToolProgressTimeline } from "./components/ToolProgressTimeline";
 export type {
   AgentCreateArtifact,
   AgentCreateArtifactKind,
@@ -23,4 +23,4 @@ export type {
   AgentCreateThreadStatus,
   AgentCreateToolProgressStep,
   AgentCreateToolStatus,
-} from "./agentCreateTypes";
+} from "./model/agentCreateTypes";

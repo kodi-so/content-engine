@@ -3,7 +3,7 @@ import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
-import { storeGeneratedAsset } from "../content/assetStorage";
+import { storeGeneratedAsset } from "../content/assets/assetStorage";
 import { getModelProvider } from "../providers";
 import type { ModelProviderName } from "../providers/model";
 

@@ -1,6 +1,6 @@
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { isRecord } from "./referenceResolution";
+import { isRecord } from "./references/referenceResolution";
 
 type NodeInputBinding =
   | {

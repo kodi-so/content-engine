@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
 import { nodeInputBindingValidator, workflowGraphValidator } from "../validators";
 import {

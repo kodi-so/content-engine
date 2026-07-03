@@ -9,7 +9,10 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import { generationDefaultForWorkflowNode } from "../../lib/providers/aiGenerationDefaults";
+import {
+  generationDefaultForWorkflowNode,
+  type AiGenerationSettings,
+} from "../../lib/providers/aiGenerationDefaults";
 import type { WorkflowGraph, WorkflowNodeType } from "../../lib/workflow/workflowGraph";
 import {
   cloneConfig,
@@ -64,7 +67,7 @@ export function useWorkflowCanvasGraph({
   selectedRunNodeStates?: WorkflowRunNodeStateDoc[];
   updateGraph: (args: { id: Id<"workflows">; graph: WorkflowGraph }) => Promise<unknown>;
   workflow?: WorkflowDoc | null;
-  workspaceAiGenerationSettings: unknown;
+  workspaceAiGenerationSettings?: AiGenerationSettings | null;
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -74,7 +77,7 @@ export function useWorkflowCanvasGraph({
   const [connectionStatus, setConnectionStatus] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [openDrawer, setOpenDrawer] = useState<WorkflowDrawer>(null);
-  const graphAutosaveTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const graphAutosaveTimeoutRef = useRef<number | null>(null);
   const graphEditVersionRef = useRef(0);
   const activeSavePromiseRef = useRef<Promise<boolean> | null>(null);
   const isDirtyRef = useRef(false);

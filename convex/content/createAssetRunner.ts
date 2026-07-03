@@ -19,7 +19,7 @@ import {
   imageModelUiContractForRun,
   imageProviderInputFromModelSchema,
 } from "../workflows/runtime/providerInputs";
-import { storeGeneratedAsset } from "./assetStorage";
+import { storeGeneratedAsset } from "./assets/assetStorage";
 
 export type CreateReferenceAsset = {
   url: string;

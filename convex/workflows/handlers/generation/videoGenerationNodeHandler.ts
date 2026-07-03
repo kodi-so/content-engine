@@ -1,6 +1,6 @@
 import { internal } from "../../../_generated/api";
 import type { Id } from "../../../_generated/dataModel";
-import { storeGeneratedAsset } from "../../../content/assetStorage";
+import { storeGeneratedAsset } from "../../../content/assets/assetStorage";
 import { getModelProvider } from "../../../providers";
 import { promptWithProviderSafeReferenceAliases } from "../../../../src/lib/references/referenceAliases";
 import { artifactIdsFromInputs } from "../../runtime/artifactInputs";
@@ -9,39 +9,26 @@ import type {
   WorkflowNodeHandlerResult,
 } from "../../runtime/executionTypes";
 import {
-  costUsdFromMetadata,
-  waitForGeneratedAudio,
-  waitForGeneratedImage,
   waitForGeneratedVideo,
 } from "../../runtime/generationWaiters";
 import {
-  allMediaReferenceAssetsFromInputs,
   numberFromInputValue,
   objectValue,
   referenceAssetsFromInputs,
-  referenceAudioAssetsFromInputs,
   referenceVideoAssetsFromInputs,
   textFromInputValue,
   uniqueReferenceAssets,
 } from "../../runtime/inputValues";
 import {
-  isAiVideoEditorNode,
-  isAudioGenerationNode,
-  isImageGenerationNode,
-  isLipsyncNode,
   isVideoGenerationNode,
   placeholderLifecycleForNode,
 } from "../../runtime/nodeRuntime";
 import {
-  audioOutputRefsForNode,
-  imageOutputRefsForNode,
   videoOutputRefsForNode,
   type MediaNodeItemForRun,
 } from "../../runtime/outputRefs";
 import {
   generationProviderInputFromConfig,
-  imageModelUiContractForRun,
-  imageProviderInputFromModelSchema,
   modelProviderNameForNode,
 } from "../../runtime/providerInputs";
 import { assertLibraryReferencesExistForRun } from "../../runtime/libraryReferences";

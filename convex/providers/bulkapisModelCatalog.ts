@@ -1,8 +1,8 @@
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
-import { BULKAPIS_PROVIDER } from "./bulkapisConfig";
-import { bulkApisRequest } from "./bulkapis";
+import { BULKAPIS_PROVIDER } from "./bulkapis/config";
+import { bulkApisRequest } from "./modelProviders/bulkapis";
 
 type ProviderModelCategory =
   | "chat"

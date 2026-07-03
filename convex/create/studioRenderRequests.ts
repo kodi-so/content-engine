@@ -9,150 +9,30 @@ import {
   mutation,
   query,
   type MutationCtx,
-  type QueryCtx,
 } from "../_generated/server";
 import { requireBetaAccess } from "../auth/users";
-import { requireWorkspaceMember } from "../workspaces/workspaces";
+import {
+  assertArtifactAccess,
+  assertCreateThreadAccess,
+  assertRenderRequestAccess,
+  assertVideoProjectAccess,
+} from "./studio/studioRenderAccess";
+import {
+  artifactIdsFromDraft,
+  aspectRatioFromDraft,
+  durationSecondsFromDraft,
+  isRecord,
+  renderFpsFromSettings,
+  studioRenderCallbackApiKey,
+  studioRenderCallbackUrl,
+  studioRenderWorkerApiKey,
+  studioRenderWorkerUrl,
+} from "./studio/studioRenderWorkerConfig";
 
 const STUDIO_RENDER_BLOCKER_MESSAGE =
   "Automatic Studio rendering is not configured yet. Set STUDIO_RENDER_WORKER_URL and STUDIO_RENDER_WORKER_API_KEY so Create can render the final video in chat.";
 const STUDIO_RENDER_QUEUED_MESSAGE =
   "Studio render is queued on the server render worker. I will attach the final video here when it finishes.";
-
-function studioRenderWorkerUrl() {
-  return process.env.STUDIO_RENDER_WORKER_URL?.trim().replace(/\/+$/, "");
-}
-
-function studioRenderWorkerApiKey() {
-  return process.env.STUDIO_RENDER_WORKER_API_KEY?.trim();
-}
-
-function studioRenderCallbackUrl() {
-  return process.env.STUDIO_RENDER_CALLBACK_URL?.trim().replace(/\/+$/, "") ||
-    process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
-}
-
-function studioRenderCallbackApiKey() {
-  return process.env.STUDIO_RENDER_CALLBACK_API_KEY?.trim() ||
-    process.env.STUDIO_RENDER_WORKER_API_KEY?.trim();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function renderFpsFromSettings(settings: unknown) {
-  if (!isRecord(settings)) return 30;
-  const fps = settings.fps;
-  return typeof fps === "number" && Number.isFinite(fps) && fps > 0
-    ? Math.min(120, Math.floor(fps))
-    : 30;
-}
-
-function artifactIdsFromDraft(draft: unknown) {
-  if (!isRecord(draft)) return [];
-  const values = [
-    ...(Array.isArray(draft.clips) ? draft.clips : []),
-    ...(Array.isArray(draft.audioTracks) ? draft.audioTracks : []),
-  ];
-  return [
-    ...new Set(
-      values.flatMap((item) =>
-        isRecord(item) && typeof item.artifactId === "string" ? [item.artifactId] : []
-      )
-    ),
-  ] as Id<"artifacts">[];
-}
-
-function aspectRatioFromDraft(draft: unknown) {
-  return isRecord(draft) && typeof draft.aspectRatio === "string" ? draft.aspectRatio : undefined;
-}
-
-function durationSecondsFromDraft(draft: unknown) {
-  if (!isRecord(draft)) return undefined;
-  const clipDurations = Array.isArray(draft.clips)
-    ? draft.clips.map((clip) => {
-        if (!isRecord(clip)) return 0;
-        const duration = typeof clip.durationSeconds === "number" ? clip.durationSeconds : 0;
-        const trimStart = typeof clip.trimStartSeconds === "number" ? clip.trimStartSeconds : 0;
-        const trimEnd = typeof clip.trimEndSeconds === "number" ? clip.trimEndSeconds : duration;
-        return Math.max(0, trimEnd - trimStart);
-      })
-    : [];
-  const audioEnds = Array.isArray(draft.audioTracks)
-    ? draft.audioTracks.map((track) => {
-        if (!isRecord(track)) return 0;
-        const start = typeof track.startSeconds === "number" ? track.startSeconds : 0;
-        const duration = typeof track.durationSeconds === "number" ? track.durationSeconds : 0;
-        const trimStart = typeof track.trimStartSeconds === "number" ? track.trimStartSeconds : 0;
-        const trimEnd = typeof track.trimEndSeconds === "number" ? track.trimEndSeconds : duration;
-        return start + Math.max(0, trimEnd - trimStart);
-      })
-    : [];
-  const duration = Math.max(
-    clipDurations.reduce((total, value) => total + value, 0),
-    ...audioEnds,
-    0
-  );
-  return duration > 0 ? duration : undefined;
-}
-
-async function assertVideoProjectAccess(
-  ctx: QueryCtx | MutationCtx,
-  project: Doc<"videoProjects">,
-  userId: string
-) {
-  if (project.workspaceId) {
-    await requireWorkspaceMember(ctx, project.workspaceId, userId);
-    return;
-  }
-  if (project.userId !== userId) throw new Error("Video project not found");
-}
-
-async function assertCreateThreadAccess(
-  ctx: QueryCtx | MutationCtx,
-  threadId: Id<"createThreads">,
-  userId: string
-) {
-  const thread = await ctx.db.get(threadId);
-  if (!thread) throw new Error("Create thread not found");
-  if (thread.workspaceId) {
-    await requireWorkspaceMember(ctx, thread.workspaceId, userId);
-    return thread;
-  }
-  if (thread.userId !== userId) throw new Error("Create thread not found");
-  return thread;
-}
-
-async function assertArtifactAccess(
-  ctx: QueryCtx | MutationCtx,
-  artifactId: Id<"artifacts">,
-  userId: string
-) {
-  const artifact = await ctx.db.get(artifactId);
-  if (!artifact) throw new Error("Rendered artifact not found");
-  if (artifact.workspaceId) {
-    await requireWorkspaceMember(ctx, artifact.workspaceId, userId);
-    return artifact;
-  }
-  if (artifact.userId !== userId) throw new Error("Rendered artifact not found");
-  return artifact;
-}
-
-async function assertRenderRequestAccess(
-  ctx: QueryCtx | MutationCtx,
-  requestId: Id<"studioRenderRequests">,
-  userId: string
-) {
-  const request = await ctx.db.get(requestId);
-  if (!request) throw new Error("Studio render request not found");
-  if (request.workspaceId) {
-    await requireWorkspaceMember(ctx, request.workspaceId, userId);
-    return request;
-  }
-  if (request.userId !== userId) throw new Error("Studio render request not found");
-  return request;
-}
 
 export async function createBlockedStudioRenderRequest(
   ctx: MutationCtx,

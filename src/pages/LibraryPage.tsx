@@ -120,7 +120,7 @@ export function LibraryPage() {
     [createOutputs, typeFilter]
   );
   const filteredSlideshows = useMemo(
-    () => savedSlideshows.filter((slideshow) => {
+    () => savedSlideshows.filter(() => {
       if (typeFilter && typeFilter !== "slideshow") return false;
       return true;
     }),

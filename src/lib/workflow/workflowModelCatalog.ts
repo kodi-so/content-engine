@@ -1,8 +1,25 @@
-import type { Doc } from "../../convex/_generated/dataModel";
 import type { WorkflowNodeType } from "./workflowGraph";
 
-export type ProviderModelDoc = Doc<"providerModels">;
-export type ProviderModelCategory = ProviderModelDoc["category"];
+export type ProviderModelCategory =
+  | "unknown"
+  | "chat"
+  | "image"
+  | "video"
+  | "audio"
+  | "lipsync"
+  | "video_render";
+export type ProviderModelDoc = {
+  capabilities?: unknown;
+  category: ProviderModelCategory;
+  description?: string;
+  displayName: string;
+  metadata?: unknown;
+  modelId: string;
+  schemaSnapshot?: {
+    inputSchema?: unknown;
+    raw?: unknown;
+  };
+};
 export type ModelRecommendation = { rank: number; tag: string; note: string };
 
 export type ImageModelUiContract = {
@@ -390,7 +407,8 @@ export function imageModelUiContractFromModel(
 export function providerModelSourceLabel(
   model: ProviderModelDoc | null | undefined
 ): string | undefined {
-  const raw = isRecord(model?.schemaSnapshot?.raw) ? model.schemaSnapshot.raw : {};
+  const schemaSnapshot = model?.schemaSnapshot;
+  const raw = isRecord(schemaSnapshot?.raw) ? schemaSnapshot.raw : {};
   const provider = raw.provider;
   return typeof provider === "string" && provider.trim() ? provider.trim() : undefined;
 }

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { LoadingState } from "../components/ui";
-import { SlideshowEditor } from "../features/create/SlideshowEditor";
+import { SlideshowEditor } from "../features/create/slideshow/SlideshowEditor";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 
 export function SlideshowEditorPage() {

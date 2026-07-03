@@ -4,7 +4,7 @@ import {
   buildCreateAgentStudioDraft,
   buildStudioTextOverlaysFromInput,
   selectCreateAgentStudioVisualArtifacts,
-} from "../../../../convex/create/studioComposition";
+} from "../../../../convex/create/studio/studioComposition";
 
 const overlayInput = {
   aspectRatio: "16:9",

@@ -1,10 +1,10 @@
-import "./bulkapis";
-import "./gemini";
-import "./fal";
-import "./openrouter";
-import "./manual";
-import "./postiz";
-import "./postBridge";
+import "./modelProviders/bulkapis";
+import "./modelProviders/gemini";
+import "./modelProviders/fal";
+import "./modelProviders/openrouter";
+import "./modelProviders/manual";
+import "./publishingProviders/postiz";
+import "./publishingProviders/postBridge";
 
 export {
   getModelProvider,

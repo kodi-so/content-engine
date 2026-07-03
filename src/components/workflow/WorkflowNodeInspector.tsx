@@ -107,7 +107,7 @@ export type WorkflowNodeInspectorProps = {
   selectedModelPickerOptions: WorkflowSelectOption[];
   selectedNode: WorkflowFlowNode | null;
   selectedNodeDefinition: WorkflowNodeCatalogEntry | null;
-  selectedProviderCatalogName?: string;
+  selectedProviderCatalogName?: WorkflowProviderName;
   selectedProviderModel: Doc<"providerModels"> | null;
   selectedProviderModels: Doc<"providerModels">[] | undefined;
   selectedPrimaryConfigFields: ConfigField[];

@@ -57,6 +57,7 @@ export function WorkflowCanvasPage() {
   const uploadReferenceImage = useAction(api.storage.files.uploadBase64ImageWithMetadata);
   const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [isUpdatingActiveState, setIsUpdatingActiveState] = useState(false);
+  const [runActionStatus, setRunActionStatus] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<Id<"workflowRuns"> | null>(null);
   const selectedRun = useMemo(
     () =>
@@ -379,6 +380,7 @@ export function WorkflowCanvasPage() {
           isOpen={openDrawer === "execution"}
           onClose={() => setOpenDrawer(null)}
           onSelectRun={setSelectedRunId}
+          actionStatus={runActionStatus}
           selectedCanvasNode={
             selectedNode
               ? { id: selectedNode.id, label: selectedNode.data.label }

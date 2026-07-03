@@ -3,7 +3,7 @@ import { action, internalQuery, mutation, query } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
-import { storeGeneratedAsset } from "../content/assetStorage";
+import { storeGeneratedAsset } from "../content/assets/assetStorage";
 import { getModelProvider } from "../providers";
 import type { GeneratedAsset, ModelProvider } from "../providers/model";
 import { requireWorkspaceMember } from "../workspaces/workspaces";

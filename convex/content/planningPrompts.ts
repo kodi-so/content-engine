@@ -1,5 +1,4 @@
 import type { Doc } from "../_generated/dataModel";
-import { clampText } from "../lib/text";
 import type {
   OverlayPlannerSlide,
   SlideshowPlannerOutput,

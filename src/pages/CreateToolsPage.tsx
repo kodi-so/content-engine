@@ -13,18 +13,21 @@ import { useWorkspace } from "../contexts/WorkspaceContext";
 import { CreateGenerationFields } from "../features/create/CreateGenerationFields";
 import { CreateModeTabs } from "../features/create/CreateModeTabs";
 import { CreateResultPanel } from "../features/create/CreateResultPanel";
-import { SlideshowEditor } from "../features/create/SlideshowEditor";
+import { SlideshowEditor } from "../features/create/slideshow/SlideshowEditor";
 import {
   draftName,
   mediaPreviewTitle,
   numberConfigValue,
-  referenceAssetsFromConfig,
   referenceMentionOptionsFromConfig,
   stringConfigValue,
   visibleConfigValues,
 } from "../features/create/createPageHelpers";
 import { resultFromRequest } from "../features/create/createRequestResult";
 import type { CreateResult } from "../features/create/createPageTypes";
+import {
+  createGenerationReferenceInputs,
+  providerInputForGenerationSubmit,
+} from "../features/create/createSubmitPayload";
 import { useCreateReferenceFiles } from "../features/create/useCreateReferenceFiles";
 import {
   generationOperationForConfig,
@@ -39,7 +42,6 @@ import {
   defaultCreateGenerationConfig,
   groupCreateGenerationFields,
   isCreateGenerationMode,
-  providerInputFromCreateConfig,
 } from "../lib/create/createGenerationConfig";
 import {
   getCreateModeDefinition,
@@ -366,45 +368,13 @@ export function CreateToolsPage() {
       const submitGenerationConfig = isCreateGenerationMode(mode)
         ? (await uploadDraftReferencesForSubmit(generationConfig)).config
         : generationConfig;
-      const referenceImages = referenceAssetsFromConfig(
-        submitGenerationConfig,
-        "localReferenceImages",
-        "image"
-      );
-      const startFrameImages = referenceAssetsFromConfig(
-        submitGenerationConfig,
-        "localStartFrameImages",
-        "image"
-      );
-      const endFrameImages = referenceAssetsFromConfig(
-        submitGenerationConfig,
-        "localEndFrameImages",
-        "image"
-      );
-      const referenceVideos = referenceAssetsFromConfig(
-        submitGenerationConfig,
-        "localReferenceVideos",
-        "video"
-      );
-      const voiceReferenceAudios = referenceAssetsFromConfig(
-        submitGenerationConfig,
-        "localReferenceAudios",
-        "audio"
-      );
       const generationOperationId = selectedGenerationOperation?.id;
-      const imageReferenceImages =
-        generationOperationId === "image_text_to_image" ? [] : referenceImages;
-      const videoReferenceImages =
-        generationOperationId === "video_start_end_frame"
-          ? [...startFrameImages, ...endFrameImages]
-          : generationOperationId === "video_image_to_video" ||
-              generationOperationId === "video_reference_to_video"
-            ? referenceImages
-            : [];
-      const videoReferenceVideos =
-        generationOperationId === "video_reference_to_video" ? referenceVideos : [];
-      const audioReferenceAudios =
-        generationOperationId === "audio_voice_clone" ? voiceReferenceAudios : [];
+      const {
+        audioReferenceAudios,
+        imageReferenceImages,
+        videoReferenceImages,
+        videoReferenceVideos,
+      } = createGenerationReferenceInputs(submitGenerationConfig, generationOperationId);
       const visibleGenerationConfig = visibleConfigValues(
         submitGenerationConfig,
         generationFields.map((field) => field.key)
@@ -429,51 +399,12 @@ export function CreateToolsPage() {
       }
 
       if (mode === "image" || mode === "video" || mode === "audio" || mode === "slideshow") {
-        const providerInput = mode === "image"
-          ? providerInputFromCreateConfig(visibleGenerationConfig, [
-              "prompt",
-              "aspectRatio",
-              "count",
-              "localReferenceImages",
-              "generationOperation",
-            ])
-          : mode === "video"
-            ? providerInputFromCreateConfig(visibleGenerationConfig, [
-                "prompt",
-                "aspectRatio",
-                "durationSeconds",
-                "localReferenceImages",
-                "localStartFrameImages",
-                "localEndFrameImages",
-                "localReferenceVideos",
-                "startEndFrameMode",
-                "generationOperation",
-              ])
-            : mode === "audio"
-              ? providerInputFromCreateConfig(visibleGenerationConfig, [
-                  "text",
-                  "prompt",
-                  "mode",
-                  "localReferenceAudios",
-                  "generationOperation",
-                ])
-              : {};
-
-        if (mode === "video") {
-          const startFrameUrl = startFrameImages[0]?.url;
-          const endFrameUrl = endFrameImages[0]?.url;
-          if (submitGenerationConfig.startEndFrameMode === true && startFrameUrl) {
-            providerInput.start_frame_url = startFrameUrl;
-            providerInput.start_image_url = startFrameUrl;
-            providerInput.first_frame_url = startFrameUrl;
-          }
-          if (submitGenerationConfig.startEndFrameMode === true && endFrameUrl) {
-            providerInput.end_frame_url = endFrameUrl;
-            providerInput.end_image_url = endFrameUrl;
-            providerInput.last_frame_url = endFrameUrl;
-            providerInput.tail_image_url = endFrameUrl;
-          }
-        }
+        const providerInput = providerInputForGenerationSubmit({
+          generationOperationId,
+          mode,
+          submitGenerationConfig,
+          visibleGenerationConfig,
+        });
 
         const requestId = await createGeneration({
           ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),

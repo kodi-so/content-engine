@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildCanonicalSlideshowSpec } from "../../../../convex/content/slideshowAdapter";
+import { buildCanonicalSlideshowSpec } from "../../../../convex/content/slideshow/slideshowAdapter";
 import { normalizePlan } from "../../../../convex/content/planning";
 import {
   overlaySlideshowPlanSchema,
@@ -11,7 +11,7 @@ import {
 import {
   promptForSlide,
   providerImagePrompt,
-} from "../../../../convex/content/requestExecutionHelpers";
+} from "../../../../convex/content/requestExecution/requestExecutionHelpers";
 
 type JsonSchema = {
   additionalProperties?: boolean;
@@ -168,7 +168,7 @@ const spec = buildCanonicalSlideshowSpec({
 assert.equal(spec.slides.length, 7);
 assert.equal(spec.slides[0].backgroundImageUrl, "https://example.com/slide-1.png");
 
-const bulkApisSource = readFileSync("convex/providers/bulkapis.ts", "utf8");
+const bulkApisSource = readFileSync("convex/providers/modelProviders/bulkapis.ts", "utf8");
 assert.match(
   bulkApisSource,
   /DEFAULT_BULKAPIS_CHAT_MODEL = "gpt-5-2"/,
