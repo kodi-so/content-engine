@@ -3,6 +3,8 @@ import { ExternalLink } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { SlideshowEditor } from "../../create/slideshow/SlideshowEditor";
+import { PostAction } from "../../publishing/PostAction";
+import { postMediaForSlideshow } from "../../publishing/postMedia";
 import type { AgentCreateArtifact } from "../model/agentCreateTypes";
 
 export function isInlineSlideshowArtifact(artifact: AgentCreateArtifact, compact: boolean) {
@@ -32,15 +34,24 @@ export function AgentCreateSlideshowArtifact({
             Editable slideshow
           </p>
         </div>
-        <a
-          className="secondary-button min-h-8 shrink-0 px-2 py-1 text-[0.76rem]"
-          href={`/slideshows/${encodeURIComponent(artifact.id)}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <ExternalLink size={14} />
-          Full editor
-        </a>
+        <div className="flex shrink-0 items-center gap-[var(--space-2)]">
+          {slideshow ? (
+            <PostAction
+              className="secondary-button min-h-8 px-2 py-1 text-[0.76rem]"
+              iconSize={14}
+              media={postMediaForSlideshow(slideshow)}
+            />
+          ) : null}
+          <a
+            className="secondary-button min-h-8 px-2 py-1 text-[0.76rem]"
+            href={`/slideshows/${encodeURIComponent(artifact.id)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink size={14} />
+            Full editor
+          </a>
+        </div>
       </div>
 
       {slideshow === undefined ? (

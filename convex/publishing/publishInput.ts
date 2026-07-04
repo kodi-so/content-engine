@@ -150,17 +150,20 @@ export async function loadPublishInput(
   });
   const hasTikTokTarget = context.socialAccounts.some((account) => account.platform === "tiktok");
   const mediaArtifacts = orderedArtifacts;
-  if (hasTikTokTarget) {
+  const artifactMimeType = (artifact: Doc<"artifacts">) => {
+    const data = artifact.data && typeof artifact.data === "object"
+      ? artifact.data as Record<string, unknown>
+      : {};
+    return typeof data.mimeType === "string" ? data.mimeType : inferMimeType(artifact);
+  };
+  const isVideoArtifact = (artifact: Doc<"artifacts">) =>
+    artifact.type === "video" || artifactMimeType(artifact).startsWith("video/");
+  // TikTok accepts either a single video or a raster-image photo carousel, so
+  // only image-only plans need the carousel validation.
+  if (hasTikTokTarget && !mediaArtifacts.some(isVideoArtifact)) {
     const invalidCarouselArtifact = mediaArtifacts.find((artifact) => {
-      const data = artifact.data && typeof artifact.data === "object"
-        ? artifact.data as Record<string, unknown>
-        : {};
-      const mimeType = typeof data.mimeType === "string"
-          ? data.mimeType
-          : inferMimeType(artifact);
-      return artifact.type !== "image" ||
-        mimeType === "image/svg+xml" ||
-        !mimeType.startsWith("image/");
+      const mimeType = artifactMimeType(artifact);
+      return mimeType === "image/svg+xml" || !mimeType.startsWith("image/");
     });
     if (invalidCarouselArtifact) {
       throw new Error("TikTok photo carousel publishing requires raster image artifacts.");

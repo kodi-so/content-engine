@@ -4,6 +4,8 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { LoadingState } from "../components/ui";
 import { SlideshowEditor } from "../features/create/slideshow/SlideshowEditor";
+import { PostAction } from "../features/publishing/PostAction";
+import { postMediaForSlideshow } from "../features/publishing/postMedia";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 
 export function SlideshowEditorPage() {
@@ -25,9 +27,14 @@ export function SlideshowEditorPage() {
               Edit saved slideshow content for {activeWorkspace?.name ?? "this workspace"}.
             </p>
           </div>
-          <button className="primary-button" onClick={() => navigate("/library")} type="button">
-            Done
-          </button>
+          <div className="flex flex-wrap items-center gap-[var(--space-2)]">
+            {slideshow ? (
+              <PostAction media={postMediaForSlideshow(slideshow)} />
+            ) : null}
+            <button className="primary-button" onClick={() => navigate("/library")} type="button">
+              Done
+            </button>
+          </div>
         </div>
 
         {slideshow === undefined ? (

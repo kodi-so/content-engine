@@ -1,6 +1,8 @@
 import { Clapperboard, ExternalLink, Trash2, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { AssetThumbnail } from "../assets/AssetThumbnail";
+import { PostAction } from "../publishing/PostAction";
+import { postMediaForLibraryOutput } from "../publishing/postMedia";
 import type { LibraryOutput } from "./libraryTypes";
 import { isImageOutput, isVideoOutput } from "./libraryMedia";
 
@@ -108,6 +110,7 @@ export function LibraryOutputCard({
     output.provider,
     output.model,
   ].filter(Boolean);
+  const postMedia = postMediaForLibraryOutput(output);
 
   return (
     <article className="group grid min-w-0 content-start gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-3)] shadow-[var(--shadow-sm)] transition hover:-translate-y-px hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-md)]">
@@ -146,6 +149,12 @@ export function LibraryOutputCard({
         ) : null}
       </div>
       <div className="flex flex-wrap gap-[var(--space-2)]">
+        {postMedia ? (
+          <PostAction
+            className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem]"
+            media={postMedia}
+          />
+        ) : null}
         {onEdit ? (
           <button
             className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem]"

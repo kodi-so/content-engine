@@ -3,8 +3,26 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MediaLightbox, type MediaLightboxItem } from "../../components/MediaLightbox";
 import { GenerationLoadingState, LoadingSignal } from "../../components/ui";
+import { PostAction } from "../publishing/PostAction";
+import type { PostComposerMedia } from "../publishing/postMedia";
 import { mediaPreviewTitle } from "./createPageHelpers";
 import type { CreateResult } from "./createPageTypes";
+
+function postMediaForCreateResult(result: CreateResult): PostComposerMedia | null {
+  const artifactId = result.artifactIds?.[0];
+  if (result.kind !== "video" || !result.url || !artifactId) return null;
+
+  return {
+    kind: "video",
+    title: result.title,
+    item: {
+      artifactId,
+      storageUrl: result.url,
+      kind: "video",
+      title: result.title,
+    },
+  };
+}
 
 export function CreateResultPanel({
   isReviewActionPending,
@@ -22,6 +40,7 @@ export function CreateResultPanel({
   const isReview = result.status === "review";
   const isSaved = result.status === "saved";
   const [lightboxImage, setLightboxImage] = useState<MediaLightboxItem | null>(null);
+  const postMedia = postMediaForCreateResult(result);
 
   return (
     <aside className="grid content-start rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-page-quiet)] p-[var(--space-4)]">
@@ -127,10 +146,13 @@ export function CreateResultPanel({
       ) : null}
 
       {isSaved ? (
-        <Link className="secondary-button mt-[var(--space-3)] w-fit" to="/library">
-          <Library size={16} />
-          Open library
-        </Link>
+        <div className="mt-[var(--space-3)] flex flex-wrap gap-[var(--space-2)]">
+          {postMedia ? <PostAction media={postMedia} /> : null}
+          <Link className="secondary-button w-fit" to="/library">
+            <Library size={16} />
+            Open library
+          </Link>
+        </div>
       ) : null}
     </aside>
   );

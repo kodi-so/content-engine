@@ -1,4 +1,6 @@
 import { Images, Trash2 } from "lucide-react";
+import { PostAction } from "../publishing/PostAction";
+import { postMediaForSlideshow } from "../publishing/postMedia";
 import type {
   CanonicalSlideshowSpec,
   CanonicalSlideshowSlide,
@@ -105,8 +107,12 @@ export function LibrarySlideshowCard({
           </p>
         ) : null}
       </div>
-      {onDelete ? (
-        <div className="flex flex-wrap gap-[var(--space-2)]">
+      <div className="flex flex-wrap gap-[var(--space-2)]">
+        <PostAction
+          className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem]"
+          media={postMediaForSlideshow(slideshow)}
+        />
+        {onDelete ? (
           <button
             className="secondary-button min-h-[2rem] px-[var(--space-2)] py-[0.35rem] text-[0.78rem] text-[var(--color-danger)]"
             disabled={isDeleting}
@@ -116,8 +122,8 @@ export function LibrarySlideshowCard({
             <Trash2 size={15} />
             {isDeleting ? "Deleting" : "Delete"}
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </article>
   );
 }

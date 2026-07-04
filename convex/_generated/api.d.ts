@@ -104,6 +104,7 @@ import type * as providers_publishing from "../providers/publishing.js";
 import type * as providers_publishingProviders_postBridge from "../providers/publishingProviders/postBridge.js";
 import type * as providers_publishingProviders_postiz from "../providers/publishingProviders/postiz.js";
 import type * as publishing_approval from "../publishing/approval.js";
+import type * as publishing_composer from "../publishing/composer.js";
 import type * as publishing_distributionPlans from "../publishing/distributionPlans.js";
 import type * as publishing_metrics from "../publishing/metrics.js";
 import type * as publishing_publishInput from "../publishing/publishInput.js";
@@ -245,6 +246,7 @@ declare const fullApi: ApiFromModules<{
   "providers/publishingProviders/postBridge": typeof providers_publishingProviders_postBridge;
   "providers/publishingProviders/postiz": typeof providers_publishingProviders_postiz;
   "publishing/approval": typeof publishing_approval;
+  "publishing/composer": typeof publishing_composer;
   "publishing/distributionPlans": typeof publishing_distributionPlans;
   "publishing/metrics": typeof publishing_metrics;
   "publishing/publishInput": typeof publishing_publishInput;

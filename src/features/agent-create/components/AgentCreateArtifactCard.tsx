@@ -6,14 +6,43 @@ import {
   Music,
   Pencil,
   Play,
+  Send,
 } from "lucide-react";
 import {
   AgentCreateSlideshowArtifact,
   isInlineSlideshowArtifact,
 } from "./AgentCreateSlideshowArtifact";
 import { ReferenceBriefPanel } from "../../analyze/ReferenceBriefPanel";
+import { PostComposerModal } from "../../publishing/PostComposerModal";
+import type { PostComposerMedia } from "../../publishing/postMedia";
 import type { AgentCreateArtifact } from "../model/agentCreateTypes";
 import { agentCreateClassNames } from "../model/agentCreateUi";
+import type { Id } from "../../../../convex/_generated/dataModel";
+
+function postMediaForAgentArtifact(
+  artifact: AgentCreateArtifact
+): PostComposerMedia | null {
+  if (
+    artifact.status !== "ready" ||
+    artifact.kind !== "video" ||
+    !artifact.url ||
+    artifact.id.includes(":")
+  ) {
+    return null;
+  }
+
+  return {
+    kind: "video",
+    title: artifact.title,
+    item: {
+      artifactId: artifact.id as Id<"artifacts">,
+      storageUrl: artifact.url,
+      mimeType: artifact.mimeType,
+      kind: "video",
+      title: artifact.title,
+    },
+  };
+}
 
 export function AgentCreateArtifactCard({
   artifact,
@@ -52,8 +81,11 @@ export function AgentCreateArtifactCard({
   const canOpenInStudio = artifact.id.startsWith("studio:") ||
     (isDirectGeneratedArtifact && (artifact.kind === "image" || artifact.kind === "video"));
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const postMedia = postMediaForAgentArtifact(artifact);
   const hasMenuActions = Boolean(
-    (onSave && isDirectGeneratedArtifact) ||
+    postMedia ||
+      (onSave && isDirectGeneratedArtifact) ||
       (onOpenStudio && canOpenInStudio) ||
       (onDownload && artifact.url) ||
       (onOpen && artifact.url)
@@ -96,6 +128,19 @@ export function AgentCreateArtifactCard({
       onClick={(event) => event.stopPropagation()}
       style={{ left: menuPoint.x, top: menuPoint.y }}
     >
+      {postMedia ? (
+        <button
+          className="inline-flex min-h-8 items-center gap-2 rounded-[0.5rem] px-2 text-left transition hover:bg-[var(--color-page-quiet)]"
+          onClick={() => {
+            setMenuPoint(null);
+            setIsComposerOpen(true);
+          }}
+          type="button"
+        >
+          <Send size={14} />
+          Post
+        </button>
+      ) : null}
       {onSave && isDirectGeneratedArtifact ? (
         <button
           className="inline-flex min-h-8 items-center gap-2 rounded-[0.5rem] px-2 text-left transition hover:bg-[var(--color-page-quiet)]"
@@ -137,6 +182,10 @@ export function AgentCreateArtifactCard({
         </button>
       ) : null}
     </div>
+  ) : null;
+
+  const composerModal = isComposerOpen && postMedia ? (
+    <PostComposerModal media={postMedia} onClose={() => setIsComposerOpen(false)} />
   ) : null;
 
   if (artifact.referenceBrief && !compact) {
@@ -211,6 +260,7 @@ export function AgentCreateArtifactCard({
             {contextMenu}
           </>
         )}
+        {composerModal}
       </figure>
     );
   }
@@ -298,8 +348,18 @@ export function AgentCreateArtifactCard({
           ) : null}
         </div>
 
-        {(onOpen || onDownload) && (isReady || artifact.url) ? (
+        {(onOpen || onDownload || postMedia) && (isReady || artifact.url) ? (
           <div className="flex flex-wrap gap-[var(--space-2)]">
+            {postMedia ? (
+              <button
+                className="secondary-button min-h-8 px-2 py-1 text-[0.76rem]"
+                onClick={() => setIsComposerOpen(true)}
+                type="button"
+              >
+                <Send size={14} />
+                Post
+              </button>
+            ) : null}
             {onOpen && artifact.url ? (
               <button
                 className="secondary-button min-h-8 px-2 py-1 text-[0.76rem]"
@@ -323,6 +383,7 @@ export function AgentCreateArtifactCard({
           </div>
         ) : null}
       </div>
+      {composerModal}
     </article>
   );
 }
