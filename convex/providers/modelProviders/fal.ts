@@ -46,7 +46,7 @@ import {
   falVideoPayload,
 } from "../fal/payloads";
 
-export { normalizeFalVideoDurationForModel } from "../fal/payloads";
+export { normalizeFalVideoDurationForModel } from "../../../src/lib/generation/videoDurationConstraints";
 
 function mapFalQueueStatus(status: string, hasError: boolean): AsyncJobStatus {
   if (status === "IN_QUEUE") return "queued";

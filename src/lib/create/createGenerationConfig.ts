@@ -8,6 +8,10 @@ import type {
   ImageModelUiContract,
   ProviderModelDoc,
 } from "../workflow/workflowModelCatalog";
+import {
+  defaultDurationForFalVideoModel,
+  falVideoDurationConstraintForModel,
+} from "../generation/videoDurationConstraints";
 import type { CreateMode } from "./createModes";
 
 export type CreateGenerationMode = Extract<CreateMode, "image" | "video" | "audio">;
@@ -106,13 +110,65 @@ export function createGenerationFields(args: {
     args.imageModelUiContract
   )
     .filter((field) => !createOnlyHiddenFieldKeys.has(field.key))
-    .map((field) =>
-      args.nodeType === "image_generation" &&
-      field.key === "localReferenceImages" &&
-      args.imageModelUiContract?.images.required
-        ? { ...field, required: true }
-        : field
-    );
+    .map((field) => {
+      if (
+        args.nodeType === "image_generation" &&
+        field.key === "localReferenceImages" &&
+        args.imageModelUiContract?.images.required
+      ) {
+        return { ...field, required: true };
+      }
+
+      if (args.nodeType === "video_generation" && field.key === "durationSeconds") {
+        return createVideoDurationField(field, args.selectedModel);
+      }
+
+      return field;
+    });
+}
+
+function createVideoDurationField(
+  field: ConfigField,
+  selectedModel: ProviderModelDoc | null
+): ConfigField {
+  if (!selectedModel) {
+    return {
+      ...field,
+      disabled: true,
+      description: "Choose a model to see its supported durations.",
+    };
+  }
+
+  if (selectedModel.category !== "video" || selectedModel.modelId.startsWith("fal-ai/") === false) {
+    return field;
+  }
+
+  const constraint = falVideoDurationConstraintForModel(selectedModel.modelId);
+  if (!constraint) return field;
+
+  if (constraint.kind === "enum") {
+    return {
+      ...field,
+      type: "enum",
+      enumValues: constraint.values.map(String),
+      defaultValue: field.defaultValue ?? constraint.defaultValue,
+      description: `Supported durations: ${constraint.values.join(", ")} seconds.`,
+    };
+  }
+
+  if (constraint.kind === "integerRange") {
+    return {
+      ...field,
+      description: `Choose a whole number from ${constraint.min}-${constraint.max} seconds.`,
+      defaultValue: field.defaultValue ?? constraint.defaultValue,
+    };
+  }
+
+  return {
+    ...field,
+    description: `This model maps duration to frame count at ${constraint.fps} fps.`,
+    defaultValue: field.defaultValue ?? defaultDurationForFalVideoModel(selectedModel.modelId),
+  };
 }
 
 export function groupCreateGenerationFields(

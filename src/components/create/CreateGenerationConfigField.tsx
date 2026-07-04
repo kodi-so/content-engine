@@ -144,6 +144,7 @@ export function CreateGenerationConfigField({
           {field.required ? " *" : ""}
         </span>
         <WorkflowSelect
+          disabled={field.disabled}
           onChange={(nextValue) => onConfigChange(field.key, nextValue)}
           options={[
             ...(!field.required ? [{ value: "", label: "Unset" }] : []),
@@ -188,6 +189,7 @@ export function CreateGenerationConfigField({
           <input
             className="h-4 w-4 accent-[var(--color-primary)]"
             checked={Boolean(value)}
+            disabled={field.disabled}
             onChange={(event) => onConfigChange(field.key, event.target.checked)}
             type="checkbox"
           />
@@ -210,6 +212,7 @@ export function CreateGenerationConfigField({
       {field.type === "json" ? (
         <textarea
           className={textareaClass}
+          disabled={field.disabled}
           onChange={(event) =>
             onConfigChange(
               field.key,
@@ -222,12 +225,14 @@ export function CreateGenerationConfigField({
       ) : (
         <input
           className={inputClass}
+          disabled={field.disabled}
           onChange={(event) =>
             onConfigChange(
               field.key,
               coerceConfigFieldValue(field, event.target.value, value)
             )
           }
+          step={field.key === "durationSeconds" ? 1 : undefined}
           type={field.type === "number" ? "number" : "text"}
           value={String(value)}
         />

@@ -16,11 +16,13 @@ import {
 } from "./toolExecutionShared";
 import { appendDiscoveredReferencesForThread } from "./toolReferenceCollection";
 import { readyArtifactsForThreadToolOutputs } from "./threadToolOutputs";
+import {
+  defaultDurationForFalVideoModel,
+  normalizeFalVideoDurationForModel,
+} from "../../../src/lib/generation/videoDurationConstraints";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
 
-const FAL_KLING_V3_MIN_DURATION_SECONDS = 3;
-const FAL_KLING_V3_MAX_DURATION_SECONDS = 15;
 const DEFAULT_CREATE_FAL_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
 
 function providerForMediaMode(
@@ -85,11 +87,16 @@ function normalizedCreateDurationSeconds(args: {
   provider: ModelProviderName;
 }) {
   if (args.mode !== "video" || !args.durationSeconds) return undefined;
-  if (args.provider === "fal" && args.model?.includes("kling-video/v3")) {
-    return Math.max(
-      FAL_KLING_V3_MIN_DURATION_SECONDS,
-      Math.min(FAL_KLING_V3_MAX_DURATION_SECONDS, Math.round(args.durationSeconds))
-    );
+  if (args.provider === "fal" && args.model) {
+    const normalized = normalizeFalVideoDurationForModel(args.model, args.durationSeconds);
+    if (typeof normalized === "number") return normalized;
+    if (typeof normalized === "string") {
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed)
+        ? parsed
+        : defaultDurationForFalVideoModel(args.model);
+    }
+    return Math.round(args.durationSeconds);
   }
   return args.durationSeconds;
 }

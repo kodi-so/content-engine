@@ -36,6 +36,9 @@ import {
   type GenerationOperationId,
 } from "../lib/generation/generationOperations";
 import {
+  durationForSelectedFalVideoModel,
+} from "../lib/generation/videoDurationConstraints";
+import {
   createGenerationFields,
   createGenerationPromptValue,
   createGenerationRequiredFieldsSatisfied,
@@ -176,8 +179,10 @@ export function CreateToolsPage() {
   const currentPrompt = isCreateGenerationMode(mode)
     ? createGenerationPromptValue(mode, generationConfig)
     : prompt.trim();
+  const generationModelSelected = !isCreateGenerationMode(mode) || Boolean(selectedModel);
   const canSubmit = isCreateGenerationMode(mode)
     ? Boolean(currentPrompt) &&
+      generationModelSelected &&
       createGenerationRequiredFieldsSatisfied({
           config: generationConfig,
           fields: generationFields,
@@ -204,6 +209,16 @@ export function CreateToolsPage() {
     setGenerationConfig((current) => ({
       ...current,
       [key]: value,
+    }));
+  };
+
+  const handleSelectedModelChange = (nextModel: string) => {
+    setModel(nextModel);
+    if (mode !== "video" || selectedCreateProvider !== "fal") return;
+
+    setGenerationConfig((current) => ({
+      ...current,
+      durationSeconds: durationForSelectedFalVideoModel(nextModel, current.durationSeconds),
     }));
   };
 
@@ -519,7 +534,7 @@ export function CreateToolsPage() {
               onNonGenerationPromptChange={setPrompt}
               onPromptPasteReferenceFiles={handlePromptPasteReferenceFiles}
               onRemoveLocalReferenceFile={removeReferenceUpload}
-              onSelectedModelChange={setModel}
+              onSelectedModelChange={handleSelectedModelChange}
               onUpdateLocalReferenceAlias={updateReferenceAlias}
               referenceMentionOptions={referenceMentionOptions}
               selectedGenerationOperationId={selectedGenerationOperation?.id}

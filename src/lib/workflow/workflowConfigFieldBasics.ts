@@ -8,6 +8,7 @@ export type ConfigField = {
   advanced: boolean;
   defaultValue?: unknown;
   description?: string;
+  disabled?: boolean;
   enumValues?: string[];
 };
 

@@ -5,15 +5,16 @@ import type {
   GenerateVideoInput,
   ReferenceAsset,
 } from "../model";
+import {
+  falVideoFrameCountForDuration,
+  normalizeFalVideoDurationForModel,
+} from "../../../src/lib/generation/videoDurationConstraints";
 
 export const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
 export const DEFAULT_FAL_IMAGE_RESOLUTION = "2K";
 export const DEFAULT_FAL_VIDEO_MODEL = "fal-ai/ltx-video";
 export const DEFAULT_FAL_AUDIO_MODEL = "fal-ai/xai/tts/v1";
 export const DEFAULT_FAL_LIPSYNC_MODEL = "fal-ai/bytedance/seedance-2.0/reference-to-video";
-
-const FAL_KLING_V3_MIN_DURATION_SECONDS = 3;
-const FAL_KLING_V3_MAX_DURATION_SECONDS = 15;
 
 function aspectRatioToFalImageSize(aspectRatio?: string): string | undefined {
   switch (aspectRatio) {
@@ -169,32 +170,6 @@ function falVideoReferencePayload(
   return payload;
 }
 
-function finiteDurationValue(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  return undefined;
-}
-
-export function normalizeFalVideoDurationForModel(
-  model: string,
-  value: unknown
-): number | string | undefined {
-  const duration = finiteDurationValue(value);
-  if (!duration) return undefined;
-
-  if (model.includes("kling-video/v3")) {
-    return String(Math.max(
-      FAL_KLING_V3_MIN_DURATION_SECONDS,
-      Math.min(FAL_KLING_V3_MAX_DURATION_SECONDS, Math.round(duration))
-    ));
-  }
-
-  return duration;
-}
-
 function addIfDefined(
   payload: Record<string, unknown>,
   key: string,
@@ -252,6 +227,11 @@ export function falVideoPayload(
     payload,
     "duration",
     normalizeFalVideoDurationForModel(model, payload.duration ?? input.durationSeconds)
+  );
+  addIfDefined(
+    payload,
+    "num_frames",
+    payload.num_frames ?? falVideoFrameCountForDuration(model, input.durationSeconds)
   );
   return payload;
 }
