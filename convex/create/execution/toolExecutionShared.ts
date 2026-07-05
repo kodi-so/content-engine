@@ -130,9 +130,34 @@ export function zeroBasedIndexFromInput(value: unknown) {
   return value;
 }
 
-export function selectedPriorArtifacts<T>(artifacts: T[], input: Record<string, unknown>, key: string) {
-  const index = zeroBasedIndexFromInput(input[key]);
-  if (index === undefined) return artifacts;
+function zeroBasedIndexesFromInput(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((item) => {
+    const index = zeroBasedIndexFromInput(item);
+    return index === undefined ? [] : [index];
+  });
+}
+
+export function selectedPriorArtifactsByIndexes<T>(
+  artifacts: T[],
+  input: Record<string, unknown>,
+  keys: {
+    indexKey?: string;
+    indexesKey?: string;
+  } = {}
+) {
+  const indexesKey = keys.indexesKey ?? "priorImageOutputIndexes";
+  const indexKey = keys.indexKey ?? "priorImageOutputIndex";
+  const indexes = zeroBasedIndexesFromInput(input[indexesKey]);
+  if (indexes) {
+    return indexes.flatMap((index) => {
+      const artifact = artifacts[index];
+      return artifact ? [artifact] : [];
+    });
+  }
+
+  const index = zeroBasedIndexFromInput(input[indexKey]);
+  if (index === undefined) return undefined;
   const artifact = artifacts[index];
   return artifact ? [artifact] : [];
 }

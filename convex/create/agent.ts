@@ -308,6 +308,7 @@ export const applyAgentDecision = internalMutation({
     decision: v.any(),
     decisionRunId: v.string(),
     effectiveContent: v.string(),
+    currentReferenceMentions: v.optional(v.array(createReferenceMentionValidator)),
     referenceMentions: v.optional(v.array(createReferenceMentionValidator)),
     threadId: v.id("createThreads"),
     userMessageId: v.id("createMessages"),
@@ -407,7 +408,8 @@ export const applyAgentDecision = internalMutation({
       planMessageId,
       decision,
       args.effectiveContent,
-      args.referenceMentions
+      args.referenceMentions,
+      args.currentReferenceMentions
     );
 
     const requiresDebugReview = args.checkpointMode === "debug" && hasDebugGatedToolCalls(decision);
@@ -649,6 +651,7 @@ export const decideAgentTurn = internalAction({
         effectiveContent: result.object.kind === "create"
           ? result.object.brief
           : effectiveBrief.content,
+        currentReferenceMentions: context.userMessage.referenceMentions,
         referenceMentions: effectiveBrief.referenceMentions,
         threadId: args.threadId,
         userMessageId: args.userMessageId,

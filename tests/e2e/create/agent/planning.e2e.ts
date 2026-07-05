@@ -21,11 +21,14 @@ import { artifactCaptionFromPrompt } from "../../../../convex/content/artifactCa
 import {
   buildEffectiveBrief,
   enrichPlannedToolInput,
+  hasExplicitPriorOutputSelection,
   normalizePlannedToolInputForToolCall,
+  referenceMentionsForPlannedToolInput,
   toolDescriptorMap,
 } from "../../../../convex/create/planning";
 import { dependencyIndexesForPlannedToolCalls } from "../../../../convex/create/agent/agentToolPlanning";
 import { validateToolCallInput } from "../../../../convex/create/tools/validateToolInput";
+import { selectedPriorArtifactsByIndexes } from "../../../../convex/create/execution/toolExecutionShared";
 import {
   analysisSourceFromUploadedReferenceMention,
   referenceMentionMatchesSource,
@@ -124,6 +127,36 @@ assert.deepEqual(
   ["Unknown tool name: media.makePoster"]
 );
 
+assert.deepEqual(
+  validateToolCallInput("media.generateImage", {
+    prompt: "Edit Image #1.",
+    priorImageOutputIndexes: [1],
+  }),
+  []
+);
+assert.deepEqual(
+  validateToolCallInput("media.generateImage", {
+    prompt: "Edit Image #1.",
+    priorImageOutputIndexes: ["1"],
+  }),
+  ["media.generateImage.input.priorImageOutputIndexes[0] must be number"]
+);
+assert.deepEqual(
+  validateToolCallInput("media.generateVideo", {
+    prompt: "Animate the selected images.",
+    priorImageOutputIndexes: [0, 2],
+    usePriorVideoOutputs: true,
+  }),
+  []
+);
+assert.deepEqual(
+  validateToolCallInput("media.generateAudio", {
+    text: "Extend the previous voiceover.",
+    usePriorAudioOutputs: true,
+  }),
+  []
+);
+
 assert.equal(
   artifactCaptionFromPrompt("one two three four five", "Slide 2"),
   "Slide 2: one two three four five"
@@ -166,6 +199,9 @@ for (const bullet of movedPlannerGuidance) {
 }
 assert.match(fullAgentPrompt, /input must be a compact JSON-encoded object string/);
 assert.match(fullAgentPrompt, /You can see images attached to recent conversation messages/);
+assert.match(fullAgentPrompt, /set input\.priorImageOutputIndexes to the exact zero-based Image # index/);
+assert.match(fullAgentPrompt, /The runtime attaches only the selected prior images/);
+assert.match(fullAgentPrompt, /There is no automatic prior-output fallback/);
 
 assert.equal(
   shouldRenderAgentCreateMessage({
@@ -363,10 +399,50 @@ assert.deepEqual(
   dependencyIndexesForPlannedToolCalls([
     { toolName: "media.generateImage" },
     { toolName: "media.generateImage" },
-    { toolName: "media.generateVideo", input: { usePriorImageOutputs: true } },
+    { toolName: "media.generateVideo", input: { priorImageOutputIndexes: [0, 1] } },
     { toolName: "studio.compose" },
   ]),
   [[], [], [0, 1], [0, 1, 2]]
+);
+
+assert.equal(hasExplicitPriorOutputSelection({ priorImageOutputIndexes: [1] }), true);
+assert.equal(hasExplicitPriorOutputSelection({ priorImageOutputIndex: 1 }), true);
+assert.equal(hasExplicitPriorOutputSelection({ usePriorVideoOutputs: true }), true);
+assert.equal(hasExplicitPriorOutputSelection({ prompt: "Edit the previous image." }), false);
+
+const orderedPriorArtifacts = ["Image #0", "Image #1", "Image #2"];
+assert.deepEqual(
+  selectedPriorArtifactsByIndexes(orderedPriorArtifacts, { priorImageOutputIndexes: [2, 0] }),
+  ["Image #2", "Image #0"]
+);
+assert.deepEqual(
+  selectedPriorArtifactsByIndexes(orderedPriorArtifacts, { priorImageOutputIndex: 1 }),
+  ["Image #1"]
+);
+assert.deepEqual(
+  selectedPriorArtifactsByIndexes(orderedPriorArtifacts, { priorImageOutputIndexes: [99] }),
+  []
+);
+assert.equal(
+  selectedPriorArtifactsByIndexes(orderedPriorArtifacts, {}),
+  undefined
+);
+
+assert.deepEqual(
+  referenceMentionsForPlannedToolInput({
+    currentReferenceMentions: [uploadedImageReference],
+    plannedInput: { priorImageOutputIndexes: [1] },
+    threadReferenceMentions: [bananaReference, uploadedImageReference],
+  }),
+  [uploadedImageReference]
+);
+assert.deepEqual(
+  referenceMentionsForPlannedToolInput({
+    currentReferenceMentions: [],
+    plannedInput: { prompt: "Create a similar image." },
+    threadReferenceMentions: [bananaReference],
+  }),
+  [bananaReference]
 );
 
 const fruitBrief = userMessage(

@@ -12,7 +12,7 @@ import {
   cleanOptionalStringFromRecord,
   finitePositiveNumber,
   modelProviderFromInput,
-  selectedPriorArtifacts,
+  selectedPriorArtifactsByIndexes,
 } from "./toolExecutionShared";
 import { appendDiscoveredReferencesForThread } from "./toolReferenceCollection";
 import { readyArtifactsForThreadToolOutputs } from "./threadToolOutputs";
@@ -62,10 +62,6 @@ export function mediaModeForToolName(toolName: string): MediaGenerationMode | nu
   if (toolName === "media.generateAudio") return "audio";
   if (toolName === "media.lipsync") return "lipsync";
   return null;
-}
-
-function isRevisionBrief(brief: string) {
-  return /\b(revise|revision|change|update|modify|improve|redo|edit)\b/i.test(brief);
 }
 
 function defaultCreateVideoModel(args: {
@@ -131,41 +127,38 @@ export async function createGenerationRequestForToolCall(
     : undefined;
   const references = await resolveToolReferences(ctx, thread, input);
   await appendDiscoveredReferencesForThread(ctx, thread, toolCall._id, references);
-  if (
-    mode === "image" &&
-    (isRevisionBrief(brief) || input.usePriorImageOutputs === true)
-  ) {
+  if (mode === "image") {
     const previousImages = await readyArtifactsForThreadToolOutputs(
       ctx,
       thread,
       toolCall._id,
       "image"
     );
+    const imagesToReference = selectedPriorArtifactsByIndexes(previousImages, input) ??
+      (input.usePriorImageOutputs === true ? previousImages : []);
     references.imageReferences.push(
-      ...previousImages.flatMap((artifact) => {
+      ...imagesToReference.flatMap((artifact) => {
         const reference = referenceFromArtifact(artifact);
         return reference ? [reference] : [];
       })
     );
   }
   if (mode === "video") {
-    const previousImages = selectedPriorArtifacts(
-      await readyArtifactsForThreadToolOutputs(
-        ctx,
-        thread,
-        toolCall._id,
-        "image"
-      ),
-      input,
-      "priorImageOutputIndex"
+    const previousImages = await readyArtifactsForThreadToolOutputs(
+      ctx,
+      thread,
+      toolCall._id,
+      "image"
     );
+    const imagesToReference = selectedPriorArtifactsByIndexes(previousImages, input) ??
+      (input.usePriorImageOutputs === true ? previousImages : []);
     references.imageReferences.push(
-      ...previousImages.flatMap((artifact) => {
+      ...imagesToReference.flatMap((artifact) => {
         const reference = referenceFromArtifact(artifact);
         return reference ? [reference] : [];
       })
     );
-    if (isRevisionBrief(brief)) {
+    if (input.usePriorVideoOutputs === true) {
       const previousVideos = await readyArtifactsForThreadToolOutputs(
         ctx,
         thread,
@@ -180,7 +173,7 @@ export async function createGenerationRequestForToolCall(
       );
     }
   }
-  if (mode === "audio" && isRevisionBrief(brief)) {
+  if (mode === "audio" && input.usePriorAudioOutputs === true) {
     const previousAudios = await readyArtifactsForThreadToolOutputs(
       ctx,
       thread,
@@ -195,6 +188,7 @@ export async function createGenerationRequestForToolCall(
     );
   }
   if (mode === "lipsync") {
+    // TODO: Move lipsync to explicit prior output selection once its tool schema exposes selectors.
     const previousImages = await readyArtifactsForThreadToolOutputs(
       ctx,
       thread,

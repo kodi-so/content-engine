@@ -58,6 +58,25 @@ export function enrichPlannedToolInput(args: PlannedToolInputArgs): Record<strin
   return baseEnrichedInput(args);
 }
 
+export function hasExplicitPriorOutputSelection(input?: Record<string, unknown>) {
+  if (!input) return false;
+  return Array.isArray(input.priorImageOutputIndexes) ||
+    typeof input.priorImageOutputIndex === "number" ||
+    input.usePriorImageOutputs === true ||
+    input.usePriorVideoOutputs === true ||
+    input.usePriorAudioOutputs === true;
+}
+
+export function referenceMentionsForPlannedToolInput(args: {
+  currentReferenceMentions?: CreateReferenceMention[];
+  plannedInput?: Record<string, unknown>;
+  threadReferenceMentions?: CreateReferenceMention[];
+}) {
+  return hasExplicitPriorOutputSelection(args.plannedInput)
+    ? args.currentReferenceMentions ?? []
+    : args.threadReferenceMentions ?? [];
+}
+
 export function normalizePlannedToolInputForToolCall(args: {
   input: Record<string, unknown>;
   planStep?: string;

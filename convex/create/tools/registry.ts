@@ -78,6 +78,12 @@ const stringArraySchema = (description: string): JsonSchema => ({
   items: { type: "string" },
 });
 
+const numberArraySchema = (description: string): JsonSchema => ({
+  type: "array",
+  description,
+  items: { type: "number" },
+});
+
 const objectArraySchema = (description: string): JsonSchema => ({
   type: "array",
   description,
@@ -325,7 +331,9 @@ const toolDefinitions = [
       aspectRatio: stringSchema("Optional output aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
       count: numberSchema("Number of image variations to create; use only for variations/options of the same prompt."),
       references: objectArraySchema("Optional reference image descriptors."),
-      usePriorImageOutputs: booleanSchema("When true, use prior generated images in this thread as continuity or style references."),
+      priorImageOutputIndexes: numberArraySchema("Zero-based indexes into Image # ledger entries; use to edit, revise, or vary specific prior generated images. The runtime attaches exactly these prior images in order."),
+      priorImageOutputIndex: numberSchema("Zero-based index into Image # ledger entries; convenience field for editing, revising, or varying one specific prior generated image."),
+      usePriorImageOutputs: booleanSchema("When true, use ALL prior generated images in this thread as continuity or style references. Prefer priorImageOutputIndexes when targeting specific images."),
       provider: stringSchema("Optional provider override."),
       model: stringSchema("Optional model override."),
     }),
@@ -360,8 +368,10 @@ const toolDefinitions = [
       aspectRatio: stringSchema("Optional output aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
       durationSeconds: numberSchema("Optional target duration in seconds."),
       references: objectArraySchema("Optional image or video reference descriptors."),
-      usePriorImageOutputs: booleanSchema("When true, use all prior generated images as continuity/style references."),
-      priorImageOutputIndex: numberSchema("Zero-based index into the prior generated images in this thread; use when this call must animate/extend one specific earlier image."),
+      priorImageOutputIndexes: numberArraySchema("Zero-based indexes into Image # ledger entries; use when this call must animate or extend specific earlier images. The runtime attaches exactly these prior images in order."),
+      priorImageOutputIndex: numberSchema("Zero-based index into Image # ledger entries; convenience field for animating or extending one specific prior image."),
+      usePriorImageOutputs: booleanSchema("When true, use ALL prior generated images as continuity/style references. Prefer priorImageOutputIndexes when targeting specific images."),
+      usePriorVideoOutputs: booleanSchema("When true, use ALL prior generated videos as continuity/style references."),
       provider: stringSchema("Optional provider override."),
       model: stringSchema("Optional model override."),
     }),
@@ -433,6 +443,7 @@ const toolDefinitions = [
       brief: stringSchema("Optional effective brief; defaults to text or prompt when omitted."),
       mode: stringSchema("Optional audio generation mode such as voiceover, music, or sound_effect."),
       references: objectArraySchema("Optional voice or audio references."),
+      usePriorAudioOutputs: booleanSchema("When true, use ALL prior generated audio artifacts as continuity/style references."),
       provider: stringSchema("Optional provider override."),
       model: stringSchema("Optional model override."),
     }),

@@ -18,9 +18,15 @@ export async function contentRequestIdsForThreadToolOutputs(
     .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
     .collect();
 
+  const orderedToolCalls = [...threadToolCalls].sort((a, b) =>
+    a.createdAt === b.createdAt
+      ? a._creationTime - b._creationTime
+      : a.createdAt - b.createdAt
+  );
+
   return [
     ...new Set(
-      threadToolCalls.flatMap((candidate) => {
+      orderedToolCalls.flatMap((candidate) => {
         if (excludeToolCallId && candidate._id === excludeToolCallId) return [];
         const requestId = contentRequestIdFromToolOutput(candidate.output);
         return requestId ? [requestId] : [];
@@ -63,9 +69,11 @@ export async function readyArtifactsForThreadToolOutputs(
   const requestIds = await contentRequestIdsForThreadToolOutputs(ctx, thread, excludeToolCallId);
   const artifacts: Doc<"artifacts">[] = [];
 
+  // This creation-ordered append-only traversal defines Image # ledger indexes and
+  // executor prior-output index resolution. Keep both consumers in lockstep.
   for (const requestId of requestIds) {
     const request = await ctx.db.get(requestId);
-    if (!request || request.status !== "ready") continue;
+    if (!request || (request.status !== "ready" && request.status !== "saved")) continue;
     if (thread.workspaceId ? request.workspaceId !== thread.workspaceId : request.userId !== thread.userId) {
       continue;
     }
@@ -74,11 +82,17 @@ export async function readyArtifactsForThreadToolOutputs(
       .withIndex("by_content_request", (q) => q.eq("contentRequestId", request._id))
       .collect();
     artifacts.push(
-      ...requestArtifacts.filter((artifact) =>
-        artifact.storageUrl &&
-        artifactMediaKind(artifact) === mediaKind &&
-        (thread.workspaceId ? artifact.workspaceId === thread.workspaceId : artifact.userId === thread.userId)
-      )
+      ...requestArtifacts
+        .sort((a, b) =>
+          a.createdAt === b.createdAt
+            ? a._creationTime - b._creationTime
+            : a.createdAt - b.createdAt
+        )
+        .filter((artifact) =>
+          artifact.storageUrl &&
+          artifactMediaKind(artifact) === mediaKind &&
+          (thread.workspaceId ? artifact.workspaceId === thread.workspaceId : artifact.userId === thread.userId)
+        )
     );
   }
 

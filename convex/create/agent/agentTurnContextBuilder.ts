@@ -223,13 +223,13 @@ export async function buildTurnContextSections(
   const artifactLedger = ledgerLines.length
     ? [
         "Generated artifact ledger:",
-        "Only Image # numbers correspond to priorImageOutputIndex.",
+        "Only Image # numbers correspond to priorImageOutputIndex / priorImageOutputIndexes.",
         ...ledgerLines,
       ].join("\n")
     : [
         "Generated artifact ledger:",
         "No generated artifacts yet.",
-        "Only Image # numbers correspond to priorImageOutputIndex.",
+        "Only Image # numbers correspond to priorImageOutputIndex / priorImageOutputIndexes.",
       ].join("\n");
 
   const contextBlock = [

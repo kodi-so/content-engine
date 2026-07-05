@@ -2,7 +2,9 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import {
   enrichPlannedToolInput,
+  hasExplicitPriorOutputSelection,
   normalizePlannedToolInputForToolCall,
+  referenceMentionsForPlannedToolInput,
   toolDescriptorMap,
   type CreateReferenceMention,
 } from "../planning";
@@ -47,8 +49,7 @@ function dependsOnAllPreviousCalls(toolCall: DependencyCandidate) {
     toolCall.toolName === "media.generateAudio" ||
     toolCall.toolName === "media.lipsync"
   ) {
-    return toolCall.input?.usePriorImageOutputs === true ||
-      typeof toolCall.input?.priorImageOutputIndex === "number";
+    return hasExplicitPriorOutputSelection(toolCall.input);
   }
   return false;
 }
@@ -119,7 +120,8 @@ export async function recordPlannedTools(
   messageId: Id<"createMessages">,
   intent: CreateDecisionIntent,
   content: string,
-  referenceMentions?: CreateReferenceMention[]
+  threadReferenceMentions?: CreateReferenceMention[],
+  currentReferenceMentions?: CreateReferenceMention[]
 ) {
   const descriptors = toolDescriptorMap();
   const now = Date.now();
@@ -139,6 +141,11 @@ export async function recordPlannedTools(
   for (const plannedCall of intent.toolCalls) {
     const tool = descriptors.get(plannedCall.toolName);
     const callContent = plannedCall.prompt || content;
+    const referenceMentions = referenceMentionsForPlannedToolInput({
+      currentReferenceMentions,
+      plannedInput: plannedCall.input,
+      threadReferenceMentions,
+    });
     const inferredInput = enrichPlannedToolInput({
       content: callContent,
       outputType: intent.outputType,
