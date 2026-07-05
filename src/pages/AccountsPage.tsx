@@ -196,24 +196,19 @@ export function AccountsPage() {
               />
             </label>
           </div>
-          <div className="grid gap-[var(--space-3)] xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-            <p className="m-0 text-[0.78rem] leading-relaxed text-[var(--color-ink-muted)]">
-              Passwords are hidden until you reveal a row. Anyone with workspace access can see revealed credentials, so use this for accounts you intentionally want available here.
-            </p>
-            <div className="flex flex-wrap gap-[var(--space-2)] xl:justify-end">
-              <button className="primary-button min-w-[7rem] whitespace-nowrap" disabled={!username.trim()} type="submit">
-                <Plus size={16} />
-                Add
-              </button>
-              <button
-                className="secondary-button whitespace-nowrap"
-                type="button"
-                onClick={() => void handleSync(DEFAULT_PUBLISHING_PROVIDER)}
-              >
-                <RefreshCw size={16} />
-                Sync PostBridge
-              </button>
-            </div>
+          <div className="flex flex-wrap gap-[var(--space-2)] xl:justify-end">
+            <button className="primary-button min-w-[7rem] whitespace-nowrap" disabled={!username.trim()} type="submit">
+              <Plus size={16} />
+              Add
+            </button>
+            <button
+              className="secondary-button whitespace-nowrap"
+              type="button"
+              onClick={() => void handleSync(DEFAULT_PUBLISHING_PROVIDER)}
+            >
+              <RefreshCw size={16} />
+              Sync PostBridge
+            </button>
           </div>
         </form>
         {syncStatus ? (

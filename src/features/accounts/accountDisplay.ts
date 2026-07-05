@@ -99,6 +99,80 @@ export function providerLabel(account: SocialAccount) {
   return publishingRouteForProvider(account.provider).label;
 }
 
+function cleanAccountHandle(username: string) {
+  return username.trim().replace(/^@+/, "").replace(/\/+$/, "");
+}
+
+function firstMetadataUrl(...records: Array<Record<string, unknown> | undefined>) {
+  const keys = [
+    "profileUrl",
+    "profile_url",
+    "accountUrl",
+    "account_url",
+    "externalUrl",
+    "external_url",
+    "permalinkUrl",
+    "permalink_url",
+    "link",
+    "url",
+  ];
+
+  for (const record of records) {
+    if (!record) continue;
+
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value !== "string") continue;
+
+      try {
+        const url = new URL(value.trim());
+        if (url.protocol === "https:" || url.protocol === "http:") {
+          return url.toString();
+        }
+      } catch {
+        // Ignore provider metadata that is not already a complete URL.
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function accountProfileUrl(account: SocialAccount) {
+  const metadata = isRecord(account.metadata) ? account.metadata : undefined;
+  const raw = isRecord(metadata?.raw) ? metadata.raw : undefined;
+  const metadataUrl = firstMetadataUrl(metadata, raw);
+  if (metadataUrl) return metadataUrl;
+
+  const handle = cleanAccountHandle(account.username);
+  if (!handle) return undefined;
+
+  switch (account.platform) {
+    case "tiktok":
+      return `https://www.tiktok.com/@${encodeURIComponent(handle)}`;
+    case "instagram":
+      return `https://www.instagram.com/${encodeURIComponent(handle)}`;
+    case "youtube":
+      return `https://www.youtube.com/@${encodeURIComponent(handle)}`;
+    case "x":
+      return `https://x.com/${encodeURIComponent(handle)}`;
+    case "linkedin":
+      return metadata?.identifier === "linkedin-page"
+        ? `https://www.linkedin.com/company/${encodeURIComponent(handle)}`
+        : `https://www.linkedin.com/in/${encodeURIComponent(handle)}`;
+    case "facebook":
+      return `https://www.facebook.com/${encodeURIComponent(handle)}`;
+    case "threads":
+      return `https://www.threads.net/@${encodeURIComponent(handle)}`;
+    case "pinterest":
+      return `https://www.pinterest.com/${encodeURIComponent(handle)}`;
+    case "bluesky":
+      return `https://bsky.app/profile/${encodeURIComponent(handle)}`;
+    default:
+      return undefined;
+  }
+}
+
 export function statusLabel(account: SocialAccount) {
   if (account.provider === "manual") return "Not linked";
   if (account.status === "connected") return "Linked";

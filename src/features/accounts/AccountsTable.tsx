@@ -1,8 +1,9 @@
-import { Copy, Eye, EyeOff, Link2, RefreshCw, Save, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Eye, EyeOff, Link2, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   EMPTY_METRICS,
   type AccountCredentials,
+  accountProfileUrl,
   credentialsForAccount,
   formatMetric,
   platformLabel,
@@ -146,6 +147,33 @@ function CredentialCell({
 
 const compactIconButtonClassName = "inline-grid size-7 place-items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-ink-soft)] transition hover:border-[var(--color-border-strong)] hover:text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-45";
 const compactDangerIconButtonClassName = `${compactIconButtonClassName} hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]`;
+
+function AccountStatusChip({ account }: { account: SocialAccount }) {
+  const profileUrl = account.status === "connected" ? accountProfileUrl(account) : undefined;
+  const platform = platformLabel(account.platform);
+  const className = [
+    "inline-flex min-h-[1.65rem] items-center gap-1 rounded-full border px-[0.5rem] text-[0.7rem] font-[760]",
+    statusClassName(account),
+  ].join(" ");
+
+  if (!profileUrl) {
+    return <span className={className}>{statusLabel(account)}</span>;
+  }
+
+  return (
+    <a
+      aria-label={`Open ${account.username} on ${platform}`}
+      className={`${className} transition hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-900`}
+      href={profileUrl}
+      rel="noreferrer"
+      target="_blank"
+      title={`Open ${account.username} on ${platform}`}
+    >
+      {statusLabel(account)}
+      <ExternalLink size={12} />
+    </a>
+  );
+}
 
 export function AccountsTable({
   accountMetricsById,
@@ -330,9 +358,7 @@ export function AccountsTable({
                   {formatMetric(metrics.clicks)}
                 </td>
                 <td className="whitespace-nowrap px-[var(--space-2)] py-[var(--space-2)]">
-                  <span className={["inline-flex min-h-[1.65rem] items-center rounded-full border px-[0.5rem] text-[0.7rem] font-[760]", statusClassName(account)].join(" ")}>
-                    {statusLabel(account)}
-                  </span>
+                  <AccountStatusChip account={account} />
                 </td>
                 <td className="px-[var(--space-2)] py-[var(--space-2)]">
                   <div className="flex justify-end gap-[var(--space-1)]">
