@@ -39,9 +39,13 @@ export interface ModelInvocationMetadata {
   [key: string]: unknown;
 }
 
+export type ModelMessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; url: string };
+
 export interface ModelMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ModelMessageContentPart[];
 }
 
 export interface TextResponseFormat {

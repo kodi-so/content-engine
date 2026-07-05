@@ -55,10 +55,27 @@ function hasAnyKey(record: Record<string, unknown>, keys: string[]): boolean {
   return keys.some((key) => record[key] !== undefined);
 }
 
-function buildBulkApisMessages(input: GenerateTextInput): ModelMessage[] {
-  if (input.messages?.length) return input.messages;
+type TextOnlyModelMessage = ModelMessage & { content: string };
 
-  const messages: ModelMessage[] = [];
+function assertTextOnlyMessages(messages: ModelMessage[]) {
+  for (const message of messages) {
+    if (Array.isArray(message.content)) {
+      throw new ProviderError("BulkAPIs text generation does not support image message parts.", {
+        kind: "model",
+        provider: BULKAPIS_PROVIDER,
+        operation: "generate_text",
+        code: "validation",
+        retryable: false,
+      });
+    }
+  }
+  return messages as TextOnlyModelMessage[];
+}
+
+function buildBulkApisMessages(input: GenerateTextInput): TextOnlyModelMessage[] {
+  if (input.messages?.length) return assertTextOnlyMessages(input.messages);
+
+  const messages: TextOnlyModelMessage[] = [];
   if (input.systemPrompt) {
     messages.push({ role: "system", content: input.systemPrompt });
   }

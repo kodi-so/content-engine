@@ -24,6 +24,7 @@ import {
   type GetJobStatusInput,
   type GetJobStatusResult,
   type ModelMessage,
+  type ModelMessageContentPart,
   type ModelProvider,
   type ModelProviderName,
 } from "../model";
@@ -44,6 +45,13 @@ type OpenRouterResponse = {
     total_tokens?: number;
     cost?: number;
   };
+};
+
+type OpenRouterMessage = Omit<ModelMessage, "content"> & {
+  content: string | Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  >;
 };
 
 const OPENROUTER_PROVIDER: ModelProviderName = "openrouter";
@@ -120,9 +128,26 @@ function createOpenRouterDecodeError(
   });
 }
 
-function buildOpenRouterMessages(input: GenerateTextInput): ModelMessage[] {
+function openRouterContentPart(part: ModelMessageContentPart) {
+  if (part.type === "text") return part;
+  return {
+    type: "image_url" as const,
+    image_url: { url: part.url },
+  };
+}
+
+function openRouterMessage(message: ModelMessage): OpenRouterMessage {
+  return {
+    role: message.role,
+    content: Array.isArray(message.content)
+      ? message.content.map(openRouterContentPart)
+      : message.content,
+  };
+}
+
+function buildOpenRouterMessages(input: GenerateTextInput): OpenRouterMessage[] {
   if (input.messages && input.messages.length > 0) {
-    return input.messages;
+    return input.messages.map(openRouterMessage);
   }
 
   const messages: ModelMessage[] = [];
@@ -130,7 +155,7 @@ function buildOpenRouterMessages(input: GenerateTextInput): ModelMessage[] {
     messages.push({ role: "system", content: input.systemPrompt });
   }
   messages.push({ role: "user", content: input.prompt ?? "" });
-  return messages;
+  return messages.map(openRouterMessage);
 }
 
 function extractOpenRouterText(response: OpenRouterResponse): string {

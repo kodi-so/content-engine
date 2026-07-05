@@ -11,6 +11,7 @@ import {
   artifactMimeType,
   isRecord,
 } from "../references/referenceResolution";
+import type { CreateReferenceMention } from "../planning";
 import {
   appendAgentMessage,
   byteLengthFromRecord,
@@ -18,7 +19,7 @@ import {
   recordBelongsToCreateThread,
 } from "./toolExecutionShared";
 
-type AnalysisSourceForToolCall = {
+export type AnalysisSourceForToolCall = {
   artifactId?: Id<"artifacts">;
   creativeAssetId?: Id<"creativeAssets">;
   fileName?: string;
@@ -31,6 +32,53 @@ type AnalysisSourceForToolCall = {
   storageUrl?: string;
   byteLength?: number;
 };
+
+function sourceExcerpt(source: string) {
+  return source.length > 140 ? `${source.slice(0, 140)}...` : source;
+}
+
+export function validatePublicAnalysisUrl(source: string) {
+  let url: URL;
+  try {
+    url = new URL(source);
+  } catch {
+    throw new Error(`Analyze Source needs a public http(s) URL; got: ${sourceExcerpt(source)}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`Analyze Source needs a public http(s) URL; got: ${sourceExcerpt(source)}`);
+  }
+  return source;
+}
+
+export function referenceMentionMatchesSource(
+  reference: CreateReferenceMention,
+  source: string
+) {
+  const cleanSource = source.trim();
+  return cleanSource === reference.token ||
+    cleanSource === reference.entityId ||
+    cleanSource === `${reference.entityType}:${reference.entityId}`;
+}
+
+export function analysisSourceFromUploadedReferenceMention(
+  reference: CreateReferenceMention
+): AnalysisSourceForToolCall {
+  if (!reference.storageUrl) {
+    throw new Error("Analyze Source could not access that uploaded reference.");
+  }
+  return {
+    fileName: reference.label,
+    label: reference.label,
+    mimeType: reference.mimeType,
+    sourcePlatform: sourcePlatformForStoredMedia({
+      mimeType: reference.mimeType,
+      storageUrl: reference.storageUrl,
+    }),
+    sourceType: "upload",
+    sourceUrl: reference.storageUrl,
+    storageUrl: reference.storageUrl,
+  };
+}
 
 function sourcePlatformForStoredMedia(args: {
   mimeType?: string;
@@ -187,12 +235,60 @@ async function analysisSourceFromWorkflowExportAsset(
   };
 }
 
+async function analysisSourceFromReferenceMention(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  reference: CreateReferenceMention,
+  libraryAssetId?: string
+): Promise<AnalysisSourceForToolCall> {
+  if (reference.entityType === "uploaded_reference") {
+    return analysisSourceFromUploadedReferenceMention(reference);
+  }
+  if (reference.entityType === "artifact") {
+    return await analysisSourceFromArtifact(ctx, thread, reference.entityId, libraryAssetId);
+  }
+  if (reference.entityType === "creative_asset") {
+    return await analysisSourceFromCreativeAsset(ctx, thread, reference.entityId, libraryAssetId);
+  }
+  throw new Error("Analyze Source could not resolve that referenced asset.");
+}
+
+async function threadReferenceMentions(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">
+): Promise<CreateReferenceMention[]> {
+  const messages = await ctx.db
+    .query("createMessages")
+    .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
+    .collect();
+
+  return messages.flatMap((message) => message.referenceMentions ?? []);
+}
+
+async function analysisSourceFromKnownReferenceMention(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  source: string
+): Promise<AnalysisSourceForToolCall | undefined> {
+  const references = await threadReferenceMentions(ctx, thread);
+  const reference = references.find((candidate) =>
+    referenceMentionMatchesSource(candidate, source)
+  );
+  if (!reference) return undefined;
+  return await analysisSourceFromReferenceMention(ctx, thread, reference, source);
+}
+
 async function analysisSourceFromLibraryAsset(
   ctx: MutationCtx,
   thread: Doc<"createThreads">,
   source: string
 ) {
   const parts = libraryAssetParts(source);
+  if (parts.kind === "uploaded_reference" && parts.firstId) {
+    const referenceSource = await analysisSourceFromKnownReferenceMention(ctx, thread, source);
+    if (referenceSource) return referenceSource;
+    throw new Error("Analyze Source could not resolve that uploaded reference.");
+  }
   if (parts.kind === "artifact" && parts.firstId) {
     return await analysisSourceFromArtifact(ctx, thread, parts.firstId, source);
   }
@@ -222,12 +318,16 @@ async function resolveAnalysisSourceForToolCall(
 ): Promise<AnalysisSourceForToolCall> {
   if (!source) throw new Error("Analyze Source needs a source to analyze.");
 
+  const referenceSource = await analysisSourceFromKnownReferenceMention(ctx, thread, source);
+  if (referenceSource) return referenceSource;
+
   if (sourceType === "url") {
+    const url = validatePublicAnalysisUrl(source);
     return {
-      label: source,
-      sourcePlatform: sourcePlatformForUrl(source),
+      label: url,
+      sourcePlatform: sourcePlatformForUrl(url),
       sourceType: "url",
-      sourceUrl: source,
+      sourceUrl: url,
     };
   }
 
@@ -298,7 +398,7 @@ export async function createAnalysisJobForToolCall(
       artifactId: analysisSource.artifactId,
       creativeAssetId: analysisSource.creativeAssetId,
       libraryAssetId: analysisSource.libraryAssetId,
-      sourceType: sourceType ?? analysisSource.sourceType,
+      sourceType: analysisSource.sourceType,
       sourceUrl: analysisSource.sourceUrl,
       storageUrl: analysisSource.storageUrl,
       status: "queued",

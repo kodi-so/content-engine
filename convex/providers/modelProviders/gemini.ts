@@ -23,6 +23,7 @@ import {
   type GenerateVideoRenderResult,
   type GetJobStatusInput,
   type GetJobStatusResult,
+  type ModelMessage,
   type ModelProvider,
   type ModelProviderName,
 } from "../model";
@@ -115,12 +116,27 @@ async function readGeminiJson(response: Response, operation: string) {
   }
 }
 
+function assertTextOnlyMessages(messages: ModelMessage[]) {
+  for (const message of messages) {
+    if (Array.isArray(message.content)) {
+      throw new ProviderError("Gemini text generation does not support image message parts through this adapter.", {
+        kind: "model",
+        provider: GEMINI_PROVIDER,
+        operation: "generate_text",
+        code: "validation",
+        retryable: false,
+      });
+    }
+  }
+  return messages as Array<ModelMessage & { content: string }>;
+}
+
 function buildGeminiContents(input: GenerateTextInput): Array<{
   role: "user" | "model";
   parts: Array<{ text: string }>;
 }> {
   if (input.messages && input.messages.length > 0) {
-    return input.messages
+    return assertTextOnlyMessages(input.messages)
       .filter((message) => message.role !== "system")
       .map((message) => ({
         role: message.role === "assistant" ? "model" : "user",

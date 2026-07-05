@@ -204,11 +204,13 @@ const toolDefinitions = [
     description: "Analyze an uploaded file, media asset, or URL for source-grounded creative understanding, including videos and social slideshows.",
     plannerGuidance: [
       "When the user supplies a URL and asks to understand, study, analyze, use as inspiration, or adapt it, call analyze.source first. Treat its reference brief as the primary source context for later answers and generation.",
+      "source must be a public http(s) URL exactly as provided by the user, or the url: value shown for a referenced asset. Never pass entityType:entityId reference tokens as source.",
+      "Answer conversational questions about attached images/media directly in chat. Use analyze.source only for deep creative analysis of external URLs/videos/slideshows or when the user explicitly asks for a full breakdown.",
     ],
     category: "analysis",
     inputSchema: jsonSchema("Source to analyze.", {
       sourceType: stringSchema("Source kind to analyze.", ["url", "file", "artifact", "library_asset"]),
-      source: stringSchema("URL or internal source identifier."),
+      source: stringSchema("Public http(s) URL, stored file URL, artifact id, or library asset id to analyze. Do not pass entityType:entityId reference tokens."),
       instructions: stringSchema("Optional analysis guidance from the user or planner."),
     }),
     outputSchema: fieldsSchema("Structured source analysis.", {

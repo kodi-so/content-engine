@@ -288,10 +288,6 @@ export async function continueAgentLoopAfterToolCompletion(
   }
 
   const decisionRunId = crypto.randomUUID();
-  await appendAgentMessage(ctx, thread, {
-    content: "Thinking through the next step.",
-    kind: "status",
-  });
   await ctx.db.patch(thread._id, {
     decisionRunId,
     status: "planning",

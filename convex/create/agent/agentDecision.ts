@@ -1,5 +1,5 @@
 import type { Doc } from "../../_generated/dataModel";
-import type { ModelMessage } from "../../providers/model";
+import type { ModelMessage, ModelMessageContentPart } from "../../providers/model";
 import {
   explicitSlideshowRenderingMode,
   toolDescriptorMap,
@@ -32,6 +32,7 @@ export type CreateDecisionIntent = {
 };
 
 export type CreateMessageForModel = Doc<"createMessages"> & {
+  generatedImageUrls?: string[];
   generatedTextContext?: string;
 };
 
@@ -166,7 +167,40 @@ export function createAgentSystemPrompt(modules: AgentPromptModuleName[] = ALL_A
   return buildAgentSystemPrompt({ modules });
 }
 
-export function messageForModel(message: CreateMessageForModel): ModelMessage {
+function isImageReferenceMention(reference: CreateReferenceMention) {
+  return reference.mediaType === "image" ||
+    reference.mimeType?.toLowerCase().startsWith("image/");
+}
+
+function messageIdKey(message: CreateMessageForModel) {
+  return String(message._id);
+}
+
+function attachedImagePartsForMessage(
+  message: CreateMessageForModel,
+  attachedImageUrls?: ReadonlySet<string>
+): ModelMessageContentPart[] {
+  const imageUrls = [
+    ...(message.referenceMentions ?? []).flatMap((reference) =>
+      isImageReferenceMention(reference) && reference.storageUrl
+        ? [reference.storageUrl]
+        : []
+    ),
+    ...(message.generatedImageUrls ?? []),
+  ];
+
+  return imageUrls
+    .filter((url) => attachedImageUrls?.has(url))
+    .map((url) => ({
+      type: "image_url" as const,
+      url,
+    }));
+}
+
+export function messageForModel(
+  message: CreateMessageForModel,
+  attachedImageUrls?: ReadonlySet<string>
+): ModelMessage {
   const references = message.referenceMentions?.length
     ? [
         "",
@@ -183,11 +217,94 @@ export function messageForModel(message: CreateMessageForModel): ModelMessage {
         message.generatedTextContext,
       ].join("\n")
     : "";
+  const textContent = `${message.content}${references}${generatedText}`;
+  const imageParts = attachedImagePartsForMessage(message, attachedImageUrls);
 
   return {
     role: message.role === "user" ? "user" : "assistant",
-    content: `${message.content}${references}${generatedText}`,
+    content: imageParts.length
+      ? [
+          { type: "text", text: textContent },
+          ...imageParts,
+        ]
+      : textContent,
   };
+}
+
+export function messagesForModel(
+  messages: CreateMessageForModel[],
+  maxAttachedImages = 4
+): ModelMessage[] {
+  const attachedUrlsByMessageId = new Map<string, Set<string>>();
+  let remainingImageSlots = maxAttachedImages;
+
+  for (let index = messages.length - 1; index >= 0 && remainingImageSlots > 0; index -= 1) {
+    const message = messages[index];
+    const imageUrls = [
+      ...(message.referenceMentions ?? []).flatMap((reference) =>
+        isImageReferenceMention(reference) && reference.storageUrl
+          ? [reference.storageUrl]
+          : []
+      ),
+      ...(message.generatedImageUrls ?? []),
+    ];
+    for (const imageUrl of imageUrls) {
+      if (remainingImageSlots <= 0) continue;
+      const key = messageIdKey(message);
+      const urls = attachedUrlsByMessageId.get(key) ?? new Set<string>();
+      if (urls.has(imageUrl)) continue;
+      urls.add(imageUrl);
+      attachedUrlsByMessageId.set(key, urls);
+      remainingImageSlots -= 1;
+    }
+  }
+
+  return messages.map((message) =>
+    messageForModel(message, attachedUrlsByMessageId.get(messageIdKey(message)))
+  );
+}
+
+export function decisionInstructionForTurn(args: {
+  effectiveBrief: string;
+  isContinuation: boolean;
+}) {
+  if (args.isContinuation) {
+    return [
+      "The planned tool calls for this request have finished; their results appear above and in the artifact ledger.",
+      "If the user's request is now satisfied, respond with kind=\"chat\" summarizing what was produced.",
+      "Only plan additional tool calls if something specific is still missing or a follow-up step was already planned.",
+      "Do NOT re-create outputs that already exist in the ledger.",
+      `Effective brief for creation, if relevant: ${args.effectiveBrief}`,
+      "Use the conversation messages and prior tool results above as normal chat context. Do not rely on hard-coded phrases to infer follow-up intent.",
+    ].join("\n");
+  }
+
+  return [
+    "Decide the next assistant action for the latest user message.",
+    `Effective brief for creation, if relevant: ${args.effectiveBrief}`,
+    "Use the conversation messages and prior tool results above as normal chat context. Do not rely on hard-coded phrases to infer follow-up intent.",
+  ].join("\n");
+}
+
+export function planSignatureForToolCalls(toolCalls: CreatePlannedToolCall[]) {
+  return JSON.stringify(
+    toolCalls.map((toolCall) => ({
+      tool: toolCall.toolName,
+      input: toolCall.input ?? null,
+    }))
+  );
+}
+
+export function shouldPauseForRepeatedPlan(args: {
+  hasFailedToolCallSinceUserMessage: boolean;
+  isContinuation: boolean;
+  lastPlanSignature?: string;
+  planSignature: string;
+}) {
+  return args.isContinuation &&
+    !args.hasFailedToolCallSinceUserMessage &&
+    Boolean(args.lastPlanSignature) &&
+    args.lastPlanSignature === args.planSignature;
 }
 
 function parseJsonObject(text: string): Record<string, unknown> {

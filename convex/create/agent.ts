@@ -1,10 +1,11 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   internalAction,
   internalMutation,
   internalQuery,
+  type MutationCtx,
   mutation,
   query,
 } from "../_generated/server";
@@ -23,15 +24,20 @@ import {
 import {
   buildEffectiveBrief,
   threadTitleFromMessage,
+  toolDescriptorMap,
 } from "./planning";
+import type { CreateToolName } from "./tools";
 import {
   AGENT_DECISION_JSON_SCHEMA,
   AgentDecisionParseError,
   AgentDecisionValidationError,
   createAgentSystemPrompt,
-  messageForModel,
+  decisionInstructionForTurn,
+  messagesForModel,
   normalizeAgentDecision,
+  planSignatureForToolCalls,
   planMessageForCreateDecision,
+  shouldPauseForRepeatedPlan,
   type AgentDecision,
 } from "./agent/agentDecision";
 import { selectPromptModules } from "./agent/agentPromptModules";
@@ -66,6 +72,10 @@ import {
   saveReadyOutputsForThread,
 } from "./toolExecution";
 import {
+  artifactMediaKind,
+  isRecord,
+} from "./references/referenceResolution";
+import {
   analysisJobIdFromToolOutput,
   contentRequestIdFromToolOutput,
   slideshowPromptReviewRequestId,
@@ -78,7 +88,11 @@ export {
   AgentDecisionParseError,
   AgentDecisionValidationError,
   createAgentSystemPrompt,
+  decisionInstructionForTurn,
+  messagesForModel,
   normalizeAgentDecision,
+  planSignatureForToolCalls,
+  shouldPauseForRepeatedPlan,
 } from "./agent/agentDecision";
 
 const createAgentProvider = "openrouter";
@@ -87,6 +101,124 @@ const createAgentModel =
   process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
   "openai/gpt-4.1";
 const continueWorkingCheckpointLabel = "Continue working?";
+
+function artifactCaptionForResult(artifact: Doc<"artifacts">) {
+  const data = isRecord(artifact.data) ? artifact.data : {};
+  const caption = typeof data.caption === "string" ? data.caption.trim() : "";
+  return caption || artifact.title || "Untitled artifact";
+}
+
+function artifactKindForResult(artifact: Doc<"artifacts">) {
+  const mediaKind = artifactMediaKind(artifact);
+  if (mediaKind === "image") return "Image artifact";
+  if (mediaKind === "video") return "Video artifact";
+  if (mediaKind === "audio") return "Audio artifact";
+  return "Artifact";
+}
+
+function completionMessageForToolResult(
+  toolCall: Doc<"createToolCalls">,
+  artifacts: Doc<"artifacts">[]
+) {
+  const toolLabel = toolDescriptorMap().get(toolCall.toolName as CreateToolName)?.label ?? toolCall.label;
+  const produced = artifacts.length
+    ? ` Produced: ${artifacts.map((artifact) =>
+        `${artifactKindForResult(artifact)} "${compactLogValue(artifactCaptionForResult(artifact), 90)}" (ready)`
+      ).join(", ")}.`
+    : "";
+  return `Tool "${toolLabel}" completed successfully.${produced}`;
+}
+
+async function artifactsForContentRequest(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  requestId: Id<"contentRequests">
+) {
+  const artifacts = await ctx.db
+    .query("artifacts")
+    .withIndex("by_content_request", (q) => q.eq("contentRequestId", requestId))
+    .collect();
+  return artifacts.filter((artifact) =>
+    thread.workspaceId ? artifact.workspaceId === thread.workspaceId : artifact.userId === thread.userId
+  );
+}
+
+async function artifactsForCompletedAsyncTool(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  toolCall: Doc<"createToolCalls">,
+  readySource: Doc<"contentRequests"> | Doc<"videoAnalysisJobs"> | Doc<"studioRenderRequests">
+) {
+  const artifactIds = new Set<string>((toolCall.artifactIds ?? []).map(String));
+  const contentRequestId = contentRequestIdFromToolOutput(toolCall.output);
+  if (contentRequestId && readySource._id === contentRequestId) {
+    for (const artifact of await artifactsForContentRequest(ctx, thread, contentRequestId)) {
+      artifactIds.add(String(artifact._id));
+    }
+  }
+  const studioRenderRequestId = studioRenderRequestIdFromToolOutput(toolCall.output);
+  if (
+    studioRenderRequestId &&
+    readySource._id === studioRenderRequestId &&
+    "outputArtifactId" in readySource &&
+    readySource.outputArtifactId
+  ) {
+    artifactIds.add(String(readySource.outputArtifactId));
+  }
+
+  const artifacts = await Promise.all(
+    [...artifactIds].flatMap((artifactId) => {
+      const normalizedId = ctx.db.normalizeId("artifacts", artifactId);
+      return normalizedId ? [ctx.db.get(normalizedId)] : [];
+    })
+  );
+  return artifacts.filter((artifact): artifact is Doc<"artifacts"> => {
+    if (!artifact) return false;
+    return thread.workspaceId ? artifact.workspaceId === thread.workspaceId : artifact.userId === thread.userId;
+  });
+}
+
+async function mediaArtifactsProducedSinceUserMessage(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  userMessage: Doc<"createMessages">
+) {
+  const toolCalls = await ctx.db
+    .query("createToolCalls")
+    .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
+    .collect();
+  const artifactIds = [
+    ...new Set(
+      toolCalls
+        .filter((toolCall) => toolCall.createdAt >= userMessage.createdAt)
+        .flatMap((toolCall) => toolCall.artifactIds ?? [])
+        .map(String)
+    ),
+  ];
+  const artifacts = await Promise.all(
+    artifactIds.flatMap((artifactId) => {
+      const normalizedId = ctx.db.normalizeId("artifacts", artifactId);
+      return normalizedId ? [ctx.db.get(normalizedId)] : [];
+    })
+  );
+
+  return artifacts
+    .filter((artifact): artifact is Doc<"artifacts"> => {
+      if (!artifact?.storageUrl) return false;
+      const mediaKind = artifactMediaKind(artifact);
+      if (mediaKind !== "image" && mediaKind !== "video" && mediaKind !== "audio") return false;
+      return thread.workspaceId ? artifact.workspaceId === thread.workspaceId : artifact.userId === thread.userId;
+    })
+    .map((artifact) => artifact._id);
+}
+
+function shouldAppendAsyncCompletionToolResult(
+  toolCall: Doc<"createToolCalls">,
+  readySource: Doc<"contentRequests"> | Doc<"videoAnalysisJobs"> | Doc<"studioRenderRequests">
+) {
+  return contentRequestIdFromToolOutput(toolCall.output) === readySource._id ||
+    studioRenderRequestIdFromToolOutput(toolCall.output) === readySource._id;
+}
 
 function shouldRepairAgentDecision(error: unknown) {
   if (error instanceof AgentDecisionParseError) return true;
@@ -198,10 +330,14 @@ export const applyAgentDecision = internalMutation({
     const nextDecisionCount = thread.turnDecisionCount + 1;
 
     if (decision.kind === "chat") {
+      const artifactIds = thread.turnDecisionCount > 0
+        ? await mediaArtifactsProducedSinceUserMessage(ctx, thread, userMessage)
+        : [];
       await appendMessage(ctx, thread, {
         role: "agent",
         content: decision.response,
         kind: "chat",
+        ...(artifactIds.length ? { artifactIds } : {}),
       });
       await ctx.db.patch(thread._id, {
         status: "idle",
@@ -228,8 +364,20 @@ export const applyAgentDecision = internalMutation({
       return;
     }
 
-    const planSignature = JSON.stringify(decision.toolCalls);
-    if (thread.lastPlanSignature === planSignature) {
+    const planSignature = planSignatureForToolCalls(decision.toolCalls);
+    const toolCallsSinceUserMessage = await ctx.db
+      .query("createToolCalls")
+      .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
+      .collect();
+    const hasFailedToolCallSinceUserMessage = toolCallsSinceUserMessage.some((toolCall) =>
+      toolCall.createdAt >= userMessage.createdAt && toolCall.status === "failed"
+    );
+    if (shouldPauseForRepeatedPlan({
+      hasFailedToolCallSinceUserMessage,
+      isContinuation: thread.turnDecisionCount > 0,
+      lastPlanSignature: thread.lastPlanSignature,
+      planSignature,
+    })) {
       await ctx.db.insert("createCheckpoints", {
         userId: thread.userId,
         workspaceId: thread.workspaceId,
@@ -450,14 +598,13 @@ export const decideAgentTurn = internalAction({
         ...(earlierConversationSummary
           ? [{ role: "user" as const, content: `Earlier conversation summary:\n${earlierConversationSummary}` }]
           : []),
-        ...context.sections.recentMessages.map(messageForModel),
+        ...messagesForModel(context.sections.recentMessages),
         {
           role: "user",
-          content: [
-            "Decide the next assistant action for the latest user message.",
-            `Effective brief for creation, if relevant: ${effectiveBrief.content}`,
-            "Use the conversation messages and prior tool results above as normal chat context. Do not rely on hard-coded phrases to infer follow-up intent.",
-          ].join("\n"),
+          content: decisionInstructionForTurn({
+            effectiveBrief: effectiveBrief.content,
+            isContinuation: context.isContinuation,
+          }),
         },
       ];
 
@@ -739,6 +886,21 @@ export const continueAfterAsyncResult = internalMutation({
             : `Finished ${toolCall.label}.`,
           kind: "status",
         });
+        if (shouldAppendAsyncCompletionToolResult(toolCall, readySource)) {
+          const artifacts = await artifactsForCompletedAsyncTool(ctx, thread, toolCall, readySource);
+          await appendMessage(ctx, thread, {
+            role: "agent",
+            content: completionMessageForToolResult(toolCall, artifacts),
+            kind: "tool_result",
+            artifactIds: artifacts.map((artifact) => artifact._id),
+          });
+          if (artifacts.length) {
+            await ctx.db.patch(toolCall._id, {
+              artifactIds: artifacts.map((artifact) => artifact._id),
+              updatedAt: Date.now(),
+            });
+          }
+        }
         if (
           !remainingQueued.length &&
           toolCall.toolName === "slideshow.render" &&

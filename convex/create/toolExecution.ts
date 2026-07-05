@@ -495,12 +495,26 @@ export async function executeRunnableQueuedTools(
     )
     .collect();
   const hasPendingContentRequests = await hasPendingContentRequestsForThreadToolOutputs(ctx, thread);
+  const succeededToolCallsAfterStart = await ctx.db
+    .query("createToolCalls")
+    .withIndex("by_thread_status", (q) =>
+      q.eq("createThreadId", thread._id).eq("status", "succeeded")
+    )
+    .collect();
+  let hasPendingAsyncToolOutputs = false;
+  for (const toolCall of succeededToolCallsAfterStart) {
+    if (await toolCallHasPendingAsyncOutput(ctx, thread, toolCall)) {
+      hasPendingAsyncToolOutputs = true;
+      break;
+    }
+  }
 
   if (
     !remainingQueuedToolCalls.length &&
     !blockedToolCalls.length &&
     !runningToolCalls.length &&
     !hasPendingContentRequests &&
+    !hasPendingAsyncToolOutputs &&
     (
       executedCount > 0 ||
       thread.status === "planning" ||
@@ -515,7 +529,7 @@ export async function executeRunnableQueuedTools(
   await ctx.db.patch(thread._id, {
     status: blockedToolCalls.length
       ? "waiting_for_user"
-      : runningToolCalls.length || hasPendingContentRequests
+      : runningToolCalls.length || hasPendingContentRequests || hasPendingAsyncToolOutputs
         ? "running"
       : remainingQueuedToolCalls.length
         ? "planning"

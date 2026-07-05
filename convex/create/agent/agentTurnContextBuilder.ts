@@ -5,8 +5,10 @@ import { toolDescriptorMap } from "../planning";
 import type { CreateToolName } from "../tools";
 import { isRecord } from "../references/referenceResolution";
 import { readyArtifactsForThreadToolOutputs } from "../execution/threadToolOutputs";
+import { contentRequestIdFromToolOutput } from "../execution/toolExecutionShared";
 
 export type TurnContextMessage = Doc<"createMessages"> & {
+  generatedImageUrls?: string[];
   generatedTextContext?: string;
 };
 
@@ -67,6 +69,38 @@ function artifactType(artifact: Doc<"artifacts">) {
   return artifact.type;
 }
 
+type TurnToolProgressEntry = {
+  label: string;
+  producedImageIndexes?: number[];
+  status: string;
+};
+
+export function formatTurnToolProgressSection(entries: TurnToolProgressEntry[]) {
+  if (!entries.length) {
+    return [
+      "Tool calls for the current request:",
+      "No tool calls have been planned yet.",
+    ].join("\n");
+  }
+
+  const completedCount = entries.filter((entry) => entry.status === "succeeded").length;
+  const lines = entries.map((entry, index) => {
+    const producedImages = entry.producedImageIndexes?.length
+      ? ` (produced ${entry.producedImageIndexes.map((imageIndex) => `Image #${imageIndex}`).join(", ")})`
+      : "";
+    return `${index + 1}. ${entry.label} - ${entry.status}${producedImages}`;
+  });
+  const summary = completedCount === entries.length
+    ? "All planned tool calls for this request have completed."
+    : `${completedCount} of ${entries.length} planned tool call${entries.length === 1 ? "" : "s"} completed.`;
+
+  return [
+    "Tool calls for the current request:",
+    ...lines,
+    summary,
+  ].join("\n");
+}
+
 export async function buildTurnContextSections(
   ctx: Pick<QueryCtx, "db">,
   args: {
@@ -85,16 +119,29 @@ export async function buildTurnContextSections(
     message.createdAt >= args.userMessage.createdAt
   );
 
-  const artifactIds = [
+  const messageArtifactIds = [
     ...new Set(nonStatusMessages.flatMap((message) => message.artifactIds ?? [])),
   ];
-  const artifacts = await Promise.all(artifactIds.map((artifactId) => ctx.db.get(artifactId)));
+  const artifacts = await Promise.all(messageArtifactIds.map((artifactId) => ctx.db.get(artifactId)));
   const generatedTextByArtifactId = new Map<string, string>();
   for (const artifact of artifacts) {
     if (!artifact) continue;
     const data = isRecord(artifact.data) ? artifact.data : {};
     const text = typeof data.text === "string" ? data.text.trim() : "";
     if (text) generatedTextByArtifactId.set(String(artifact._id), text);
+  }
+
+  const imageArtifacts = await readyArtifactsForThreadToolOutputs(
+    ctx,
+    args.thread,
+    undefined,
+    "image"
+  );
+  const generatedImageUrlByArtifactId = new Map<string, string>();
+  for (const artifact of [...artifacts, ...imageArtifacts]) {
+    if (!artifact?.storageUrl) continue;
+    if (artifactType(artifact) !== "image") continue;
+    generatedImageUrlByArtifactId.set(String(artifact._id), artifact.storageUrl);
   }
 
   const messagesWithText = nonStatusMessages.map((message) => {
@@ -104,16 +151,19 @@ export async function buildTurnContextSections(
       .map((text) => compactLogValue(text, 6000))
       .filter((text): text is string => Boolean(text))
       .join("\n\n");
-    return generatedTextContext ? { ...message, generatedTextContext } : message;
+    const generatedImageUrls = (message.artifactIds ?? [])
+      .map((artifactId) => generatedImageUrlByArtifactId.get(String(artifactId)))
+      .filter((url): url is string => Boolean(url));
+    return generatedTextContext || generatedImageUrls.length
+      ? {
+          ...message,
+          ...(generatedImageUrls.length ? { generatedImageUrls } : {}),
+          ...(generatedTextContext ? { generatedTextContext } : {}),
+        }
+      : message;
   });
 
   const { droppedMessages, recentMessages } = fitRecentMessagesToBudget(messagesWithText);
-  const imageArtifacts = await readyArtifactsForThreadToolOutputs(
-    ctx,
-    args.thread,
-    undefined,
-    "image"
-  );
   const artifactToolLabels = new Map<string, string>();
   const descriptors = toolDescriptorMap();
   for (const toolCall of args.toolCalls) {
@@ -138,6 +188,38 @@ export async function buildTurnContextSections(
     return `Artifact ${index + 1} [${artifactType(artifact)}] ${artifactCaption(artifact)} (tool: ${label}, status: ${artifactStatus(artifact)})`;
   });
   const ledgerLines = [...imageLedgerLines, ...otherLedgerLines];
+  const imageArtifactIndexById = new Map(
+    imageArtifacts.map((artifact, index) => [String(artifact._id), index])
+  );
+  const imageIndexesByContentRequestId = new Map<string, number[]>();
+  for (const [index, artifact] of imageArtifacts.entries()) {
+    if (!artifact.contentRequestId) continue;
+    const key = String(artifact.contentRequestId);
+    imageIndexesByContentRequestId.set(key, [
+      ...(imageIndexesByContentRequestId.get(key) ?? []),
+      index,
+    ]);
+  }
+  const currentTurnToolCalls = args.toolCalls
+    .filter((toolCall) => toolCall.createdAt >= args.userMessage.createdAt)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const turnToolProgress = formatTurnToolProgressSection(
+    currentTurnToolCalls.map((toolCall) => {
+      const artifactImageIndexes = (toolCall.artifactIds ?? []).flatMap((artifactId) => {
+        const imageIndex = imageArtifactIndexById.get(String(artifactId));
+        return imageIndex === undefined ? [] : [imageIndex];
+      });
+      const contentRequestId = contentRequestIdFromToolOutput(toolCall.output);
+      const requestImageIndexes = contentRequestId
+        ? imageIndexesByContentRequestId.get(String(contentRequestId)) ?? []
+        : [];
+      return {
+        label: descriptors.get(toolCall.toolName as CreateToolName)?.label ?? toolCall.label,
+        producedImageIndexes: [...new Set([...artifactImageIndexes, ...requestImageIndexes])],
+        status: toolCall.status,
+      };
+    })
+  );
   const artifactLedger = ledgerLines.length
     ? [
         "Generated artifact ledger:",
@@ -155,6 +237,8 @@ export async function buildTurnContextSections(
     `User request: ${args.userMessage.content}`,
     `Effective brief: ${args.effectiveBrief}`,
     currentTurnPlan ? `Current plan: ${currentTurnPlan.content}` : "Current plan: none yet.",
+    "",
+    turnToolProgress,
     "",
     artifactLedger,
   ].join("\n");

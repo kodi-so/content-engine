@@ -192,28 +192,24 @@ export function pendingTurnMessageIndex(
   return -1;
 }
 
-export function isTransientQueuedMessage(message: {
+function isAttentionStatusMessage(message: {
   content: string;
-  kind?: string;
 }) {
-  if (message.kind !== "tool_result") return false;
-  return /^Queued .+ as a preview request\./.test(message.content) ||
-    /^Queued slideshow rendering as a preview request\./.test(message.content);
+  return /\bfailed\b/i.test(message.content) ||
+    /\bno ready\b/i.test(message.content) ||
+    /\bnot exportable\b/i.test(message.content) ||
+    /\bcould not\b/i.test(message.content) ||
+    /\bthere is no\b/i.test(message.content) ||
+    /\bpaused\b/i.test(message.content);
 }
 
-export function isRoutineProgressMessage(message: {
+export function shouldRenderAgentCreateMessage(message: {
   content: string;
   kind?: string;
 }) {
-  if (message.kind !== "status" && message.kind !== "tool_result") return false;
-  return (
-    /^Finished .+\. Continuing to the next step\.$/.test(message.content) ||
-    /^Finished .+\.$/.test(message.content) ||
-    /^Waiting for .+ before .+\.$/.test(message.content) ||
-    /^Started .+\.$/.test(message.content) ||
-    /^Created a Studio project with /.test(message.content) ||
-    /^Studio render is queued on the server render worker\./.test(message.content)
-  );
+  if (message.kind === "tool_result") return false;
+  if (message.kind === "status") return isAttentionStatusMessage(message);
+  return true;
 }
 
 export function shouldAttachToolArtifactsToChat(toolName: string) {

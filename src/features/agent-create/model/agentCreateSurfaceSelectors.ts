@@ -16,11 +16,10 @@ import {
   type AsyncToolState,
 } from "./agentCreateToolProgress";
 import {
-  isRoutineProgressMessage,
-  isTransientQueuedMessage,
   outputId,
   recordFromUnknown,
   shouldAttachToolArtifactsToChat,
+  shouldRenderAgentCreateMessage,
   uniqueArtifacts,
 } from "./agentCreateSurfaceModel";
 
@@ -275,7 +274,7 @@ export function renderedAgentCreateMessages(args: {
   toolStepsByMessageId: Map<string, AgentCreateToolProgressStep[]>;
 }): AgentCreateMessage[] {
   return (args.messages ?? [])
-    .filter((message) => !isTransientQueuedMessage(message) && !isRoutineProgressMessage(message))
+    .filter(shouldRenderAgentCreateMessage)
     .map((message) => {
       const explicitArtifacts = (message.artifactIds ?? [])
         .flatMap((artifactId) => args.artifactById.get(String(artifactId)) ?? []);

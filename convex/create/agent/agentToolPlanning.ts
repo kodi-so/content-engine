@@ -1,7 +1,7 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import {
-  buildPlannedToolInput,
+  enrichPlannedToolInput,
   normalizePlannedToolInputForToolCall,
   toolDescriptorMap,
   type CreateReferenceMention,
@@ -61,7 +61,12 @@ function dependsOnEarlierAnalysis(toolName: string) {
     toolName === "media.lipsync";
 }
 
-async function existingOpenToolCallIds(
+type ExistingOpenToolCall = {
+  id: Id<"createToolCalls">;
+  toolName: string;
+};
+
+async function existingOpenToolCalls(
   ctx: MutationCtx,
   thread: Doc<"createThreads">
 ) {
@@ -69,7 +74,7 @@ async function existingOpenToolCallIds(
     .query("createToolCalls")
     .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
     .collect();
-  const ids: Id<"createToolCalls">[] = [];
+  const openToolCalls: ExistingOpenToolCall[] = [];
 
   for (const toolCall of toolCalls) {
     if (
@@ -78,11 +83,14 @@ async function existingOpenToolCallIds(
       toolCall.status === "blocked" ||
       (toolCall.status === "succeeded" && await toolCallHasPendingAsyncOutput(ctx, thread, toolCall))
     ) {
-      ids.push(toolCall._id);
+      openToolCalls.push({
+        id: toolCall._id,
+        toolName: toolCall.toolName,
+      });
     }
   }
 
-  return ids;
+  return openToolCalls;
 }
 
 export function dependencyIndexesForPlannedToolCalls(
@@ -116,7 +124,11 @@ export async function recordPlannedTools(
   const descriptors = toolDescriptorMap();
   const now = Date.now();
   const siblingToolNames = intent.toolCalls.map((toolCall) => toolCall.toolName);
-  const existingDependencyIds = await existingOpenToolCallIds(ctx, thread);
+  const existingDependencies = await existingOpenToolCalls(ctx, thread);
+  const existingDependencyIds = existingDependencies.map((toolCall) => toolCall.id);
+  const existingAnalysisDependencyIds = existingDependencies.flatMap((toolCall) =>
+    toolCall.toolName === "analyze.source" ? [toolCall.id] : []
+  );
 
   const insertedCalls: Array<{
     id: Id<"createToolCalls">;
@@ -127,7 +139,7 @@ export async function recordPlannedTools(
   for (const plannedCall of intent.toolCalls) {
     const tool = descriptors.get(plannedCall.toolName);
     const callContent = plannedCall.prompt || content;
-    const inferredInput = buildPlannedToolInput({
+    const inferredInput = enrichPlannedToolInput({
       content: callContent,
       outputType: intent.outputType,
       referenceMentions,
@@ -166,13 +178,15 @@ export async function recordPlannedTools(
 
   const dependencyIndexes = dependencyIndexesForPlannedToolCalls(insertedCalls);
   for (const [index, dependencies] of dependencyIndexes.entries()) {
-    const existingDependencies = dependsOnAllPreviousCalls(insertedCalls[index])
+    const existingDependencyIdsForCall = dependsOnAllPreviousCalls(insertedCalls[index])
       ? existingDependencyIds
-      : [];
-    if (!dependencies.length && !existingDependencies.length) continue;
+      : dependsOnEarlierAnalysis(insertedCalls[index].toolName)
+        ? existingAnalysisDependencyIds
+        : [];
+    if (!dependencies.length && !existingDependencyIdsForCall.length) continue;
     await ctx.db.patch(insertedCalls[index].id, {
       dependsOnToolCallIds: [
-        ...existingDependencies,
+        ...existingDependencyIdsForCall,
         ...dependencies.map((dependencyIndex) => insertedCalls[dependencyIndex].id),
       ],
       updatedAt: now,

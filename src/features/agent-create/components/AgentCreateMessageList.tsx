@@ -323,7 +323,12 @@ export function AgentCreateMessageList({
             ? [...(message.toolSteps ?? []), activeThinkingStep]
             : message.toolSteps;
           const showWorkLog = !isUser && (Boolean(steps?.length) || workingMessageId === message.id);
-          const content = showWorkLog ? stripRedundantPlan(message.content) : message.content;
+          const isSingleStepPlan = message.kind === "plan" && (steps?.length ?? 0) <= 1;
+          const content = isSingleStepPlan
+            ? ""
+            : showWorkLog
+              ? stripRedundantPlan(message.content)
+              : message.content;
           const previousUserMessage = !isUser
             ? messages
                 .slice(0, messageIndex)

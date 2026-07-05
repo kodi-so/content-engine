@@ -3,23 +3,36 @@ import type { Doc } from "../../../../convex/_generated/dataModel";
 import {
   AgentDecisionParseError,
   createAgentSystemPrompt,
+  decisionInstructionForTurn,
+  messagesForModel,
   normalizeAgentDecision,
+  planSignatureForToolCalls,
+  shouldPauseForRepeatedPlan,
 } from "../../../../convex/create/agent";
 import {
   ALL_AGENT_PROMPT_MODULES,
   selectPromptModules,
 } from "../../../../convex/create/agent/agentPromptModules";
-import { fitRecentMessagesToBudget } from "../../../../convex/create/agent/agentTurnContextBuilder";
+import {
+  fitRecentMessagesToBudget,
+  formatTurnToolProgressSection,
+} from "../../../../convex/create/agent/agentTurnContextBuilder";
 import { artifactCaptionFromPrompt } from "../../../../convex/content/artifactCaptions";
 import {
   buildEffectiveBrief,
-  buildPlannedToolInput,
+  enrichPlannedToolInput,
   normalizePlannedToolInputForToolCall,
   toolDescriptorMap,
 } from "../../../../convex/create/planning";
 import { dependencyIndexesForPlannedToolCalls } from "../../../../convex/create/agent/agentToolPlanning";
 import { validateToolCallInput } from "../../../../convex/create/tools/validateToolInput";
+import {
+  analysisSourceFromUploadedReferenceMention,
+  referenceMentionMatchesSource,
+  validatePublicAnalysisUrl,
+} from "../../../../convex/create/execution/sourceAnalysisExecution";
 import { normalizeFalVideoDurationForModel } from "../../../../convex/providers/modelProviders/fal";
+import { shouldRenderAgentCreateMessage } from "../../../../src/features/agent-create/model/agentCreateSurfaceModel";
 
 function userMessage(
   content: string,
@@ -43,6 +56,16 @@ const bananaReference = {
   entityType: "creative_asset",
   entityId: "asset_1",
   mediaType: "image",
+} as const;
+
+const uploadedImageReference = {
+  token: "@pasted_image_1",
+  label: "image.png",
+  entityType: "uploaded_reference",
+  entityId: "uploaded_1",
+  mediaType: "image",
+  mimeType: "image/png",
+  storageUrl: "https://storage.example.com/image.png",
 } as const;
 
 const validChatDecision = normalizeAgentDecision(JSON.stringify({
@@ -142,6 +165,170 @@ for (const bullet of movedPlannerGuidance) {
   );
 }
 assert.match(fullAgentPrompt, /input must be a compact JSON-encoded object string/);
+assert.match(fullAgentPrompt, /You can see images attached to recent conversation messages/);
+
+assert.equal(
+  shouldRenderAgentCreateMessage({
+    kind: "tool_result",
+    content: "Tool \"Generate image\" completed successfully.",
+  }),
+  false
+);
+assert.equal(
+  shouldRenderAgentCreateMessage({
+    kind: "status",
+    content: "Finished Generate image.",
+  }),
+  false
+);
+assert.equal(
+  shouldRenderAgentCreateMessage({
+    kind: "status",
+    content: "Generate image failed: Provider error.",
+  }),
+  true
+);
+assert.equal(
+  shouldRenderAgentCreateMessage({
+    kind: "status",
+    content: "There are no ready previews to save yet.",
+  }),
+  true
+);
+
+const imageModelMessages = messagesForModel([
+  userMessage("@pasted_image_1 What is this image?", [uploadedImageReference]),
+]);
+assert.equal(imageModelMessages.length, 1);
+assert.ok(Array.isArray(imageModelMessages[0].content));
+if (Array.isArray(imageModelMessages[0].content)) {
+  assert.equal(imageModelMessages[0].content[0].type, "text");
+  assert.equal(imageModelMessages[0].content[1].type, "image_url");
+  assert.equal(imageModelMessages[0].content[1].url, uploadedImageReference.storageUrl);
+}
+
+const generatedImageMessage = {
+  ...userMessage("Tool \"Generate image\" completed successfully. Produced: Image artifact \"Mirror selfie\" (ready)."),
+  artifactIds: ["artifact_1"],
+  generatedImageUrls: ["https://storage.example.com/generated-image.png"],
+  kind: "tool_result",
+} as unknown as Doc<"createMessages"> & { generatedImageUrls: string[] };
+const generatedImageModelMessages = messagesForModel([generatedImageMessage]);
+assert.ok(Array.isArray(generatedImageModelMessages[0].content));
+if (Array.isArray(generatedImageModelMessages[0].content)) {
+  assert.equal(generatedImageModelMessages[0].content[1].type, "image_url");
+  assert.equal(generatedImageModelMessages[0].content[1].url, "https://storage.example.com/generated-image.png");
+}
+
+const fiveImageMessages = [1, 2, 3, 4, 5].map((index) =>
+  userMessage(`Image ${index}`, [{
+    ...uploadedImageReference,
+    token: `@image_${index}`,
+    entityId: `uploaded_${index}`,
+    storageUrl: `https://storage.example.com/image-${index}.png`,
+  }])
+);
+const cappedImageParts = messagesForModel(fiveImageMessages).flatMap((message) =>
+  Array.isArray(message.content)
+    ? message.content.filter((part) => part.type === "image_url")
+    : []
+);
+assert.equal(cappedImageParts.length, 4);
+assert.deepEqual(
+  cappedImageParts.map((part) => part.url),
+  [
+    "https://storage.example.com/image-2.png",
+    "https://storage.example.com/image-3.png",
+    "https://storage.example.com/image-4.png",
+    "https://storage.example.com/image-5.png",
+  ]
+);
+
+assert.equal(
+  validatePublicAnalysisUrl("https://example.com/video"),
+  "https://example.com/video"
+);
+assert.throws(
+  () => validatePublicAnalysisUrl("uploaded_reference:uploaded_1"),
+  /public http\(s\) URL/
+);
+assert.equal(
+  referenceMentionMatchesSource(uploadedImageReference, "uploaded_reference:uploaded_1"),
+  true
+);
+assert.equal(
+  referenceMentionMatchesSource(uploadedImageReference, "uploaded_1"),
+  true
+);
+assert.equal(
+  referenceMentionMatchesSource(uploadedImageReference, "@pasted_image_1"),
+  true
+);
+const uploadedAnalysisSource = analysisSourceFromUploadedReferenceMention(uploadedImageReference);
+assert.equal(uploadedAnalysisSource.sourceType, "upload");
+assert.equal(uploadedAnalysisSource.sourceUrl, uploadedImageReference.storageUrl);
+assert.equal(uploadedAnalysisSource.storageUrl, uploadedImageReference.storageUrl);
+
+const initialInstruction = decisionInstructionForTurn({
+  effectiveBrief: "Create a gym mirror selfie.",
+  isContinuation: false,
+});
+assert.match(initialInstruction, /Decide the next assistant action/);
+assert.doesNotMatch(initialInstruction, /Do NOT re-create outputs/);
+
+const continuationInstruction = decisionInstructionForTurn({
+  effectiveBrief: "Create a gym mirror selfie.",
+  isContinuation: true,
+});
+assert.match(continuationInstruction, /planned tool calls for this request have finished/);
+assert.match(continuationInstruction, /Do NOT re-create outputs/);
+
+assert.equal(
+  formatTurnToolProgressSection([
+    {
+      label: "Generate image",
+      producedImageIndexes: [0],
+      status: "succeeded",
+    },
+  ]),
+  [
+    "Tool calls for the current request:",
+    "1. Generate image - succeeded (produced Image #0)",
+    "All planned tool calls for this request have completed.",
+  ].join("\n")
+);
+
+const firstPlanSignature = planSignatureForToolCalls([{
+  toolName: "media.generateImage",
+  prompt: "Create a tan brunette gym mirror selfie.",
+  planStep: "Create image.",
+  input: { aspectRatio: "9:16", count: 1 },
+}]);
+const rewordedPlanSignature = planSignatureForToolCalls([{
+  toolName: "media.generateImage",
+  prompt: "Generate a similar locker-room mirror selfie.",
+  planStep: "Generate the image.",
+  input: { aspectRatio: "9:16", count: 1 },
+}]);
+assert.equal(firstPlanSignature, rewordedPlanSignature);
+assert.equal(
+  shouldPauseForRepeatedPlan({
+    hasFailedToolCallSinceUserMessage: false,
+    isContinuation: true,
+    lastPlanSignature: firstPlanSignature,
+    planSignature: rewordedPlanSignature,
+  }),
+  true
+);
+assert.equal(
+  shouldPauseForRepeatedPlan({
+    hasFailedToolCallSinceUserMessage: true,
+    isContinuation: true,
+    lastPlanSignature: firstPlanSignature,
+    planSignature: rewordedPlanSignature,
+  }),
+  false
+);
 
 assert.deepEqual(
   selectPromptModules({
@@ -211,53 +398,62 @@ const brainstormingBrief = buildEffectiveBrief({
 assert.equal(brainstormingBrief.content, "I like the lottery idea but maybe it should be more dramatic.");
 assert.deepEqual(brainstormingBrief.referenceMentions, [bananaReference]);
 
-const imageToolInput = buildPlannedToolInput({
+const imageToolInput = enrichPlannedToolInput({
   content: "Create three vertical product images using provider fal model imagen-test.",
   outputType: "image",
+  referenceMentions: [bananaReference],
   toolName: "media.generateImage",
 });
-assert.equal(imageToolInput.aspectRatio, "9:16");
-assert.equal(imageToolInput.count, 3);
-assert.equal(imageToolInput.provider, "fal");
-assert.equal(imageToolInput.model, "imagen-test");
+assert.equal(imageToolInput.brief, "Create three vertical product images using provider fal model imagen-test.");
+assert.equal(imageToolInput.inferredOutputType, "image");
+assert.deepEqual(imageToolInput.referenceMentions, [bananaReference]);
+assert.equal(imageToolInput.aspectRatio, undefined);
+assert.equal(imageToolInput.count, undefined);
+assert.equal(imageToolInput.provider, undefined);
+assert.equal(imageToolInput.model, undefined);
 
-const videoToolInput = buildPlannedToolInput({
+const videoToolInput = enrichPlannedToolInput({
   content: "Create a landscape product video that is 8 seconds long.",
   outputType: "video",
   toolName: "media.generateVideo",
 });
-assert.equal(videoToolInput.aspectRatio, "16:9");
-assert.equal(videoToolInput.durationSeconds, 8);
+assert.equal(videoToolInput.brief, "Create a landscape product video that is 8 seconds long.");
+assert.equal(videoToolInput.inferredOutputType, "video");
+assert.deepEqual(videoToolInput.referenceMentions, []);
+assert.equal(videoToolInput.aspectRatio, undefined);
+assert.equal(videoToolInput.durationSeconds, undefined);
 
-const slideshowToolInput = buildPlannedToolInput({
+const slideshowToolInput = enrichPlannedToolInput({
   content: "Create a five-slide Pilates abs workout slideshow with titles and captions.",
   outputType: "slideshow",
   toolName: "slideshow.render",
 });
-assert.equal(slideshowToolInput.requestedRenderingMode, "background_plus_overlay");
+assert.equal(slideshowToolInput.brief, "Create a five-slide Pilates abs workout slideshow with titles and captions.");
+assert.equal(slideshowToolInput.requestedRenderingMode, undefined);
 assert.equal(toolDescriptorMap().get("slideshow.render")?.checkpoint.behavior, "none");
 
 const transformationBrief =
   "Create a vertical before and after fitness transformation video. Show a woman at the start of her fitness journey, then cut to six months later where she looks stronger and more confident. Add short motivational text overlays and make it feel like a TikTok/Reels transformation video.";
-const transformationImageInput = buildPlannedToolInput({
+const transformationImageInput = enrichPlannedToolInput({
   content: transformationBrief,
   outputType: "video",
   toolName: "media.generateImage",
 });
-assert.equal(transformationImageInput.aspectRatio, "9:16");
+assert.equal(transformationImageInput.aspectRatio, undefined);
 assert.equal(transformationImageInput.count, undefined);
-assert.equal(transformationImageInput.prompt, transformationBrief);
+assert.equal(transformationImageInput.prompt, undefined);
 assert.equal(transformationImageInput.brief, transformationBrief);
 
-const twoImageTransformationInput = buildPlannedToolInput({
+const twoImageTransformationInput = enrichPlannedToolInput({
   content:
     "Create two images for a before-and-after fitness transformation. First image: a woman at the start of her fitness journey, standing in a gym mirror selfie. Second image: the same woman six months later, stronger and more confident in the same gym mirror selfie style.",
   outputType: "image",
   toolName: "media.generateImage",
 });
-assert.equal(twoImageTransformationInput.count, 2);
+assert.equal(twoImageTransformationInput.count, undefined);
+assert.equal(twoImageTransformationInput.prompt, undefined);
 assert.equal(
-  twoImageTransformationInput.prompt,
+  twoImageTransformationInput.brief,
   "Create two images for a before-and-after fitness transformation. First image: a woman at the start of her fitness journey, standing in a gym mirror selfie. Second image: the same woman six months later, stronger and more confident in the same gym mirror selfie style."
 );
 
@@ -588,45 +784,52 @@ const legacyToolsDecision = normalizeAgentDecision(JSON.stringify({
 assert.equal(legacyToolsDecision.kind, "clarify");
 assert.match(legacyToolsDecision.response, /valid tool plan/i);
 
-const transformationVideoInput = buildPlannedToolInput({
+const transformationVideoInput = enrichPlannedToolInput({
   content: transformationBrief,
   outputType: "video",
   toolName: "media.generateVideo",
 });
-assert.equal(transformationVideoInput.prompt, transformationBrief);
+assert.equal(transformationVideoInput.prompt, undefined);
+assert.equal(transformationVideoInput.brief, transformationBrief);
 
-const videoRenderToolInput = buildPlannedToolInput({
+const videoRenderToolInput = enrichPlannedToolInput({
   content: "AI render a vertical video for 6 seconds using provider bulkapis.",
   outputType: "video",
   toolName: "media.renderVideo",
 });
-assert.equal(videoRenderToolInput.aspectRatio, "9:16");
-assert.equal(videoRenderToolInput.maxDurationSeconds, 6);
-assert.equal(videoRenderToolInput.provider, "bulkapis");
+assert.equal(videoRenderToolInput.aspectRatio, undefined);
+assert.equal(videoRenderToolInput.maxDurationSeconds, undefined);
+assert.equal(videoRenderToolInput.provider, undefined);
+assert.equal(videoRenderToolInput.brief, "AI render a vertical video for 6 seconds using provider bulkapis.");
 
-const audioToolInput = buildPlannedToolInput({
+const audioToolInput = enrichPlannedToolInput({
   content: "Generate a voiceover for the launch script.",
   outputType: "audio",
   toolName: "media.generateAudio",
 });
-assert.equal(audioToolInput.mode, "voiceover");
-assert.equal(audioToolInput.text, "Generate a voiceover for the launch script.");
+assert.equal(audioToolInput.mode, undefined);
+assert.equal(audioToolInput.text, undefined);
+assert.equal(audioToolInput.brief, "Generate a voiceover for the launch script.");
 
-const textToolInput = buildPlannedToolInput({
+const textToolInput = enrichPlannedToolInput({
   content: "Write a short script for an AI fruit drama intro.",
   outputType: "text",
   toolName: "text.generate",
 });
-assert.equal(textToolInput.kind, "script");
-assert.equal(textToolInput.prompt, "Write a short script for an AI fruit drama intro.");
+assert.equal(textToolInput.kind, undefined);
+assert.equal(textToolInput.prompt, undefined);
+assert.equal(textToolInput.brief, "Write a short script for an AI fruit drama intro.");
 
-const referenceAnalysisInput = buildPlannedToolInput({
+const referenceAnalysisInput = enrichPlannedToolInput({
   content: "Analyze @Banana for reusable visual style.",
   outputType: "analysis",
   referenceMentions: [bananaReference],
   toolName: "analyze.source",
 });
-assert.equal(referenceAnalysisInput.sourceType, "library_asset");
-assert.equal(referenceAnalysisInput.source, "asset_1");
+assert.equal(referenceAnalysisInput.sourceType, undefined);
+assert.equal(referenceAnalysisInput.source, undefined);
+assert.equal(referenceAnalysisInput.instructions, "Analyze @Banana for reusable visual style.");
+assert.equal(referenceAnalysisInput.inferredOutputType, "analysis");
+assert.deepEqual(referenceAnalysisInput.referenceMentions, [bananaReference]);
 
 console.log("Agent Create planning contract passed");
