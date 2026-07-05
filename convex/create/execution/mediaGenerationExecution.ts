@@ -20,6 +20,13 @@ import {
   defaultDurationForFalVideoModel,
   normalizeFalVideoDurationForModel,
 } from "../../../src/lib/generation/videoDurationConstraints";
+import {
+  defaultRosterModelForMode,
+  falModelIdForRosterModel,
+  resolveRosterModelAlias,
+  rosterModelByProviderModelId,
+  type RosterModel,
+} from "../../../src/lib/generation/modelRoster";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
 
@@ -34,6 +41,17 @@ function providerForMediaMode(
   if (mode === "video") return settings?.videoProvider ?? "fal";
   if (mode === "audio") return settings?.audioProvider ?? "fal";
   return settings?.lipsyncProvider ?? "fal";
+}
+
+function modelForMediaMode(
+  workspace: Doc<"workspaces"> | null,
+  mode: MediaGenerationMode
+) {
+  const settings = workspace?.aiGenerationSettings;
+  if (mode === "image") return settings?.imageModel;
+  if (mode === "video") return settings?.videoModel;
+  if (mode === "audio") return settings?.audioModel;
+  return settings?.lipsyncModel;
 }
 
 function isEditableFalImageModel(model: string) {
@@ -71,9 +89,44 @@ function defaultCreateVideoModel(args: {
   referenceImageCount: number;
 }) {
   if (args.model || args.mode !== "video" || args.provider !== "fal") return args.model;
-  return args.referenceImageCount > 0
-    ? "fal-ai/kling-video/v3/pro/image-to-video"
-    : "fal-ai/kling-video/v3/pro/text-to-video";
+  const defaultModel = defaultRosterModelForMode("video");
+  return defaultModel
+    ? falModelIdForRosterModel(defaultModel, {
+        referenceImageCount: args.referenceImageCount,
+      })
+    : args.referenceImageCount > 0
+      ? "fal-ai/kling-video/v3/pro/image-to-video"
+      : "fal-ai/kling-video/v3/pro/text-to-video";
+}
+
+function rosterModelForInput(value: string | undefined): RosterModel | undefined {
+  return resolveRosterModelAlias(value) ?? rosterModelByProviderModelId(value);
+}
+
+export function modelForMediaGenerationInput(args: {
+  mode: MediaGenerationMode;
+  model?: string;
+  provider: ModelProviderName;
+  referenceImageCount: number;
+}) {
+  if (args.provider !== "fal") return args.model;
+
+  const requestedModel = rosterModelForInput(args.model);
+  if (requestedModel && requestedModel.mode === args.mode) {
+    return falModelIdForRosterModel(requestedModel, {
+      referenceImageCount: args.referenceImageCount,
+    });
+  }
+
+  if (args.model) return args.model;
+  if (args.mode === "video") return defaultCreateVideoModel(args);
+
+  const defaultModel = defaultRosterModelForMode(args.mode);
+  return defaultModel
+    ? falModelIdForRosterModel(defaultModel, {
+        referenceImageCount: args.referenceImageCount,
+      })
+    : undefined;
 }
 
 function normalizedCreateDurationSeconds(args: {
@@ -87,7 +140,7 @@ function normalizedCreateDurationSeconds(args: {
     const normalized = normalizeFalVideoDurationForModel(args.model, args.durationSeconds);
     if (typeof normalized === "number") return normalized;
     if (typeof normalized === "string") {
-      const parsed = Number(normalized);
+      const parsed = Number(normalized.endsWith("s") ? normalized.slice(0, -1) : normalized);
       return Number.isFinite(parsed)
         ? parsed
         : defaultDurationForFalVideoModel(args.model);
@@ -118,7 +171,7 @@ export async function createGenerationRequestForToolCall(
 
   const workspace = thread.workspaceId ? await ctx.db.get(thread.workspaceId) : null;
   const provider = modelProviderFromInput(input.provider) ?? providerForMediaMode(workspace, mode);
-  let model = cleanOptionalStringFromRecord(input, "model");
+  let model = cleanOptionalStringFromRecord(input, "model") ?? modelForMediaMode(workspace, mode);
   const aspectRatio = cleanOptionalStringFromRecord(input, "aspectRatio");
   const requestedDurationSeconds = finitePositiveNumber(input.durationSeconds);
   const audioMode = cleanOptionalStringFromRecord(input, "mode");
@@ -158,45 +211,59 @@ export async function createGenerationRequestForToolCall(
         return reference ? [reference] : [];
       })
     );
-    if (input.usePriorVideoOutputs === true) {
-      const previousVideos = await readyArtifactsForThreadToolOutputs(
-        ctx,
-        thread,
-        toolCall._id,
-        "video"
-      );
-      references.videoReferences.push(
-        ...previousVideos.flatMap((artifact) => {
-          const reference = referenceFromArtifact(artifact);
-          return reference ? [reference] : [];
-        })
-      );
-    }
+    const previousVideos = await readyArtifactsForThreadToolOutputs(
+      ctx,
+      thread,
+      toolCall._id,
+      "video"
+    );
+    const videosToReference = selectedPriorArtifactsByIndexes(previousVideos, input, {
+      indexesKey: "priorVideoOutputIndexes",
+      indexKey: "priorVideoOutputIndex",
+    }) ?? (input.usePriorVideoOutputs === true ? previousVideos : []);
+    references.videoReferences.push(
+      ...videosToReference.flatMap((artifact) => {
+        const reference = referenceFromArtifact(artifact);
+        return reference ? [reference] : [];
+      })
+    );
   }
-  if (mode === "audio" && input.usePriorAudioOutputs === true) {
+  if (mode === "audio") {
     const previousAudios = await readyArtifactsForThreadToolOutputs(
       ctx,
       thread,
       toolCall._id,
       "audio"
     );
+    const audiosToReference = selectedPriorArtifactsByIndexes(previousAudios, input, {
+      indexesKey: "priorAudioOutputIndexes",
+      indexKey: "priorAudioOutputIndex",
+    }) ?? (input.usePriorAudioOutputs === true ? previousAudios : []);
     references.audioReferences.push(
-      ...previousAudios.flatMap((artifact) => {
+      ...audiosToReference.flatMap((artifact) => {
         const reference = referenceFromArtifact(artifact);
         return reference ? [reference] : [];
       })
     );
   }
   if (mode === "lipsync") {
-    // TODO: Move lipsync to explicit prior output selection once its tool schema exposes selectors.
+    const hasLipsyncSelector =
+      typeof input.priorImageOutputIndex === "number" ||
+      typeof input.priorVideoOutputIndex === "number" ||
+      typeof input.priorAudioOutputIndex === "number";
     const previousImages = await readyArtifactsForThreadToolOutputs(
       ctx,
       thread,
       toolCall._id,
       "image"
     );
+    const imagesToReference = hasLipsyncSelector
+      ? selectedPriorArtifactsByIndexes(previousImages, input, {
+          indexKey: "priorImageOutputIndex",
+        }) ?? []
+      : previousImages;
     references.imageReferences.push(
-      ...previousImages.flatMap((artifact) => {
+      ...imagesToReference.flatMap((artifact) => {
         const reference = referenceFromArtifact(artifact);
         return reference ? [reference] : [];
       })
@@ -207,8 +274,13 @@ export async function createGenerationRequestForToolCall(
       toolCall._id,
       "video"
     );
+    const videosToReference = hasLipsyncSelector
+      ? selectedPriorArtifactsByIndexes(previousVideos, input, {
+          indexKey: "priorVideoOutputIndex",
+        }) ?? []
+      : previousVideos;
     references.videoReferences.push(
-      ...previousVideos.flatMap((artifact) => {
+      ...videosToReference.flatMap((artifact) => {
         const reference = referenceFromArtifact(artifact);
         return reference ? [reference] : [];
       })
@@ -219,8 +291,13 @@ export async function createGenerationRequestForToolCall(
       toolCall._id,
       "audio"
     );
+    const audiosToReference = hasLipsyncSelector
+      ? selectedPriorArtifactsByIndexes(previousAudios, input, {
+          indexKey: "priorAudioOutputIndex",
+        }) ?? []
+      : previousAudios;
     references.audioReferences.push(
-      ...previousAudios.flatMap((artifact) => {
+      ...audiosToReference.flatMap((artifact) => {
         const reference = referenceFromArtifact(artifact);
         return reference ? [reference] : [];
       })
@@ -231,7 +308,7 @@ export async function createGenerationRequestForToolCall(
     references.imageReferences.length +
     references.videoReferences.length +
     references.audioReferences.length;
-  model = defaultCreateVideoModel({
+  model = modelForMediaGenerationInput({
     mode,
     model,
     provider,
@@ -243,6 +320,12 @@ export async function createGenerationRequestForToolCall(
     model,
     provider,
   });
+  const nativeAudio = mode === "video" &&
+    input.nativeAudio === true &&
+    model &&
+    rosterModelByProviderModelId(model)?.nativeAudio === true
+    ? true
+    : undefined;
   const effectiveModel = effectiveQueuedModelForToolOutput({
     mode,
     model,
@@ -267,6 +350,7 @@ export async function createGenerationRequestForToolCall(
       aspectRatio,
       count,
       durationSeconds: mode === "video" ? durationSeconds : undefined,
+      nativeAudio,
       resolution: mode === "lipsync" ? cleanOptionalStringFromRecord(input, "resolution") : undefined,
       audioMode: mode === "audio" ? audioMode : undefined,
       referenceImages:
@@ -293,6 +377,8 @@ export async function createGenerationRequestForToolCall(
       aspectRatio,
       count,
       durationSeconds: mode === "video" ? durationSeconds : undefined,
+      requestedDurationSeconds: mode === "video" ? requestedDurationSeconds : undefined,
+      nativeAudio,
       resolution: mode === "lipsync" ? cleanOptionalStringFromRecord(input, "resolution") : undefined,
       audioMode: mode === "audio" ? audioMode : undefined,
       status: "queued",

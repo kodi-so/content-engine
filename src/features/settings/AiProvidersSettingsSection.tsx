@@ -6,6 +6,10 @@ import {
   type AiGenerationProvider,
 } from "../../lib/providers/aiGenerationDefaults";
 import {
+  rosterModelsForMode,
+  type RosterModelMode,
+} from "../../lib/generation/modelRoster";
+import {
   SettingRow,
   generationModeLabels,
   generationModeNotes,
@@ -23,19 +27,25 @@ const providerModes: AiGenerationMode[] = [
   "videoAnalysis",
 ];
 
+const modelModes: RosterModelMode[] = ["image", "video", "audio", "lipsync"];
+
 export function AiProvidersSettingsSection({
   currentWorkspaceName,
   isWorkspaceAdmin,
   onChangeProvider,
+  onChangeModel,
   onSave,
+  modelsByMode,
   providersByMode,
 }: {
   currentWorkspaceName: string;
   isWorkspaceAdmin: boolean;
+  modelsByMode: Record<RosterModelMode, string>;
   onChangeProvider: (
     mode: AiGenerationMode,
     provider: AiGenerationProvider
   ) => void;
+  onChangeModel: (mode: RosterModelMode, modelId: string) => void;
   onSave: (event: FormEvent) => void;
   providersByMode: Record<AiGenerationMode, AiGenerationProvider>;
 }) {
@@ -57,7 +67,7 @@ export function AiProvidersSettingsSection({
             label={generationModeLabels[mode]}
             note={generationModeNotes[mode]}
           >
-            <div className="max-w-[18rem]">
+            <div className="grid max-w-[38rem] gap-[var(--space-2)] sm:grid-cols-2">
               <CustomSelect
                 disabled={!isWorkspaceAdmin}
                 onChange={(provider) =>
@@ -68,6 +78,21 @@ export function AiProvidersSettingsSection({
                 triggerClassName={providerSelectClass}
                 value={providersByMode[mode]}
               />
+              {modelModes.includes(mode as RosterModelMode) ? (
+                <CustomSelect
+                  disabled={!isWorkspaceAdmin || providersByMode[mode] !== "fal"}
+                  onChange={(modelId) => onChangeModel(mode as RosterModelMode, modelId)}
+                  options={rosterModelsForMode(mode as RosterModelMode).map((model) => ({
+                    value: model.id,
+                    label: model.label,
+                    description: model.strengths,
+                  }))}
+                  placeholder="Model"
+                  rich
+                  triggerClassName={providerSelectClass}
+                  value={modelsByMode[mode as RosterModelMode]}
+                />
+              ) : null}
             </div>
           </SettingRow>
         ))}

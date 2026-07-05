@@ -53,6 +53,7 @@ export type CreateVideoRunnerInput = CreateAssetRunnerScope & {
   model?: string;
   aspectRatio?: string;
   durationSeconds?: number;
+  nativeAudio?: boolean;
   providerInput?: unknown;
   referenceImages?: CreateReferenceAsset[];
   referenceVideos?: CreateReferenceAsset[];
@@ -294,6 +295,7 @@ export async function runCreateVideoRequest(
     model: args.model?.trim() || undefined,
     aspectRatio: args.aspectRatio,
     durationSeconds: args.durationSeconds,
+    nativeAudio: args.nativeAudio,
     referenceImages: referenceImages.length ? referenceImages : undefined,
     metadata: {
       source: "create_page",
@@ -327,6 +329,7 @@ export async function runCreateVideoRequest(
       fileSize: stored.byteLength,
       aspectRatio: args.aspectRatio,
       durationSeconds: args.durationSeconds,
+      nativeAudio: args.nativeAudio,
       sourceMimeType: video.mimeType,
       jobId: result.jobId,
       status: "succeeded",

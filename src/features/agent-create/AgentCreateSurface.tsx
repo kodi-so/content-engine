@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
+import { rosterModelsForMode, type RosterModelMode } from "../../lib/generation/modelRoster";
 import {
   AgentCreateComposerDock,
   AgentCreateConversationBody,
@@ -11,6 +12,7 @@ import { AgentCreateThreadSidebar } from "./components/AgentCreateThreadSidebar"
 import type {
   AgentCreateArtifact,
   AgentCreateCheckpointMode,
+  AgentCreateMentionOption,
   AgentCreateMessage,
   AgentCreateSelectedMention,
   AgentCreateToolProgressStep,
@@ -20,7 +22,7 @@ import {
   type AgentCreateDefaultProviders,
   formatAgentCreateCost,
 } from "./model/agentCreateToolProgress";
-import { agentCreateClassNames } from "./model/agentCreateUi";
+import { agentCreateClassNames, mentionTokenForLabel } from "./model/agentCreateUi";
 import {
   backendReferenceMention,
   latestUserMessageIndex,
@@ -185,12 +187,28 @@ export function AgentCreateSurface() {
       ]).map(mentionOptionFromReferenceMention),
     [messages, pendingAgentTurn?.referenceMentions]
   );
+  const modelMentionOptions = useMemo<AgentCreateMentionOption[]>(() => {
+    const modes: RosterModelMode[] = ["image", "video", "audio", "lipsync"];
+
+    return modes.flatMap((mode) =>
+      rosterModelsForMode(mode).map((model) => ({
+        id: model.id,
+        label: model.label,
+        entityType: "model" as const,
+        description: model.strengths,
+        sourceLabel: `${mode.charAt(0).toUpperCase()}${mode.slice(1)} model`,
+        token: `/${mentionTokenForLabel(model.label).slice(1)}`,
+        trigger: "/" as const,
+      }))
+    );
+  }, []);
   const mentionOptions = useMemo(
     () => [
+      ...modelMentionOptions,
       ...threadUploadedMentionOptions,
       ...(selectableLibraryAssets ?? []).map(mentionOptionFromAsset),
     ],
-    [selectableLibraryAssets, threadUploadedMentionOptions]
+    [modelMentionOptions, selectableLibraryAssets, threadUploadedMentionOptions]
   );
   const mentionOptionById = useMemo(
     () => new Map(mentionOptions.map((option) => [option.id, option])),

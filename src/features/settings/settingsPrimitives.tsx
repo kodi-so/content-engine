@@ -53,10 +53,10 @@ export const generationModeLabels: Record<AiGenerationMode, string> = {
 };
 
 export const generationModeNotes: Record<AiGenerationMode, string> = {
-  image: "Sets which provider family Create and new image workflow nodes use by default. Pick the exact model in the creation flow.",
-  video: "Sets which provider family Create and new video workflow nodes use by default. Pick the exact model in the creation flow.",
-  audio: "Sets which provider family Create and new audio workflow nodes use by default. Pick the exact model in the creation flow.",
-  lipsync: "Sets which provider family new lip sync workflow nodes use by default. Pick the exact model on the node.",
+  image: "Sets the default provider and model for Create image generation.",
+  video: "Sets the default provider and model for Create video generation.",
+  audio: "Sets the default provider and model for Create audio generation.",
+  lipsync: "Sets the default provider and model for Create lip sync generation.",
   videoAnalysis: "Sets which multimodal provider the Analyze tab uses for transcripts, scene reads, audio notes, and inspiration briefs.",
 };
 

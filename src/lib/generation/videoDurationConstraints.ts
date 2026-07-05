@@ -1,8 +1,10 @@
+import { rosterVideoDurationConstraintForModelId } from "./modelRoster";
+
 export type VideoDurationConstraint =
   | {
       defaultValue: number;
       kind: "enum";
-      providerValueType?: "number" | "string";
+      providerValueType?: "number" | "string" | "secondsString";
       values: number[];
     }
   | {
@@ -28,6 +30,9 @@ export function falVideoDurationConstraintForModel(
 ): VideoDurationConstraint | null {
   const model = modelId?.trim();
   if (!model) return null;
+
+  const rosterConstraint = rosterVideoDurationConstraintForModelId(model);
+  if (rosterConstraint) return rosterConstraint;
 
   if (
     model.includes("kling-video/v3") ||
@@ -134,6 +139,7 @@ export function normalizeFalVideoDurationForModel(
 
   if (constraint.kind === "enum") {
     const normalized = closestDurationValue(Math.round(duration), constraint.values);
+    if (constraint.providerValueType === "secondsString") return `${normalized}s`;
     return constraint.providerValueType === "string" ? String(normalized) : normalized;
   }
 

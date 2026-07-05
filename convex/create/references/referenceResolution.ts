@@ -4,7 +4,7 @@ import type { MutationCtx } from "../../_generated/server";
 type ReferenceMentionInput = {
   token: string;
   label: string;
-  entityType: "creative_asset" | "artifact" | "analysis" | "uploaded_reference";
+  entityType: "creative_asset" | "artifact" | "analysis" | "uploaded_reference" | "model";
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
   mimeType?: string;
@@ -99,7 +99,8 @@ function referenceMentionsFromInput(input: Record<string, unknown>): ReferenceMe
       item.entityType !== "creative_asset" &&
       item.entityType !== "artifact" &&
       item.entityType !== "analysis" &&
-      item.entityType !== "uploaded_reference"
+      item.entityType !== "uploaded_reference" &&
+      item.entityType !== "model"
     ) return [];
     if (typeof item.entityId !== "string" || typeof item.token !== "string" || typeof item.label !== "string") {
       return [];
@@ -176,6 +177,10 @@ export async function resolveToolReferences(
   };
 
   for (const mention of referenceMentionsFromInput(input)) {
+    if (mention.entityType === "model") {
+      continue;
+    }
+
     if (mention.entityType === "creative_asset") {
       const assetId = normalizeMentionId(ctx, "creativeAssets", mention.entityId);
       if (!assetId) continue;

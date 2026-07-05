@@ -116,6 +116,24 @@ function artifactKindForResult(artifact: Doc<"artifacts">) {
   return "Artifact";
 }
 
+function durationAdjustmentNote(toolCall: Doc<"createToolCalls">) {
+  const output = isRecord(toolCall.output) ? toolCall.output : {};
+  const requested = typeof output.requestedDurationSeconds === "number"
+    ? output.requestedDurationSeconds
+    : undefined;
+  const duration = typeof output.durationSeconds === "number"
+    ? output.durationSeconds
+    : undefined;
+  if (
+    requested === undefined ||
+    duration === undefined ||
+    Math.abs(requested - duration) < 0.001
+  ) {
+    return "";
+  }
+  return ` Duration adjusted from ${requested}s to ${duration}s for the selected model.`;
+}
+
 function completionMessageForToolResult(
   toolCall: Doc<"createToolCalls">,
   artifacts: Doc<"artifacts">[]
@@ -126,7 +144,7 @@ function completionMessageForToolResult(
         `${artifactKindForResult(artifact)} "${compactLogValue(artifactCaptionForResult(artifact), 90)}" (ready)`
       ).join(", ")}.`
     : "";
-  return `Tool "${toolLabel}" completed successfully.${produced}`;
+  return `Tool "${toolLabel}" completed successfully.${durationAdjustmentNote(toolCall)}${produced}`;
 }
 
 async function artifactsForContentRequest(

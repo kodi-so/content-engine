@@ -13,6 +13,10 @@ import type {
   CreateDecisionIntent,
   CreatePlannedToolCall,
 } from "./agentDecision";
+import {
+  rosterModelById,
+  type RosterModelMode,
+} from "../../../src/lib/generation/modelRoster";
 
 function requiresDebugReviewBeforeExecution(toolCall: CreatePlannedToolCall) {
   const tool = toolDescriptorMap().get(toolCall.toolName);
@@ -60,6 +64,38 @@ function dependsOnEarlierAnalysis(toolName: string) {
     toolName === "media.generateVideo" ||
     toolName === "media.generateAudio" ||
     toolName === "media.lipsync";
+}
+
+function modelModeForToolName(toolName: string): RosterModelMode | undefined {
+  if (toolName === "media.generateImage") return "image";
+  if (toolName === "media.generateVideo") return "video";
+  if (toolName === "media.generateAudio") return "audio";
+  if (toolName === "media.lipsync") return "lipsync";
+  return undefined;
+}
+
+function currentModelOverrideForTool(
+  toolName: string,
+  currentReferenceMentions?: CreateReferenceMention[]
+) {
+  const mode = modelModeForToolName(toolName);
+  if (!mode) return undefined;
+
+  return [...(currentReferenceMentions ?? [])]
+    .reverse()
+    .map((mention) =>
+      mention.entityType === "model" ? rosterModelById(mention.entityId) : undefined
+    )
+    .find((model) => model?.mode === mode);
+}
+
+export function applyCurrentModelOverride(args: {
+  currentReferenceMentions?: CreateReferenceMention[];
+  input: Record<string, unknown>;
+  toolName: string;
+}) {
+  const model = currentModelOverrideForTool(args.toolName, args.currentReferenceMentions);
+  return model ? { ...args.input, model: model.id } : args.input;
 }
 
 type ExistingOpenToolCall = {
@@ -152,7 +188,7 @@ export async function recordPlannedTools(
       referenceMentions,
       toolName: plannedCall.toolName,
     });
-    const input = normalizePlannedToolInputForToolCall({
+    const normalizedInput = normalizePlannedToolInputForToolCall({
       input: {
         ...inferredInput,
         ...(plannedCall.input ?? {}),
@@ -161,6 +197,11 @@ export async function recordPlannedTools(
       planStep: plannedCall.planStep,
       prompt: plannedCall.prompt,
       siblingToolNames,
+      toolName: plannedCall.toolName,
+    });
+    const input = applyCurrentModelOverride({
+      currentReferenceMentions,
+      input: normalizedInput,
       toolName: plannedCall.toolName,
     });
     const id = await ctx.db.insert("createToolCalls", {

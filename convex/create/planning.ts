@@ -7,7 +7,7 @@ export type InferredOutputType = "image" | "video" | "audio" | "slideshow" | "an
 export type CreateReferenceMention = {
   token: string;
   label: string;
-  entityType: "creative_asset" | "artifact" | "analysis" | "uploaded_reference";
+  entityType: "creative_asset" | "artifact" | "analysis" | "uploaded_reference" | "model";
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
   mimeType?: string;
@@ -62,6 +62,10 @@ export function hasExplicitPriorOutputSelection(input?: Record<string, unknown>)
   if (!input) return false;
   return Array.isArray(input.priorImageOutputIndexes) ||
     typeof input.priorImageOutputIndex === "number" ||
+    Array.isArray(input.priorVideoOutputIndexes) ||
+    typeof input.priorVideoOutputIndex === "number" ||
+    Array.isArray(input.priorAudioOutputIndexes) ||
+    typeof input.priorAudioOutputIndex === "number" ||
     input.usePriorImageOutputs === true ||
     input.usePriorVideoOutputs === true ||
     input.usePriorAudioOutputs === true;

@@ -14,7 +14,7 @@ export const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
 export const DEFAULT_FAL_IMAGE_RESOLUTION = "2K";
 export const DEFAULT_FAL_VIDEO_MODEL = "fal-ai/ltx-video";
 export const DEFAULT_FAL_AUDIO_MODEL = "fal-ai/xai/tts/v1";
-export const DEFAULT_FAL_LIPSYNC_MODEL = "fal-ai/bytedance/seedance-2.0/reference-to-video";
+export const DEFAULT_FAL_LIPSYNC_MODEL = "fal-ai/seedance-2.0/reference-to-video";
 
 function aspectRatioToFalImageSize(aspectRatio?: string): string | undefined {
   switch (aspectRatio) {
@@ -180,6 +180,24 @@ function addIfDefined(
   }
 }
 
+function falNativeAudioPayload(
+  model: string,
+  input: GenerateVideoInput
+): Record<string, unknown> {
+  if (input.nativeAudio !== true) return {};
+  if (model.includes("sora-2")) return {};
+  if (model.includes("pixverse/v6")) return { generate_audio_switch: true };
+  if (
+    model.includes("kling-video/v3") ||
+    model.includes("kling-video/o3") ||
+    model.includes("seedance-2.0") ||
+    model.includes("veo3.1")
+  ) {
+    return { generate_audio: true };
+  }
+  return {};
+}
+
 export function falImagePayload(
   model: string,
   input: GenerateImageInput
@@ -221,6 +239,7 @@ export function falVideoPayload(
     prompt: input.prompt,
     ...falVideoAspectRatioPayload(model, input),
     ...falVideoReferencePayload(model, input),
+    ...falNativeAudioPayload(model, input),
     ...argumentOverrides,
   };
   addIfDefined(

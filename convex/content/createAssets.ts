@@ -53,6 +53,7 @@ export const generateVideo = action({
     model: v.optional(v.string()),
     aspectRatio: v.optional(v.string()),
     durationSeconds: v.optional(v.number()),
+    nativeAudio: v.optional(v.boolean()),
     providerInput: v.optional(v.any()),
     referenceImages: v.optional(v.array(referenceAssetValidator)),
     referenceVideos: v.optional(v.array(referenceAssetValidator)),

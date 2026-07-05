@@ -26,7 +26,11 @@ import {
   referenceMentionsForPlannedToolInput,
   toolDescriptorMap,
 } from "../../../../convex/create/planning";
-import { dependencyIndexesForPlannedToolCalls } from "../../../../convex/create/agent/agentToolPlanning";
+import {
+  applyCurrentModelOverride,
+  dependencyIndexesForPlannedToolCalls,
+} from "../../../../convex/create/agent/agentToolPlanning";
+import { modelForMediaGenerationInput } from "../../../../convex/create/execution/mediaGenerationExecution";
 import { validateToolCallInput } from "../../../../convex/create/tools/validateToolInput";
 import { selectedPriorArtifactsByIndexes } from "../../../../convex/create/execution/toolExecutionShared";
 import {
@@ -35,6 +39,16 @@ import {
   validatePublicAnalysisUrl,
 } from "../../../../convex/create/execution/sourceAnalysisExecution";
 import { normalizeFalVideoDurationForModel } from "../../../../convex/providers/modelProviders/fal";
+import { falVideoPayload } from "../../../../convex/providers/fal/payloads";
+import {
+  ROSTER_MODELS,
+  defaultRosterModelForMode,
+  modelCardsForPlanner,
+  rosterModelById,
+  rosterModelIds,
+  rosterModelsForMode,
+  type RosterModelMode,
+} from "../../../../src/lib/generation/modelRoster";
 import { shouldRenderAgentCreateMessage } from "../../../../src/features/agent-create/model/agentCreateSurfaceModel";
 
 function userMessage(
@@ -71,6 +85,13 @@ const uploadedImageReference = {
   storageUrl: "https://storage.example.com/image.png",
 } as const;
 
+const soraModelReference = {
+  token: "/Sora_2",
+  label: "Sora 2",
+  entityType: "model",
+  entityId: "sora-2",
+} as const;
+
 const validChatDecision = normalizeAgentDecision(JSON.stringify({
   kind: "chat",
   response: "Happy to help.",
@@ -82,6 +103,38 @@ const validChatDecision = normalizeAgentDecision(JSON.stringify({
 }));
 assert.equal(validChatDecision.kind, "chat");
 assert.equal(validChatDecision.response, "Happy to help.");
+
+const rosterIds = new Set<string>();
+const rosterAliases = new Set<string>();
+for (const model of ROSTER_MODELS) {
+  assert.equal(rosterIds.has(model.id), false, `Duplicate roster id ${model.id}`);
+  rosterIds.add(model.id);
+  for (const alias of model.aliases) {
+    const normalizedAlias = alias.toLowerCase();
+    assert.equal(rosterAliases.has(normalizedAlias), false, `Duplicate roster alias ${alias}`);
+    rosterAliases.add(normalizedAlias);
+  }
+  if (model.mode === "video") {
+    assert.ok(model.durationConstraint, `Video model ${model.id} needs a duration constraint`);
+    assert.ok(
+      model.textToVideoModelId || model.imageToVideoModelId || model.referenceToVideoModelId,
+      `Video model ${model.id} needs at least one video model id`
+    );
+  }
+}
+for (const mode of ["image", "video", "audio", "lipsync"] as RosterModelMode[]) {
+  assert.equal(
+    rosterModelsForMode(mode).filter((model) => model.isDefault).length,
+    1,
+    `${mode} should have exactly one default roster model`
+  );
+  assert.ok(defaultRosterModelForMode(mode), `${mode} should resolve a default roster model`);
+}
+assert.ok(modelCardsForPlanner().some((card) => card.id === "kling-v3-pro" && card.allowedDurations));
+assert.deepEqual(rosterModelIds(rosterModelById("sora-2")!), [
+  "fal-ai/sora-2/text-to-video",
+  "fal-ai/sora-2/image-to-video",
+]);
 
 assert.throws(
   () => normalizeAgentDecision(`Here is the JSON:\n${JSON.stringify({
@@ -184,7 +237,8 @@ const fullAgentPrompt = createAgentSystemPrompt();
 const movedPlannerGuidance = [
   "For slideshow requests, always use exactly one slideshow.render tool call. Do not decompose slideshow creation into separate media.generateImage calls for individual slides. The native slideshow pipeline plans slides, generates slide visuals, creates editable text blocks when appropriate, and assembles the slideshow artifact.",
   "For slideshow.render, default to editable text overlays. Set input.requestedRenderingMode=\"full_graphic_generation\" only when the user asks for fully designed/finished graphic slides, poster-style slides, text baked into the artwork, or similar. Otherwise use input.requestedRenderingMode=\"background_plus_overlay\".",
-  "For image-to-video, default to Kling through fal unless the user explicitly asks for another video model. Use model=\"fal-ai/kling-video/v3/pro/image-to-video\" when animating image references and model=\"fal-ai/kling-video/v3/pro/text-to-video\" for prompt-only video.",
+  "Choose the video/image/audio/lipsync model per tool call from these model cards.",
+  "Always set durationSeconds explicitly for video calls; never rely on provider defaults.",
   "When the user asks to edit text on an existing generated slideshow, Studio video project, or current media artifact, use mediaOverlay.updateText with concrete overlay add/update/remove/replace operations. Do not regenerate the whole media artifact unless the user asks for new visuals or a full remake.",
   "When the user supplies a URL and asks to understand, study, analyze, use as inspiration, or adapt it, call analyze.source first. Treat its reference brief as the primary source context for later answers and generation.",
   "For multi-clip final videos, call studio.compose after generating or selecting the clips. If the user asks to create a finished video rather than only a Studio draft, call studio.render after studio.compose.",
@@ -324,12 +378,14 @@ assert.equal(
     {
       label: "Generate image",
       producedImageIndexes: [0],
+      producedVideoIndexes: [1],
+      producedAudioIndexes: [2],
       status: "succeeded",
     },
   ]),
   [
     "Tool calls for the current request:",
-    "1. Generate image - succeeded (produced Image #0)",
+    "1. Generate image - succeeded (produced Image #0, Video #1, Audio #2)",
     "All planned tool calls for this request have completed.",
   ].join("\n")
 );
@@ -378,7 +434,7 @@ assert.deepEqual(
     isContinuation: true,
     toolNames: ["media.generateImage"],
   }),
-  ["production_planning", "visual_continuity"]
+  ["production_planning", "visual_continuity", "model_selection"]
 );
 assert.deepEqual(
   selectPromptModules({
@@ -395,6 +451,67 @@ assert.deepEqual(
   ["production_planning"]
 );
 
+const promptWithModelCards = createAgentSystemPrompt(["production_planning", "visual_continuity", "model_selection"]);
+assert.ok(promptWithModelCards.includes("Model cards:"));
+assert.ok(promptWithModelCards.includes("durationSeconds explicitly"));
+assert.ok(promptWithModelCards.includes("kling-v3-pro"));
+assert.ok(promptWithModelCards.includes("multiShot"));
+
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "video",
+    model: "sora",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "fal-ai/sora-2/text-to-video"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "video",
+    model: "sora-2",
+    provider: "fal",
+    referenceImageCount: 1,
+  }),
+  "fal-ai/sora-2/image-to-video"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "video",
+    model: "custom-provider/model",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "custom-provider/model"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "image",
+    model: "nano banana pro",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "fal-ai/nano-banana-pro"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "video",
+    model: "fal-ai/veo3.1",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "fal-ai/veo3.1"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "video",
+    model: "fal-ai/ltx-video",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "fal-ai/ltx-video"
+);
+
 assert.deepEqual(
   dependencyIndexesForPlannedToolCalls([
     { toolName: "media.generateImage" },
@@ -407,6 +524,10 @@ assert.deepEqual(
 
 assert.equal(hasExplicitPriorOutputSelection({ priorImageOutputIndexes: [1] }), true);
 assert.equal(hasExplicitPriorOutputSelection({ priorImageOutputIndex: 1 }), true);
+assert.equal(hasExplicitPriorOutputSelection({ priorVideoOutputIndexes: [1] }), true);
+assert.equal(hasExplicitPriorOutputSelection({ priorVideoOutputIndex: 1 }), true);
+assert.equal(hasExplicitPriorOutputSelection({ priorAudioOutputIndexes: [1] }), true);
+assert.equal(hasExplicitPriorOutputSelection({ priorAudioOutputIndex: 1 }), true);
 assert.equal(hasExplicitPriorOutputSelection({ usePriorVideoOutputs: true }), true);
 assert.equal(hasExplicitPriorOutputSelection({ prompt: "Edit the previous image." }), false);
 
@@ -422,6 +543,15 @@ assert.deepEqual(
 assert.deepEqual(
   selectedPriorArtifactsByIndexes(orderedPriorArtifacts, { priorImageOutputIndexes: [99] }),
   []
+);
+assert.deepEqual(
+  selectedPriorArtifactsByIndexes(orderedPriorArtifacts, {
+    priorVideoOutputIndexes: [2],
+  }, {
+    indexesKey: "priorVideoOutputIndexes",
+    indexKey: "priorVideoOutputIndex",
+  }),
+  ["Image #2"]
 );
 assert.equal(
   selectedPriorArtifactsByIndexes(orderedPriorArtifacts, {}),
@@ -443,6 +573,22 @@ assert.deepEqual(
     threadReferenceMentions: [bananaReference],
   }),
   [bananaReference]
+);
+assert.deepEqual(
+  applyCurrentModelOverride({
+    currentReferenceMentions: [soraModelReference],
+    input: { prompt: "Make a cinematic clip.", model: "kling-v3-pro" },
+    toolName: "media.generateVideo",
+  }),
+  { prompt: "Make a cinematic clip.", model: "sora-2" }
+);
+assert.deepEqual(
+  applyCurrentModelOverride({
+    currentReferenceMentions: [soraModelReference],
+    input: { prompt: "Make a poster." },
+    toolName: "media.generateImage",
+  }),
+  { prompt: "Make a poster." }
 );
 
 const fruitBrief = userMessage(
@@ -758,6 +904,33 @@ assert.equal(
 assert.equal(
   normalizeFalVideoDurationForModel("fal-ai/ltx-video", 2),
   2
+);
+assert.equal(
+  normalizeFalVideoDurationForModel("fal-ai/veo3.1", 6),
+  "6s"
+);
+assert.equal(
+  falVideoPayload("fal-ai/veo3.1", {
+    prompt: "Two people talk.",
+    durationSeconds: 6,
+    nativeAudio: true,
+  }).generate_audio,
+  true
+);
+assert.equal(
+  falVideoPayload("fal-ai/pixverse/v6/image-to-video", {
+    prompt: "Animate this image.",
+    nativeAudio: true,
+    referenceImages: [{ url: "https://example.com/image.png", mimeType: "image/png" }],
+  }).generate_audio_switch,
+  true
+);
+assert.equal(
+  "generate_audio" in falVideoPayload("fal-ai/sora-2/text-to-video", {
+    prompt: "A host speaks.",
+    nativeAudio: true,
+  }),
+  false
 );
 
 const generatedContinuityVideoDecision = normalizeAgentDecision(JSON.stringify({

@@ -3,6 +3,10 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/
 import type { Doc, Id } from "../_generated/dataModel";
 import { ensureCurrentUser, requireCurrentUserId } from "../auth/users";
 import { aiGenerationSettingsValidator } from "../validators";
+import {
+  rosterModelById,
+  type RosterModelMode,
+} from "../../src/lib/generation/modelRoster";
 
 const workspaceRoleValidator = v.union(
   v.literal("owner"),
@@ -23,14 +27,27 @@ const managerRoles = new Set<WorkspaceRole>(["owner", "admin"]);
 
 type AiGenerationSettings = NonNullable<Doc<"workspaces">["aiGenerationSettings"]>;
 
+function normalizeRosterModelId(value: string | undefined, mode: RosterModelMode) {
+  if (!value) return undefined;
+  const model = rosterModelById(value.trim());
+  if (!model || model.mode !== mode) {
+    throw new Error(`Unknown ${mode} model default.`);
+  }
+  return model.id;
+}
+
 function normalizeAiGenerationSettings(
   settings: AiGenerationSettings
 ): AiGenerationSettings {
   return {
     imageProvider: settings.imageProvider,
+    imageModel: normalizeRosterModelId(settings.imageModel, "image"),
     videoProvider: settings.videoProvider,
+    videoModel: normalizeRosterModelId(settings.videoModel, "video"),
     audioProvider: settings.audioProvider,
+    audioModel: normalizeRosterModelId(settings.audioModel, "audio"),
     lipsyncProvider: settings.lipsyncProvider,
+    lipsyncModel: normalizeRosterModelId(settings.lipsyncModel, "lipsync"),
     videoAnalysisProvider: settings.videoAnalysisProvider,
   };
 }

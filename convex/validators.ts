@@ -22,9 +22,13 @@ export const generationModelProviderValidator = v.union(
 
 export const aiGenerationSettingsValidator = v.object({
   imageProvider: v.optional(generationModelProviderValidator),
+  imageModel: v.optional(v.string()),
   videoProvider: v.optional(generationModelProviderValidator),
+  videoModel: v.optional(v.string()),
   audioProvider: v.optional(generationModelProviderValidator),
+  audioModel: v.optional(v.string()),
   lipsyncProvider: v.optional(generationModelProviderValidator),
+  lipsyncModel: v.optional(v.string()),
   videoAnalysisProvider: v.optional(generationModelProviderValidator),
 });
 
@@ -301,7 +305,8 @@ export const createReferenceMentionValidator = v.object({
     v.literal("creative_asset"),
     v.literal("artifact"),
     v.literal("analysis"),
-    v.literal("uploaded_reference")
+    v.literal("uploaded_reference"),
+    v.literal("model")
   ),
   entityId: v.string(),
   mediaType: v.optional(creativeAssetMediaTypeValidator),

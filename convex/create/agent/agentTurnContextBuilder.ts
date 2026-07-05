@@ -6,6 +6,7 @@ import type { CreateToolName } from "../tools";
 import { isRecord } from "../references/referenceResolution";
 import { readyArtifactsForThreadToolOutputs } from "../execution/threadToolOutputs";
 import { contentRequestIdFromToolOutput } from "../execution/toolExecutionShared";
+import { rosterModelById } from "../../../src/lib/generation/modelRoster";
 
 export type TurnContextMessage = Doc<"createMessages"> & {
   generatedImageUrls?: string[];
@@ -71,7 +72,9 @@ function artifactType(artifact: Doc<"artifacts">) {
 
 type TurnToolProgressEntry = {
   label: string;
+  producedAudioIndexes?: number[];
   producedImageIndexes?: number[];
+  producedVideoIndexes?: number[];
   status: string;
 };
 
@@ -85,10 +88,15 @@ export function formatTurnToolProgressSection(entries: TurnToolProgressEntry[]) 
 
   const completedCount = entries.filter((entry) => entry.status === "succeeded").length;
   const lines = entries.map((entry, index) => {
-    const producedImages = entry.producedImageIndexes?.length
-      ? ` (produced ${entry.producedImageIndexes.map((imageIndex) => `Image #${imageIndex}`).join(", ")})`
+    const producedRefs = [
+      ...(entry.producedImageIndexes ?? []).map((imageIndex) => `Image #${imageIndex}`),
+      ...(entry.producedVideoIndexes ?? []).map((videoIndex) => `Video #${videoIndex}`),
+      ...(entry.producedAudioIndexes ?? []).map((audioIndex) => `Audio #${audioIndex}`),
+    ];
+    const produced = producedRefs.length
+      ? ` (produced ${producedRefs.join(", ")})`
       : "";
-    return `${index + 1}. ${entry.label} - ${entry.status}${producedImages}`;
+    return `${index + 1}. ${entry.label} - ${entry.status}${produced}`;
   });
   const summary = completedCount === entries.length
     ? "All planned tool calls for this request have completed."
@@ -137,6 +145,18 @@ export async function buildTurnContextSections(
     undefined,
     "image"
   );
+  const videoArtifacts = await readyArtifactsForThreadToolOutputs(
+    ctx,
+    args.thread,
+    undefined,
+    "video"
+  );
+  const audioArtifacts = await readyArtifactsForThreadToolOutputs(
+    ctx,
+    args.thread,
+    undefined,
+    "audio"
+  );
   const generatedImageUrlByArtifactId = new Map<string, string>();
   for (const artifact of [...artifacts, ...imageArtifacts]) {
     if (!artifact?.storageUrl) continue;
@@ -174,22 +194,47 @@ export async function buildTurnContextSections(
   }
 
   const imageArtifactIds = new Set(imageArtifacts.map((artifact) => String(artifact._id)));
+  const videoArtifactIds = new Set(videoArtifacts.map((artifact) => String(artifact._id)));
+  const audioArtifactIds = new Set(audioArtifacts.map((artifact) => String(artifact._id)));
   const directArtifactIds = [
     ...new Set(args.toolCalls.flatMap((toolCall) => toolCall.artifactIds ?? [])),
-  ].filter((artifactId) => !imageArtifactIds.has(String(artifactId)));
+  ].filter((artifactId) =>
+    !imageArtifactIds.has(String(artifactId)) &&
+    !videoArtifactIds.has(String(artifactId)) &&
+    !audioArtifactIds.has(String(artifactId))
+  );
   const directArtifacts = (await Promise.all(directArtifactIds.map((artifactId) => ctx.db.get(artifactId))))
     .filter((artifact): artifact is Doc<"artifacts"> => Boolean(artifact));
   const imageLedgerLines = imageArtifacts.map((artifact, index) => {
     const label = artifactToolLabels.get(String(artifact._id)) ?? "unknown";
     return `Image #${index} [${artifactType(artifact)}] ${artifactCaption(artifact)} (tool: ${label}, status: ${artifactStatus(artifact)})`;
   });
+  const videoLedgerLines = videoArtifacts.map((artifact, index) => {
+    const label = artifactToolLabels.get(String(artifact._id)) ?? "unknown";
+    return `Video #${index} [${artifactType(artifact)}] ${artifactCaption(artifact)} (tool: ${label}, status: ${artifactStatus(artifact)})`;
+  });
+  const audioLedgerLines = audioArtifacts.map((artifact, index) => {
+    const label = artifactToolLabels.get(String(artifact._id)) ?? "unknown";
+    return `Audio #${index} [${artifactType(artifact)}] ${artifactCaption(artifact)} (tool: ${label}, status: ${artifactStatus(artifact)})`;
+  });
   const otherLedgerLines = directArtifacts.map((artifact, index) => {
     const label = artifactToolLabels.get(String(artifact._id)) ?? "unknown";
     return `Artifact ${index + 1} [${artifactType(artifact)}] ${artifactCaption(artifact)} (tool: ${label}, status: ${artifactStatus(artifact)})`;
   });
-  const ledgerLines = [...imageLedgerLines, ...otherLedgerLines];
+  const ledgerLines = [
+    ...imageLedgerLines,
+    ...videoLedgerLines,
+    ...audioLedgerLines,
+    ...otherLedgerLines,
+  ];
   const imageArtifactIndexById = new Map(
     imageArtifacts.map((artifact, index) => [String(artifact._id), index])
+  );
+  const videoArtifactIndexById = new Map(
+    videoArtifacts.map((artifact, index) => [String(artifact._id), index])
+  );
+  const audioArtifactIndexById = new Map(
+    audioArtifacts.map((artifact, index) => [String(artifact._id), index])
   );
   const imageIndexesByContentRequestId = new Map<string, number[]>();
   for (const [index, artifact] of imageArtifacts.entries()) {
@@ -197,6 +242,24 @@ export async function buildTurnContextSections(
     const key = String(artifact.contentRequestId);
     imageIndexesByContentRequestId.set(key, [
       ...(imageIndexesByContentRequestId.get(key) ?? []),
+      index,
+    ]);
+  }
+  const videoIndexesByContentRequestId = new Map<string, number[]>();
+  for (const [index, artifact] of videoArtifacts.entries()) {
+    if (!artifact.contentRequestId) continue;
+    const key = String(artifact.contentRequestId);
+    videoIndexesByContentRequestId.set(key, [
+      ...(videoIndexesByContentRequestId.get(key) ?? []),
+      index,
+    ]);
+  }
+  const audioIndexesByContentRequestId = new Map<string, number[]>();
+  for (const [index, artifact] of audioArtifacts.entries()) {
+    if (!artifact.contentRequestId) continue;
+    const key = String(artifact.contentRequestId);
+    audioIndexesByContentRequestId.set(key, [
+      ...(audioIndexesByContentRequestId.get(key) ?? []),
       index,
     ]);
   }
@@ -209,13 +272,29 @@ export async function buildTurnContextSections(
         const imageIndex = imageArtifactIndexById.get(String(artifactId));
         return imageIndex === undefined ? [] : [imageIndex];
       });
+      const artifactVideoIndexes = (toolCall.artifactIds ?? []).flatMap((artifactId) => {
+        const videoIndex = videoArtifactIndexById.get(String(artifactId));
+        return videoIndex === undefined ? [] : [videoIndex];
+      });
+      const artifactAudioIndexes = (toolCall.artifactIds ?? []).flatMap((artifactId) => {
+        const audioIndex = audioArtifactIndexById.get(String(artifactId));
+        return audioIndex === undefined ? [] : [audioIndex];
+      });
       const contentRequestId = contentRequestIdFromToolOutput(toolCall.output);
       const requestImageIndexes = contentRequestId
         ? imageIndexesByContentRequestId.get(String(contentRequestId)) ?? []
         : [];
+      const requestVideoIndexes = contentRequestId
+        ? videoIndexesByContentRequestId.get(String(contentRequestId)) ?? []
+        : [];
+      const requestAudioIndexes = contentRequestId
+        ? audioIndexesByContentRequestId.get(String(contentRequestId)) ?? []
+        : [];
       return {
         label: descriptors.get(toolCall.toolName as CreateToolName)?.label ?? toolCall.label,
+        producedAudioIndexes: [...new Set([...artifactAudioIndexes, ...requestAudioIndexes])],
         producedImageIndexes: [...new Set([...artifactImageIndexes, ...requestImageIndexes])],
+        producedVideoIndexes: [...new Set([...artifactVideoIndexes, ...requestVideoIndexes])],
         status: toolCall.status,
       };
     })
@@ -223,19 +302,33 @@ export async function buildTurnContextSections(
   const artifactLedger = ledgerLines.length
     ? [
         "Generated artifact ledger:",
-        "Only Image # numbers correspond to priorImageOutputIndex / priorImageOutputIndexes.",
+        "Image #, Video #, and Audio # numbers are the only valid values for the priorOutput index fields.",
         ...ledgerLines,
       ].join("\n")
     : [
         "Generated artifact ledger:",
         "No generated artifacts yet.",
-        "Only Image # numbers correspond to priorImageOutputIndex / priorImageOutputIndexes.",
+        "Image #, Video #, and Audio # numbers are the only valid values for the priorOutput index fields.",
       ].join("\n");
+  const selectedModelLines = (args.userMessage.referenceMentions ?? [])
+    .flatMap((mention) => {
+      if (mention.entityType !== "model") return [];
+      const model = rosterModelById(mention.entityId);
+      if (!model) return [`- ${mention.label} (${mention.entityId})`];
+      return [`- ${model.label} (${model.mode}, id: ${model.id})`];
+    });
+  const selectedModelContext = selectedModelLines.length
+    ? [
+        "User-selected models for this request:",
+        ...selectedModelLines,
+      ].join("\n")
+    : "User-selected models for this request: none.";
 
   const contextBlock = [
     "Current request and plan:",
     `User request: ${args.userMessage.content}`,
     `Effective brief: ${args.effectiveBrief}`,
+    selectedModelContext,
     currentTurnPlan ? `Current plan: ${currentTurnPlan.content}` : "Current plan: none yet.",
     "",
     turnToolProgress,

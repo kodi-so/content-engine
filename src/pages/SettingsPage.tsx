@@ -28,6 +28,7 @@ import {
   resolveAiGenerationSettings,
   type AiGenerationProvider,
 } from "../lib/providers/aiGenerationDefaults";
+import type { RosterModelMode } from "../lib/generation/modelRoster";
 
 export function SettingsPage() {
   const { openUserProfile } = useClerk();
@@ -53,9 +54,13 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [workspaceName, setWorkspaceName] = useState("");
   const [imageProvider, setImageProvider] = useState<AiGenerationProvider>("fal");
+  const [imageModel, setImageModel] = useState("");
   const [videoProvider, setVideoProvider] = useState<AiGenerationProvider>("fal");
+  const [videoModel, setVideoModel] = useState("");
   const [audioProvider, setAudioProvider] = useState<AiGenerationProvider>("fal");
+  const [audioModel, setAudioModel] = useState("");
   const [lipsyncProvider, setLipsyncProvider] = useState<AiGenerationProvider>("fal");
+  const [lipsyncModel, setLipsyncModel] = useState("");
   const [videoAnalysisProvider, setVideoAnalysisProvider] = useState<AiGenerationProvider>("gemini");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<InviteRole>("member");
@@ -77,6 +82,12 @@ export function SettingsPage() {
     lipsync: lipsyncProvider,
     videoAnalysis: videoAnalysisProvider,
   };
+  const modelsByMode: Record<RosterModelMode, string> = {
+    image: imageModel,
+    video: videoModel,
+    audio: audioModel,
+    lipsync: lipsyncModel,
+  };
   const memberCountLabel =
     members === undefined
       ? "Loading members"
@@ -95,9 +106,13 @@ export function SettingsPage() {
   useEffect(() => {
     const settings = resolveAiGenerationSettings(activeWorkspace?.aiGenerationSettings);
     setImageProvider(settings.imageProvider);
+    setImageModel(settings.imageModel);
     setVideoProvider(settings.videoProvider);
+    setVideoModel(settings.videoModel);
     setAudioProvider(settings.audioProvider);
+    setAudioModel(settings.audioModel);
     setLipsyncProvider(settings.lipsyncProvider);
+    setLipsyncModel(settings.lipsyncModel);
     setVideoAnalysisProvider(settings.videoAnalysisProvider);
   }, [activeWorkspace?._id, activeWorkspace?.aiGenerationSettings]);
 
@@ -145,6 +160,23 @@ export function SettingsPage() {
     setLipsyncProvider(provider);
   };
 
+  const changeGenerationModel = (mode: RosterModelMode, modelId: string) => {
+    if (mode === "image") {
+      setImageModel(modelId);
+      return;
+    }
+    if (mode === "video") {
+      setVideoModel(modelId);
+      return;
+    }
+    if (mode === "audio") {
+      setAudioModel(modelId);
+      return;
+    }
+
+    setLipsyncModel(modelId);
+  };
+
   const saveAiGenerationSettings = async (event: FormEvent) => {
     event.preventDefault();
     if (!activeWorkspaceId || !isWorkspaceAdmin) return;
@@ -155,9 +187,13 @@ export function SettingsPage() {
         id: activeWorkspaceId,
         aiGenerationSettings: {
           imageProvider,
+          imageModel,
           videoProvider,
+          videoModel,
           audioProvider,
+          audioModel,
           lipsyncProvider,
+          lipsyncModel,
           videoAnalysisProvider,
         },
       });
@@ -283,12 +319,14 @@ export function SettingsPage() {
 
         {activeTab === "ai" ? (
           <AiProvidersSettingsSection
-            currentWorkspaceName={currentWorkspaceName}
-            isWorkspaceAdmin={isWorkspaceAdmin}
-            providersByMode={providersByMode}
-            onChangeProvider={changeGenerationProvider}
-            onSave={saveAiGenerationSettings}
-          />
+                currentWorkspaceName={currentWorkspaceName}
+                isWorkspaceAdmin={isWorkspaceAdmin}
+                modelsByMode={modelsByMode}
+                providersByMode={providersByMode}
+                onChangeProvider={changeGenerationProvider}
+                onChangeModel={changeGenerationModel}
+                onSave={saveAiGenerationSettings}
+              />
         ) : null}
 
         {activeTab === "members" ? (

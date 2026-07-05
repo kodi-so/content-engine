@@ -58,6 +58,7 @@ export type CreateGenerationPayload = {
   aspectRatio?: string;
   count?: number;
   durationSeconds?: number;
+  nativeAudio?: boolean;
   resolution?: string;
   audioMode?: string;
   referenceImages?: CreateReferenceAsset[];
@@ -239,6 +240,7 @@ async function runNonSlideshowRequest(
       model: args.generation.model,
       aspectRatio: args.generation.aspectRatio,
       durationSeconds: args.generation.durationSeconds,
+      nativeAudio: args.generation.nativeAudio,
       providerInput: args.generation.providerInput,
       referenceImages: args.generation.referenceImages,
       referenceVideos: args.generation.referenceVideos,

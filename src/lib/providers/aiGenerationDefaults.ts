@@ -3,6 +3,7 @@ import type {
   WorkflowNodeType,
   WorkflowProviderName,
 } from "../workflow/workflowGraph";
+import { defaultRosterModelForMode } from "../generation/modelRoster";
 
 export type AiGenerationMode = "image" | "video" | "audio" | "lipsync" | "videoAnalysis";
 export type AiGenerationProvider = Extract<
@@ -12,13 +13,18 @@ export type AiGenerationProvider = Extract<
 
 export type AiGenerationSettings = {
   imageProvider?: AiGenerationProvider;
+  imageModel?: string;
   videoProvider?: AiGenerationProvider;
+  videoModel?: string;
   audioProvider?: AiGenerationProvider;
+  audioModel?: string;
   lipsyncProvider?: AiGenerationProvider;
+  lipsyncModel?: string;
   videoAnalysisProvider?: AiGenerationProvider;
 };
 
 export type AiGenerationDefault = {
+  model?: string;
   provider: AiGenerationProvider;
 };
 
@@ -56,9 +62,13 @@ export const AI_PROVIDER_OPTIONS_BY_MODE: Record<
 
 export const DEFAULT_AI_GENERATION_SETTINGS: Required<AiGenerationSettings> = {
   imageProvider: "fal",
+  imageModel: defaultRosterModelForMode("image")?.id ?? "gemini-3-1-flash-image",
   videoProvider: "fal",
+  videoModel: defaultRosterModelForMode("video")?.id ?? "kling-v3-pro",
   audioProvider: "fal",
+  audioModel: defaultRosterModelForMode("audio")?.id ?? "xai-tts",
   lipsyncProvider: "fal",
+  lipsyncModel: defaultRosterModelForMode("lipsync")?.id ?? "seedance-2-lipsync",
   videoAnalysisProvider: "gemini",
 };
 
@@ -67,9 +77,13 @@ export function resolveAiGenerationSettings(
 ): Required<AiGenerationSettings> {
   return {
     imageProvider: settings?.imageProvider ?? DEFAULT_AI_GENERATION_SETTINGS.imageProvider,
+    imageModel: settings?.imageModel ?? DEFAULT_AI_GENERATION_SETTINGS.imageModel,
     videoProvider: settings?.videoProvider ?? DEFAULT_AI_GENERATION_SETTINGS.videoProvider,
+    videoModel: settings?.videoModel ?? DEFAULT_AI_GENERATION_SETTINGS.videoModel,
     audioProvider: settings?.audioProvider ?? DEFAULT_AI_GENERATION_SETTINGS.audioProvider,
+    audioModel: settings?.audioModel ?? DEFAULT_AI_GENERATION_SETTINGS.audioModel,
     lipsyncProvider: settings?.lipsyncProvider ?? DEFAULT_AI_GENERATION_SETTINGS.lipsyncProvider,
+    lipsyncModel: settings?.lipsyncModel ?? DEFAULT_AI_GENERATION_SETTINGS.lipsyncModel,
     videoAnalysisProvider:
       settings?.videoAnalysisProvider ?? DEFAULT_AI_GENERATION_SETTINGS.videoAnalysisProvider,
   };
@@ -83,13 +97,13 @@ export function generationDefaultForMode(
 
   switch (mode) {
     case "image":
-      return { provider: resolved.imageProvider };
+      return { provider: resolved.imageProvider, model: resolved.imageModel };
     case "video":
-      return { provider: resolved.videoProvider };
+      return { provider: resolved.videoProvider, model: resolved.videoModel };
     case "audio":
-      return { provider: resolved.audioProvider };
+      return { provider: resolved.audioProvider, model: resolved.audioModel };
     case "lipsync":
-      return { provider: resolved.lipsyncProvider };
+      return { provider: resolved.lipsyncProvider, model: resolved.lipsyncModel };
     case "videoAnalysis":
       return { provider: resolved.videoAnalysisProvider };
   }

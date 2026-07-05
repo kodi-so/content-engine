@@ -27,7 +27,8 @@ export type AgentCreateMentionEntityType =
   | "creative_asset"
   | "artifact"
   | "analysis"
-  | "uploaded_reference";
+  | "uploaded_reference"
+  | "model";
 
 export type AgentCreateMentionMediaType = "image" | "video" | "audio" | "file";
 
@@ -43,6 +44,7 @@ export type AgentCreateMentionOption = {
   sourceLabel?: string;
   thumbnailUrl?: string;
   token?: string;
+  trigger?: "@" | "/";
 };
 
 export type AgentCreateSelectedMention = {

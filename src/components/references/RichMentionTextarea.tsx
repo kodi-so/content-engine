@@ -61,6 +61,7 @@ type RichMentionTextareaProps<Option> = {
   }) => ReactNode;
   showEmptyHint?: boolean;
   tokens?: RichMentionToken[];
+  triggerForOption?: (option: Option) => string | undefined;
   triggerChars?: string[];
   value: string;
 };
@@ -128,6 +129,7 @@ function RichMentionEditorInner<Option>({
   renderOption,
   showEmptyHint = false,
   tokens = [],
+  triggerForOption,
   triggerChars = ["@"],
   value,
 }: RichMentionTextareaProps<Option>) {
@@ -139,8 +141,9 @@ function RichMentionEditorInner<Option>({
     () =>
       activeMention
         ? options.filter((option) => optionMatchesQuery(option, activeMention.mention.query))
+          .filter((option) => (triggerForOption?.(option) ?? "@") === activeMention.mention.trigger)
         : [],
-    [activeMention, optionMatchesQuery, options]
+    [activeMention, optionMatchesQuery, options, triggerForOption]
   );
   const showMenu = Boolean(activeMention && filteredOptions.length);
 

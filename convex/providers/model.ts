@@ -119,6 +119,7 @@ export interface GenerateVideoInput {
   model?: string;
   aspectRatio?: string;
   durationSeconds?: number;
+  nativeAudio?: boolean;
   referenceImages?: ReferenceAsset[];
   metadata?: Record<string, unknown>;
 }

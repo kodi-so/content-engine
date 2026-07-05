@@ -1,4 +1,4 @@
-import { Bug, Send, Square } from "lucide-react";
+import { Bug, Send, Sparkles, Square } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { AssetListItem } from "../../assets/AssetListItem";
 import { AssetPreviewModal } from "../../assets/AssetPreviewModal";
@@ -45,8 +45,9 @@ function uniqueMentionOptions(options: AgentCreateMentionOption[]) {
   const seen = new Set<string>();
 
   return options.filter((option) => {
-    if (seen.has(option.id)) return false;
-    seen.add(option.id);
+    const key = `${option.trigger ?? "@"}:${option.entityType}:${option.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -173,6 +174,41 @@ export function AgentCreatePrompt({
           options={availableOptions}
           placeholder={placeholder}
           renderOption={({ active, option, select }) => {
+            if (option.entityType === "model") {
+              const meta = `${option.sourceLabel ?? "Model"}${
+                option.description ? ` - ${option.description}` : ""
+              }`;
+
+              return (
+                <div
+                  aria-disabled={option.disabled}
+                  aria-selected={active}
+                  className={agentCreateClassNames(
+                    "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-[var(--space-2)] rounded-[var(--radius-xs)] px-[var(--space-2)] py-[var(--space-2)] text-left transition",
+                    active ? "bg-[var(--color-primary-soft)]" : "hover:bg-[var(--color-page-quiet)]",
+                    option.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer"
+                  )}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    if (!option.disabled) select();
+                  }}
+                  role="option"
+                >
+                  <span className="grid size-9 place-items-center rounded-[var(--radius-xs)] border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-primary)]">
+                    <Sparkles size={16} />
+                  </span>
+                  <span className="grid min-w-0 gap-[0.08rem]">
+                    <span className="truncate text-[0.84rem] font-[780] text-[var(--color-ink)]">
+                      {option.label}
+                    </span>
+                    <span className="truncate text-[0.72rem] text-[var(--color-ink-muted)]">
+                      {meta}
+                    </span>
+                  </span>
+                </div>
+              );
+            }
+
             const optionAsset = assetForMentionOption(option);
             const meta = `${option.sourceLabel ?? formatAgentCreateEntityType(option.entityType)}${
               option.description ? ` - ${option.description}` : ""
@@ -189,6 +225,8 @@ export function AgentCreatePrompt({
               />
             );
           }}
+          triggerChars={["@", "/"]}
+          triggerForOption={(option) => option.trigger ?? "@"}
           tokens={inlineMentionTokens}
           value={value}
         />
