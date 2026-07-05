@@ -16,6 +16,7 @@ import {
   type SlideshowPlan,
 } from "../types";
 import type { ModelInvocationMetadata, ModelProviderName, ReferenceAsset } from "../../providers/model";
+import { dataWithArtifactCaption } from "../artifactCaptions";
 export function sumCost(current: number, metadata?: ModelInvocationMetadata) {
   return current + (metadata?.costUsd ?? 0);
 }
@@ -159,6 +160,7 @@ export async function createRequestArtifact(
     title?: string;
     storageUrl?: string;
     data?: unknown;
+    captionPrefix?: string;
     provider?: ModelProviderName;
     model?: string;
     prompt?: string;
@@ -173,7 +175,7 @@ export async function createRequestArtifact(
     type: args.type,
     title: args.title,
     storageUrl: args.storageUrl,
-    data: args.data,
+    data: dataWithArtifactCaption(args.data, args.prompt, args.captionPrefix),
     provider: args.provider,
     model: args.model,
     prompt: args.prompt,

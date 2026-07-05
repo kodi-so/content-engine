@@ -55,6 +55,7 @@ export type CreateToolPlannerDescriptor = {
   name: CreateToolName;
   label: string;
   description: string;
+  plannerGuidance?: string[];
   category: CreateToolCategory;
   availability: CreateToolAvailability;
   executionMode: CreateToolExecutionMode;

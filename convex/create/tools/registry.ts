@@ -54,6 +54,60 @@ const fieldsSchema = (
   fields,
 });
 
+type JsonSchema = Record<string, unknown>;
+
+const stringSchema = (description: string, values?: string[]): JsonSchema => ({
+  type: "string",
+  description,
+  ...(values ? { enum: values } : {}),
+});
+
+const numberSchema = (description: string): JsonSchema => ({
+  type: "number",
+  description,
+});
+
+const booleanSchema = (description: string): JsonSchema => ({
+  type: "boolean",
+  description,
+});
+
+const stringArraySchema = (description: string): JsonSchema => ({
+  type: "array",
+  description,
+  items: { type: "string" },
+});
+
+const objectArraySchema = (description: string): JsonSchema => ({
+  type: "array",
+  description,
+  items: {
+    type: "object",
+    additionalProperties: true,
+  },
+});
+
+const looseObjectSchema = (description: string): JsonSchema => ({
+  type: "object",
+  description,
+  additionalProperties: true,
+});
+
+const jsonSchema = (
+  description: string,
+  properties: Record<string, JsonSchema>,
+  required: string[] = []
+): CreateToolSchema => ({
+  kind: "json_schema",
+  schema: {
+    type: "object",
+    description,
+    additionalProperties: false,
+    required,
+    properties,
+  },
+});
+
 const noArtifacts = {
   emitsArtifacts: false,
 } as const;
@@ -148,11 +202,14 @@ const toolDefinitions = [
     name: "analyze.source",
     label: "Analyze Source",
     description: "Analyze an uploaded file, media asset, or URL for source-grounded creative understanding, including videos and social slideshows.",
+    plannerGuidance: [
+      "When the user supplies a URL and asks to understand, study, analyze, use as inspiration, or adapt it, call analyze.source first. Treat its reference brief as the primary source context for later answers and generation.",
+    ],
     category: "analysis",
-    inputSchema: fieldsSchema("Source to analyze.", {
-      sourceType: "One of url, file, artifact, or library_asset.",
-      source: "URL or internal source identifier.",
-      instructions: "Optional analysis guidance from the user or planner.",
+    inputSchema: jsonSchema("Source to analyze.", {
+      sourceType: stringSchema("Source kind to analyze.", ["url", "file", "artifact", "library_asset"]),
+      source: stringSchema("URL or internal source identifier."),
+      instructions: stringSchema("Optional analysis guidance from the user or planner."),
     }),
     outputSchema: fieldsSchema("Structured source analysis.", {
       summary: "Human-readable analysis summary.",
@@ -171,10 +228,10 @@ const toolDefinitions = [
     label: "Find References",
     description: "List reusable library assets and artifacts for planner context.",
     category: "references",
-    inputSchema: fieldsSchema("Reference search filters.", {
-      query: "Optional semantic or text filter.",
-      mediaTypes: "Optional media type filters.",
-      limit: "Maximum number of references to return.",
+    inputSchema: jsonSchema("Reference search filters.", {
+      query: stringSchema("Optional semantic or text filter."),
+      mediaTypes: stringArraySchema("Optional media type filters such as image, video, audio, slideshow, or file."),
+      limit: numberSchema("Maximum number of references to return."),
     }),
     outputSchema: fieldsSchema("Selectable reference results.", {
       references: "Reference descriptors with labels, ids, entity types, and media metadata.",
@@ -188,14 +245,14 @@ const toolDefinitions = [
     label: "Write Text",
     description: "Generate scripts, captions, outlines, shot lists, or other text artifacts from the conversation brief.",
     category: "generation",
-    inputSchema: fieldsSchema("Text generation request.", {
-      prompt: "Text writing request.",
-      systemPrompt: "Optional writing instructions or role.",
-      kind: "Optional output kind such as script, caption, outline, shot_list, or text_draft.",
-      provider: "Optional provider override.",
-      model: "Optional model override.",
-      maxTokens: "Optional output token limit.",
-      temperature: "Optional creativity setting.",
+    inputSchema: jsonSchema("Text generation request.", {
+      prompt: stringSchema("Text writing request."),
+      systemPrompt: stringSchema("Optional writing instructions or role."),
+      kind: stringSchema("Optional output kind such as script, caption, outline, shot_list, or text_draft."),
+      provider: stringSchema("Optional provider override."),
+      model: stringSchema("Optional model override."),
+      maxTokens: numberSchema("Optional output token limit."),
+      temperature: numberSchema("Optional creativity setting."),
     }),
     outputSchema: fieldsSchema("Generated text artifact.", {
       artifactId: "Created text artifact id.",
@@ -218,19 +275,22 @@ const toolDefinitions = [
     name: "mediaOverlay.updateText",
     label: "Update Media Text",
     description: "Add, remove, replace, or update editable text overlays on the current slideshow or Studio video project. Use this for follow-up chat edits to slide text, video captions, titles, subtitles, lower thirds, CTA text, position, size, color, or style. The model should decide the intended edits from the conversation and pass concrete text overlay operations; the runtime only applies those operations to the existing media object.",
+    plannerGuidance: [
+      "When the user asks to edit text on an existing generated slideshow, Studio video project, or current media artifact, use mediaOverlay.updateText with concrete overlay add/update/remove/replace operations. Do not regenerate the whole media artifact unless the user asks for new visuals or a full remake.",
+    ],
     category: "media",
-    inputSchema: fieldsSchema("Media text overlay edit request.", {
-      targetKind: "Optional target kind: slideshow, video_project, or auto for the latest editable media in the thread.",
-      targetId: "Optional slideshow id or Studio video project id. Use when the user references a specific artifact.",
-      slideId: "Optional slideshow slide id to edit.",
-      slideIndex: "Optional 1-based slideshow slide number to edit.",
-      replaceTextBlocks: "Optional full replacement array of editable text overlay blocks for the target slide or video.",
-      addTextBlocks: "Optional text overlay blocks to add.",
-      updateTextBlocks: "Optional objects with id and patch fields for existing text overlays.",
-      textBlockPatch: "Optional patch to apply to all text overlays on the target slide or video when specific text block ids are not needed.",
-      adjustTextBlocks: "Optional relative adjustment for target text overlays. Use negative deltaY to move text upward, positive deltaY to move down, deltaX for horizontal movement, deltaFontSize or fontSizeMultiplier for size changes.",
-      removeTextBlockIds: "Optional text overlay ids to remove.",
-      instruction: "Short natural-language summary of the user's edit request.",
+    inputSchema: jsonSchema("Media text overlay edit request.", {
+      targetKind: stringSchema("Optional target kind; use auto for the latest editable media in the thread.", ["slideshow", "video_project", "auto"]),
+      targetId: stringSchema("Optional slideshow id or Studio video project id. Use when the user references a specific artifact."),
+      slideId: stringSchema("Optional slideshow slide id to edit."),
+      slideIndex: numberSchema("Optional 1-based slideshow slide number to edit."),
+      replaceTextBlocks: objectArraySchema("Optional full replacement array of editable text overlay blocks for the target slide or video."),
+      addTextBlocks: objectArraySchema("Optional text overlay blocks to add."),
+      updateTextBlocks: objectArraySchema("Optional objects with id and patch fields for existing text overlays."),
+      textBlockPatch: looseObjectSchema("Optional patch to apply to all text overlays on the target slide or video when specific text block ids are not needed."),
+      adjustTextBlocks: looseObjectSchema("Optional relative adjustment for target text overlays. Use negative deltaY to move text upward, positive deltaY to move down, deltaX for horizontal movement, deltaFontSize or fontSizeMultiplier for size changes."),
+      removeTextBlockIds: stringArraySchema("Optional text overlay ids to remove."),
+      instruction: stringSchema("Short natural-language summary of the user's edit request."),
     }),
     outputSchema: fieldsSchema("Updated media text overlays.", {
       targetKind: "Updated media type.",
@@ -252,14 +312,20 @@ const toolDefinitions = [
     name: "media.generateImage",
     label: "Create Images",
     description: "Generate one or more image artifacts from a prompt and optional references.",
+    plannerGuidance: [
+      "When the requested artifact includes text, decide semantically where that text belongs: use Studio composition for video overlays/captions/lower thirds, slideshow tools for slide text, and image generation only when the artifact itself is a text-bearing graphic such as a poster, flyer, infographic, meme, title card, thumbnail, ad graphic, packaging, or specifically requested visible words.",
+      "Do not add text, labels, captions, or UI-like annotations to ordinary photo/image assets or video clips unless the user's requested artifact calls for rendered text.",
+    ],
     category: "generation",
-    inputSchema: fieldsSchema("Image generation request.", {
-      prompt: "Production prompt for the image model.",
-      aspectRatio: "Optional output aspect ratio.",
-      count: "Number of images to create.",
-      references: "Optional reference image descriptors.",
-      provider: "Optional provider override.",
-      model: "Optional model override.",
+    inputSchema: jsonSchema("Image generation request.", {
+      prompt: stringSchema("Production prompt for the image model."),
+      brief: stringSchema("Optional effective brief; defaults to prompt when omitted."),
+      aspectRatio: stringSchema("Optional output aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
+      count: numberSchema("Number of image variations to create; use only for variations/options of the same prompt."),
+      references: objectArraySchema("Optional reference image descriptors."),
+      usePriorImageOutputs: booleanSchema("When true, use prior generated images in this thread as continuity or style references."),
+      provider: stringSchema("Optional provider override."),
+      model: stringSchema("Optional model override."),
     }),
     outputSchema: fieldsSchema("Generated image artifacts.", {
       artifactIds: "Created image artifact ids.",
@@ -282,15 +348,20 @@ const toolDefinitions = [
     name: "media.generateVideo",
     label: "Create Video",
     description: "Generate a video artifact from a prompt and optional image or video references.",
+    plannerGuidance: [
+      "For image-to-video, default to Kling through fal unless the user explicitly asks for another video model. Use model=\"fal-ai/kling-video/v3/pro/image-to-video\" when animating image references and model=\"fal-ai/kling-video/v3/pro/text-to-video\" for prompt-only video.",
+    ],
     category: "generation",
-    inputSchema: fieldsSchema("Video generation request.", {
-      prompt: "Production prompt for the video model.",
-      aspectRatio: "Optional output aspect ratio.",
-      durationSeconds: "Optional target duration.",
-      references: "Optional image or video references.",
-      priorImageOutputIndex: "Optional zero-based index of the prior ready image output to use as the image-to-video source.",
-      provider: "Optional provider override.",
-      model: "Optional model override.",
+    inputSchema: jsonSchema("Video generation request.", {
+      prompt: stringSchema("Production prompt for the video model."),
+      brief: stringSchema("Optional effective brief; defaults to prompt when omitted."),
+      aspectRatio: stringSchema("Optional output aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
+      durationSeconds: numberSchema("Optional target duration in seconds."),
+      references: objectArraySchema("Optional image or video reference descriptors."),
+      usePriorImageOutputs: booleanSchema("When true, use all prior generated images as continuity/style references."),
+      priorImageOutputIndex: numberSchema("Zero-based index into the prior generated images in this thread; use when this call must animate/extend one specific earlier image."),
+      provider: stringSchema("Optional provider override."),
+      model: stringSchema("Optional model override."),
     }),
     outputSchema: fieldsSchema("Generated video artifact.", {
       artifactId: "Created video artifact id.",
@@ -315,19 +386,21 @@ const toolDefinitions = [
     label: "AI Video Render",
     description: "Render or edit a video from a prompt plus optional image, video, or audio references using the provider-backed AI video renderer.",
     category: "generation",
-    inputSchema: fieldsSchema("AI video render request.", {
-      prompt: "Production or edit prompt for the video renderer.",
-      mediaAssets: "Optional image, video, or audio reference assets.",
-      references: "Optional library or artifact references.",
-      systemPrompt: "Optional higher-level render instructions.",
-      knowledgeBase: "Optional source analysis or creative context.",
-      aspectRatio: "Optional output aspect ratio.",
-      width: "Optional output width in pixels.",
-      height: "Optional output height in pixels.",
-      fps: "Optional output frames per second.",
-      maxDurationSeconds: "Optional maximum output duration.",
-      provider: "Optional provider override.",
-      model: "Optional model override.",
+    inputSchema: jsonSchema("AI video render request.", {
+      prompt: stringSchema("Production or edit prompt for the video renderer."),
+      brief: stringSchema("Optional effective brief; defaults to prompt when omitted."),
+      mediaAssets: objectArraySchema("Optional image, video, or audio reference assets."),
+      references: objectArraySchema("Optional library or artifact references."),
+      systemPrompt: stringSchema("Optional higher-level render instructions."),
+      knowledgeBase: stringSchema("Optional source analysis or creative context."),
+      aspectRatio: stringSchema("Optional output aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
+      width: numberSchema("Optional output width in pixels."),
+      height: numberSchema("Optional output height in pixels."),
+      fps: numberSchema("Optional output frames per second."),
+      maxDurationSeconds: numberSchema("Optional maximum output duration."),
+      durationSeconds: numberSchema("Optional target duration in seconds; used when maxDurationSeconds is omitted."),
+      provider: stringSchema("Optional provider override."),
+      model: stringSchema("Optional model override."),
     }),
     outputSchema: fieldsSchema("Rendered video artifact.", {
       artifactId: "Created video artifact id.",
@@ -352,12 +425,14 @@ const toolDefinitions = [
     label: "Create Audio",
     description: "Generate voiceover, music, or sound audio from text and optional references.",
     category: "generation",
-    inputSchema: fieldsSchema("Audio generation request.", {
-      text: "Text, script, or sound direction.",
-      mode: "Optional audio generation mode.",
-      references: "Optional voice or audio references.",
-      provider: "Optional provider override.",
-      model: "Optional model override.",
+    inputSchema: jsonSchema("Audio generation request.", {
+      text: stringSchema("Text, script, or sound direction."),
+      prompt: stringSchema("Optional audio prompt; use text for spoken/script content when possible."),
+      brief: stringSchema("Optional effective brief; defaults to text or prompt when omitted."),
+      mode: stringSchema("Optional audio generation mode such as voiceover, music, or sound_effect."),
+      references: objectArraySchema("Optional voice or audio references."),
+      provider: stringSchema("Optional provider override."),
+      model: stringSchema("Optional model override."),
     }),
     outputSchema: fieldsSchema("Generated audio artifact.", {
       artifactId: "Created audio artifact id.",
@@ -376,12 +451,13 @@ const toolDefinitions = [
     label: "Lip Sync Video",
     description: "Generate a lip-synced video from a source image or video plus spoken audio.",
     category: "generation",
-    inputSchema: fieldsSchema("Lip sync generation request.", {
-      prompt: "Production direction for the lip-synced performance.",
-      resolution: "Optional provider resolution or quality setting.",
-      references: "Source image/video and audio references.",
-      provider: "Optional provider override.",
-      model: "Optional model override.",
+    inputSchema: jsonSchema("Lip sync generation request.", {
+      prompt: stringSchema("Production direction for the lip-synced performance."),
+      brief: stringSchema("Optional effective brief; defaults to prompt when omitted."),
+      resolution: stringSchema("Optional provider resolution or quality setting."),
+      references: objectArraySchema("Source image/video and audio references."),
+      provider: stringSchema("Optional provider override."),
+      model: stringSchema("Optional model override."),
     }),
     outputSchema: fieldsSchema("Generated lip-synced video artifact.", {
       artifactId: "Created video artifact id.",
@@ -405,12 +481,29 @@ const toolDefinitions = [
     name: "slideshow.render",
     label: "Render Slideshow",
     description: "Render a native slideshow plan into preview and publishable slideshow artifacts.",
+    plannerGuidance: [
+      "For slideshow requests, always use exactly one slideshow.render tool call. Do not decompose slideshow creation into separate media.generateImage calls for individual slides. The native slideshow pipeline plans slides, generates slide visuals, creates editable text blocks when appropriate, and assembles the slideshow artifact.",
+      "For slideshow.render, default to editable text overlays. Set input.requestedRenderingMode=\"full_graphic_generation\" only when the user asks for fully designed/finished graphic slides, poster-style slides, text baked into the artwork, or similar. Otherwise use input.requestedRenderingMode=\"background_plus_overlay\".",
+    ],
     category: "slideshow",
-    inputSchema: fieldsSchema("Slideshow render request.", {
-      plan: "Canonical slideshow plan or plan artifact id.",
-      aspectRatio: "Optional output aspect ratio.",
-      references: "Optional image references for slide backgrounds.",
-      requestedRenderingMode: "Optional slideshow style: background_plus_overlay for editable text, or full_graphic_generation for finished designed slides.",
+    inputSchema: jsonSchema("Slideshow render request.", {
+      brief: stringSchema("Concise effective brief for the full slideshow."),
+      plan: stringSchema("Canonical slideshow plan, planning instructions, or plan artifact id."),
+      aspectRatio: stringSchema("Optional output aspect ratio. Common values include 9:16, 4:5, and 1:1."),
+      references: objectArraySchema("Optional image references for slide backgrounds."),
+      providerInput: looseObjectSchema("Optional native slideshow provider input."),
+      requestedRenderingMode: stringSchema("Slideshow style: background_plus_overlay for editable text, or full_graphic_generation for finished designed slides.", [
+        "background_plus_overlay",
+        "full_graphic_generation",
+      ]),
+      renderingMode: stringSchema("Alternate rendering mode key; prefer requestedRenderingMode.", [
+        "background_plus_overlay",
+        "full_graphic_generation",
+      ]),
+      slideshowStyle: stringSchema("Alternate slideshow style key; prefer requestedRenderingMode.", [
+        "background_plus_overlay",
+        "full_graphic_generation",
+      ]),
     }),
     outputSchema: fieldsSchema("Rendered slideshow artifacts.", {
       artifactIds: "Rendered slideshow or slide artifact ids.",
@@ -427,12 +520,18 @@ const toolDefinitions = [
     name: "studio.compose",
     label: "Compose In Studio",
     description: "Create or update a Studio composition from generated image/video clips, audio tracks, and timed text overlays.",
+    plannerGuidance: [
+      "For multi-clip final videos, call studio.compose after generating or selecting the clips. If the user asks to create a finished video rather than only a Studio draft, call studio.render after studio.compose.",
+    ],
     category: "studio",
-    inputSchema: fieldsSchema("Studio composition request.", {
-      timeline: "Composition timeline instructions or structured clip/text overlay records.",
-      artifactIds: "Source media artifact ids.",
-      aspectRatio: "Optional composition aspect ratio.",
-      textOverlays: "Optional timed text overlays or captions to place on the video.",
+    inputSchema: jsonSchema("Studio composition request.", {
+      timeline: stringSchema("Composition timeline instructions or structured clip/text overlay records."),
+      brief: stringSchema("Optional composition brief; used for quoted overlay text extraction."),
+      artifactIds: stringArraySchema("Source media artifact ids."),
+      aspectRatio: stringSchema("Optional composition aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
+      textOverlays: objectArraySchema("Optional timed text overlays or captions to place on the video."),
+      overlays: objectArraySchema("Optional timed overlay records; prefer textOverlays."),
+      captions: objectArraySchema("Optional caption records; prefer textOverlays."),
     }),
     outputSchema: fieldsSchema("Studio project result.", {
       projectId: "Created or updated Studio project id.",
@@ -452,9 +551,9 @@ const toolDefinitions = [
     label: "Render Studio Video",
     description: "Create a Studio render request for the server render worker. If the worker is not configured, this reports that automatic chat rendering is unavailable instead of producing a final video.",
     category: "studio",
-    inputSchema: fieldsSchema("Studio render request.", {
-      projectId: "Studio project id.",
-      renderSettings: "Optional render dimensions, fps, and quality settings.",
+    inputSchema: jsonSchema("Studio render request.", {
+      projectId: stringSchema("Studio project id. Omit to render the latest Studio project in the thread."),
+      renderSettings: looseObjectSchema("Optional render dimensions, fps, quality, and format settings."),
     }),
     outputSchema: fieldsSchema("Rendered video result.", {
       studioRenderRequestId: "Durable render request id.",
@@ -478,10 +577,10 @@ const toolDefinitions = [
     label: "Save To Library",
     description: "Save final or reusable artifacts into the library after review.",
     category: "library",
-    inputSchema: fieldsSchema("Library save request.", {
-      artifactIds: "Artifact ids to save.",
-      title: "Optional saved asset title.",
-      notes: "Optional library notes.",
+    inputSchema: jsonSchema("Library save request.", {
+      artifactIds: stringArraySchema("Artifact ids to save."),
+      title: stringSchema("Optional saved asset title."),
+      notes: stringSchema("Optional library notes."),
     }),
     outputSchema: fieldsSchema("Saved library assets.", {
       libraryAssetIds: "Created or updated library asset ids.",
@@ -504,9 +603,9 @@ const toolDefinitions = [
     label: "Prepare Publishing Draft",
     description: "Create a manual draft distribution plan from reviewed ready media.",
     category: "publishing",
-    inputSchema: fieldsSchema("Publishing draft request.", {
-      artifactIds: "Ready media artifact ids to attach to the draft plan.",
-      instructions: "Optional caption, destination, or scheduling guidance.",
+    inputSchema: jsonSchema("Publishing draft request.", {
+      artifactIds: stringArraySchema("Ready media artifact ids to attach to the draft plan."),
+      instructions: stringSchema("Optional caption, destination, or scheduling guidance."),
     }),
     outputSchema: fieldsSchema("Distribution draft result.", {
       distributionPlanId: "Created draft distribution plan id.",
@@ -534,9 +633,9 @@ const toolDefinitions = [
     label: "Save As Workflow",
     description: "Convert a successful Create conversation tool history into an editable workflow draft when possible.",
     category: "workflow",
-    inputSchema: fieldsSchema("Workflow draft request.", {
-      createThreadId: "Create conversation id to convert.",
-      name: "Optional workflow draft name.",
+    inputSchema: jsonSchema("Workflow draft request.", {
+      createThreadId: stringSchema("Create conversation id to convert. Usually omit so the runtime converts the current thread."),
+      name: stringSchema("Optional workflow draft name."),
     }),
     outputSchema: fieldsSchema("Workflow draft result.", {
       workflowId: "Created workflow draft id.",
@@ -565,10 +664,10 @@ const toolDefinitions = [
     label: "Export Output",
     description: "Prepare final reviewed artifacts for download, handoff, or publishing.",
     category: "export",
-    inputSchema: fieldsSchema("Export request.", {
-      artifactIds: "Artifact ids to export.",
-      destination: "Download, handoff, or publishing destination.",
-      format: "Optional requested export format.",
+    inputSchema: jsonSchema("Export request.", {
+      artifactIds: stringArraySchema("Artifact ids to export."),
+      destination: stringSchema("Download, handoff, or publishing destination."),
+      format: stringSchema("Optional requested export format."),
     }),
     outputSchema: fieldsSchema("Export result.", {
       exportUrl: "Download or destination URL when available.",

@@ -1,13 +1,15 @@
 import type { Doc, Id } from "../../_generated/dataModel";
-import type { MutationCtx } from "../../_generated/server";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { artifactMediaKind } from "../references/referenceResolution";
 import {
   contentRequestIdFromToolOutput,
   videoProjectIdFromToolOutput,
 } from "./toolExecutionShared";
 
+type DbCtx = Pick<MutationCtx, "db"> | Pick<QueryCtx, "db">;
+
 export async function contentRequestIdsForThreadToolOutputs(
-  ctx: MutationCtx,
+  ctx: DbCtx,
   thread: Doc<"createThreads">,
   excludeToolCallId?: Id<"createToolCalls">
 ) {
@@ -28,7 +30,7 @@ export async function contentRequestIdsForThreadToolOutputs(
 }
 
 export async function hasPendingContentRequestsForThreadToolOutputs(
-  ctx: MutationCtx,
+  ctx: DbCtx,
   thread: Doc<"createThreads">,
   excludeToolCallId?: Id<"createToolCalls">
 ) {
@@ -53,7 +55,7 @@ export async function hasPendingContentRequestsForThreadToolOutputs(
 }
 
 export async function readyArtifactsForThreadToolOutputs(
-  ctx: MutationCtx,
+  ctx: DbCtx,
   thread: Doc<"createThreads">,
   excludeToolCallId: Id<"createToolCalls"> | undefined,
   mediaKind: "image" | "video" | "audio"
@@ -84,7 +86,7 @@ export async function readyArtifactsForThreadToolOutputs(
 }
 
 export async function latestVideoProjectForThreadToolOutputs(
-  ctx: MutationCtx,
+  ctx: DbCtx,
   thread: Doc<"createThreads">,
   excludeToolCallId?: Id<"createToolCalls">
 ) {

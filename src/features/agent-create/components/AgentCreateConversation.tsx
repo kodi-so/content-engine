@@ -107,6 +107,7 @@ export function AgentCreateConversationBody({
 
 export function AgentCreateComposerDock({
   checkpointMode,
+  costTotalLabel,
   isStopping,
   isSubmitting,
   isWorking,
@@ -122,6 +123,7 @@ export function AgentCreateComposerDock({
   onSubmit,
 }: {
   checkpointMode: AgentCreateCheckpointMode;
+  costTotalLabel?: string;
   isStopping: boolean;
   isSubmitting: boolean;
   isWorking: boolean;
@@ -139,6 +141,11 @@ export function AgentCreateComposerDock({
   return (
     <div className="fixed bottom-0 left-[13.5rem] right-0 z-30 bg-[linear-gradient(to_top,var(--color-page)_84%,var(--color-page)_68%,oklch(97%_0.02_230_/_0))] px-[clamp(1.25rem,2.5vw,2.75rem)] pb-[calc(env(safe-area-inset-bottom)+var(--space-2))] pt-[var(--space-8)] max-[900px]:left-0 max-[900px]:px-[var(--space-4)] max-[560px]:px-[var(--space-3)]">
       <div className="mx-auto grid w-full max-w-[54rem] gap-[var(--space-2)]">
+        {costTotalLabel ? (
+          <p className="m-0 justify-self-start rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-[var(--space-3)] py-1 text-[0.74rem] font-[740] text-[var(--color-ink-muted)] shadow-[var(--shadow-sm)]">
+            Generation cost this thread: {costTotalLabel}
+          </p>
+        ) : null}
         <AgentCreatePrompt
           checkpointMode={checkpointMode}
           disabled={isSubmitting}

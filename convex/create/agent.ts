@@ -11,6 +11,7 @@ import {
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { getModelProvider } from "../providers";
 import type { ModelMessage } from "../providers/model";
+import { isProviderError } from "../providers/errors";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -24,12 +25,16 @@ import {
   threadTitleFromMessage,
 } from "./planning";
 import {
+  AGENT_DECISION_JSON_SCHEMA,
+  AgentDecisionParseError,
+  AgentDecisionValidationError,
   createAgentSystemPrompt,
   messageForModel,
   normalizeAgentDecision,
   planMessageForCreateDecision,
   type AgentDecision,
 } from "./agent/agentDecision";
+import { selectPromptModules } from "./agent/agentPromptModules";
 import {
   asyncFailureMessageForToolCall,
   createThreadScopeMatchesRecord,
@@ -39,6 +44,7 @@ import {
   compactLogValue,
   createAgentDecisionErrorLog,
 } from "./agent/agentDiagnostics";
+import { buildTurnContextSections } from "./agent/agentTurnContextBuilder";
 import {
   appendMessage,
   createThreadForTurn,
@@ -53,7 +59,6 @@ import {
   recordPlannedTools,
 } from "./agent/agentToolPlanning";
 import { listThreadOutputsForThread } from "./agent/agentThreadOutputs";
-import { isRecord } from "./references/referenceResolution";
 import {
   executeRunnableQueuedTools,
   prepareArtifactExportForThread,
@@ -69,13 +74,34 @@ import {
 import { saveThreadAsWorkflowDraft } from "./agent/agentWorkflowDraftActions";
 import { stopCreateThread } from "./agent/agentStopActions";
 
-export { normalizeAgentDecision } from "./agent/agentDecision";
+export {
+  AgentDecisionParseError,
+  AgentDecisionValidationError,
+  createAgentSystemPrompt,
+  normalizeAgentDecision,
+} from "./agent/agentDecision";
 
 const createAgentProvider = "openrouter";
 const createAgentModel =
   process.env.CONTENT_ENGINE_CREATE_AGENT_MODEL?.trim() ||
   process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
   "openai/gpt-4.1";
+const continueWorkingCheckpointLabel = "Continue working?";
+
+function shouldRepairAgentDecision(error: unknown) {
+  if (error instanceof AgentDecisionParseError) return true;
+  if (error instanceof AgentDecisionValidationError) return true;
+  if (!isProviderError(error)) return false;
+  return error.operation === "generate_structured" &&
+    error.message.toLowerCase().includes("invalid structured output");
+}
+
+function agentDecisionErrorMessage(error: unknown) {
+  if (isProviderError(error) && error.cause instanceof Error) {
+    return error.cause.message;
+  }
+  return error instanceof Error ? error.message : "Unknown model error";
+}
 
 export const listThreadOutputs = query({
   args: { threadId: v.id("createThreads") },
@@ -114,35 +140,32 @@ export const agentTurnContext = internalQuery({
       .query("createMessages")
       .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
       .collect();
-    const recentMessages = messages
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(-16);
-    const artifactIds = [
-      ...new Set(
-        recentMessages.flatMap((message) => message.artifactIds ?? [])
-      ),
-    ];
-    const artifacts = await Promise.all(artifactIds.map((artifactId) => ctx.db.get(artifactId)));
-    const generatedTextByArtifactId = new Map<string, string>();
-    for (const artifact of artifacts) {
-      if (!artifact) continue;
-      const data = isRecord(artifact.data) ? artifact.data : {};
-      const text = typeof data.text === "string" ? data.text.trim() : "";
-      if (text) generatedTextByArtifactId.set(String(artifact._id), text);
-    }
+    const toolCalls = await ctx.db
+      .query("createToolCalls")
+      .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
+      .collect();
+    const threadReferenceMentions = uniqueCreateReferenceMentions(
+      messages.flatMap((message) => message.referenceMentions ?? [])
+    );
+    const effectiveBrief = buildEffectiveBrief({
+      content: userMessage.content,
+      currentMentions: threadReferenceMentions,
+    });
+    const sections = await buildTurnContextSections(ctx, {
+      effectiveBrief: effectiveBrief.content,
+      messages,
+      thread,
+      toolCalls,
+      userMessage,
+    });
 
     return {
       thread,
       userMessage,
-      messages: recentMessages.map((message) => {
-        const generatedTextContext = (message.artifactIds ?? [])
-          .map((artifactId) => generatedTextByArtifactId.get(String(artifactId)))
-          .filter((text): text is string => Boolean(text))
-          .map((text) => compactLogValue(text, 6000))
-          .filter((text): text is string => Boolean(text))
-          .join("\n\n");
-        return generatedTextContext ? { ...message, generatedTextContext } : message;
-      }),
+      effectiveBrief,
+      isContinuation: toolCalls.some((toolCall) => toolCall.createdAt > userMessage.createdAt),
+      sections,
+      toolNames: toolCalls.map((toolCall) => toolCall.toolName),
     };
   },
 });
@@ -151,6 +174,7 @@ export const applyAgentDecision = internalMutation({
   args: {
     checkpointMode: createCheckpointModeValidator,
     decision: v.any(),
+    decisionRunId: v.string(),
     effectiveContent: v.string(),
     referenceMentions: v.optional(v.array(createReferenceMentionValidator)),
     threadId: v.id("createThreads"),
@@ -160,9 +184,18 @@ export const applyAgentDecision = internalMutation({
     const thread = await ctx.db.get(args.threadId);
     const userMessage = await ctx.db.get(args.userMessageId);
     if (!thread || !userMessage || userMessage.createThreadId !== thread._id) return;
+    if (thread.decisionRunId !== args.decisionRunId) {
+      console.info("[create.agent.apply] stale decision ignored", {
+        createThreadId: String(thread._id),
+        expectedDecisionRunId: thread.decisionRunId,
+        receivedDecisionRunId: args.decisionRunId,
+      });
+      return;
+    }
 
     const decision = args.decision as AgentDecision;
     const now = Date.now();
+    const nextDecisionCount = thread.turnDecisionCount + 1;
 
     if (decision.kind === "chat") {
       await appendMessage(ctx, thread, {
@@ -172,6 +205,7 @@ export const applyAgentDecision = internalMutation({
       });
       await ctx.db.patch(thread._id, {
         status: "idle",
+        turnDecisionCount: nextDecisionCount,
         title: thread.title === "New Chat" ? threadTitleFromMessage(userMessage.content) : thread.title,
         updatedAt: now,
       });
@@ -187,7 +221,28 @@ export const applyAgentDecision = internalMutation({
       await ctx.db.patch(thread._id, {
         status: "clarifying",
         lastInferredOutputType: "unknown",
+        turnDecisionCount: nextDecisionCount,
         title: thread.title === "New Chat" ? threadTitleFromMessage(userMessage.content) : thread.title,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    const planSignature = JSON.stringify(decision.toolCalls);
+    if (thread.lastPlanSignature === planSignature) {
+      await ctx.db.insert("createCheckpoints", {
+        userId: thread.userId,
+        workspaceId: thread.workspaceId,
+        createThreadId: thread._id,
+        status: "open",
+        label: continueWorkingCheckpointLabel,
+        message: `The agent planned the same tool sequence again after ${nextDecisionCount} planning steps on this request, so it is pausing before repeating work.`,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.patch(thread._id, {
+        status: "waiting_for_user",
+        turnDecisionCount: nextDecisionCount,
         updatedAt: now,
       });
       return;
@@ -225,6 +280,8 @@ export const applyAgentDecision = internalMutation({
     await ctx.db.patch(thread._id, {
       status: nextStatus,
       lastInferredOutputType: decision.outputType,
+      lastPlanSignature: planSignature,
+      turnDecisionCount: nextDecisionCount,
       title: thread.title === "New Chat" ? threadTitleFromMessage(userMessage.content) : thread.title,
       updatedAt: now,
     });
@@ -237,6 +294,7 @@ export const applyAgentDecision = internalMutation({
 
 export const failAgentDecision = internalMutation({
   args: {
+    decisionRunId: v.string(),
     errorMessage: v.string(),
     threadId: v.id("createThreads"),
     userMessageId: v.id("createMessages"),
@@ -245,6 +303,14 @@ export const failAgentDecision = internalMutation({
     const thread = await ctx.db.get(args.threadId);
     const userMessage = await ctx.db.get(args.userMessageId);
     if (!thread || !userMessage || userMessage.createThreadId !== thread._id) return;
+    if (thread.decisionRunId !== args.decisionRunId) {
+      console.info("[create.agent.fail] stale decision failure ignored", {
+        createThreadId: String(thread._id),
+        expectedDecisionRunId: thread.decisionRunId,
+        receivedDecisionRunId: args.decisionRunId,
+      });
+      return;
+    }
 
     await appendMessage(ctx, thread, {
       role: "agent",
@@ -258,9 +324,27 @@ export const failAgentDecision = internalMutation({
   },
 });
 
+export const persistTurnContextSummary = internalMutation({
+  args: {
+    contextSummary: v.string(),
+    contextSummaryThroughMessageId: v.id("createMessages"),
+    threadId: v.id("createThreads"),
+  },
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) return;
+    await ctx.db.patch(thread._id, {
+      contextSummary: args.contextSummary,
+      contextSummaryThroughMessageId: args.contextSummaryThroughMessageId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const decideAgentTurn = internalAction({
   args: {
     checkpointMode: createCheckpointModeValidator,
+    decisionRunId: v.string(),
     threadId: v.id("createThreads"),
     userMessageId: v.id("createMessages"),
   },
@@ -279,13 +363,7 @@ export const decideAgentTurn = internalAction({
       });
       if (!context) return;
 
-      const threadReferenceMentions = uniqueCreateReferenceMentions(
-        context.messages.flatMap((message) => message.referenceMentions ?? [])
-      );
-      const effectiveBrief = buildEffectiveBrief({
-        content: context.userMessage.content,
-        currentMentions: threadReferenceMentions,
-      });
+      const effectiveBrief = context.effectiveBrief;
       diagnosticContext = {
         ...diagnosticContext,
         workspaceId: context.thread.workspaceId ? String(context.thread.workspaceId) : undefined,
@@ -295,13 +373,84 @@ export const decideAgentTurn = internalAction({
         effectiveBriefPreview: compactLogValue(effectiveBrief.content, 2400),
         currentMessageReferenceMentionCount: context.userMessage.referenceMentions?.length ?? 0,
         referenceMentionCount: effectiveBrief.referenceMentions?.length ?? 0,
-        contextMessageCount: context.messages.length,
+        contextMessageCount: context.sections.recentMessages.length,
+        droppedContextMessageCount: context.sections.droppedMessages.length,
       };
 
       const provider = getModelProvider(createAgentProvider);
+      let earlierConversationSummary: string | undefined;
+      const droppedMessages = context.sections.droppedMessages;
+      const lastDroppedMessage = droppedMessages[droppedMessages.length - 1];
+      if (
+        lastDroppedMessage &&
+        context.thread.contextSummary &&
+        context.thread.contextSummaryThroughMessageId === lastDroppedMessage._id
+      ) {
+        earlierConversationSummary = context.thread.contextSummary;
+      } else if (lastDroppedMessage) {
+        try {
+          const previousSummaryIndex = context.thread.contextSummaryThroughMessageId
+            ? droppedMessages.findIndex((message) =>
+                message._id === context.thread.contextSummaryThroughMessageId
+              )
+            : -1;
+          const messagesToSummarize = previousSummaryIndex >= 0
+            ? droppedMessages.slice(previousSummaryIndex + 1)
+            : droppedMessages;
+          const droppedTranscript = messagesToSummarize
+            .map((message) => `${message.role}: ${message.content}`)
+            .join("\n\n");
+          const trimmedDroppedTranscript = droppedTranscript.trim();
+          if (!trimmedDroppedTranscript && context.thread.contextSummary) {
+            earlierConversationSummary = context.thread.contextSummary;
+          }
+          if (trimmedDroppedTranscript) {
+            const summaryResult = await provider.generateText({
+              model: createAgentModel,
+              maxTokens: 600,
+              temperature: 0.1,
+              prompt: [
+                "Summarize the earlier Create agent conversation for future planning.",
+                "Keep a factual digest of what was requested, produced, decided, and rejected.",
+                "Do not add advice, speculation, or new plans.",
+                context.thread.contextSummary
+                  ? `Previous summary:\n${context.thread.contextSummary}`
+                  : "Previous summary: none.",
+                `Newly dropped messages:\n${trimmedDroppedTranscript}`,
+              ].join("\n\n"),
+              metadata: {
+                createThreadId: String(args.threadId),
+                createMessageId: String(args.userMessageId),
+                toolName: "create.agent.summarize_context",
+              },
+            });
+            earlierConversationSummary = summaryResult.text.trim();
+          }
+          if (earlierConversationSummary && trimmedDroppedTranscript) {
+            await ctx.runMutation(internal.create.agent.persistTurnContextSummary, {
+              contextSummary: earlierConversationSummary,
+              contextSummaryThroughMessageId: lastDroppedMessage._id,
+              threadId: args.threadId,
+            });
+          }
+        } catch (error) {
+          console.error("[create.agent.decide] context summary failed", {
+            ...diagnosticContext,
+            error: createAgentDecisionErrorLog(error),
+          });
+        }
+      }
+      const promptModules = selectPromptModules({
+        isContinuation: context.isContinuation,
+        toolNames: context.toolNames,
+      });
       const modelMessages: ModelMessage[] = [
-        { role: "system", content: createAgentSystemPrompt() },
-        ...context.messages.map(messageForModel),
+        { role: "system", content: createAgentSystemPrompt(promptModules) },
+        { role: "user", content: context.sections.contextBlock },
+        ...(earlierConversationSummary
+          ? [{ role: "user" as const, content: `Earlier conversation summary:\n${earlierConversationSummary}` }]
+          : []),
+        ...context.sections.recentMessages.map(messageForModel),
         {
           role: "user",
           content: [
@@ -312,22 +461,44 @@ export const decideAgentTurn = internalAction({
         },
       ];
 
-      const result = await provider.generateStructured<AgentDecision>({
-        messages: modelMessages,
-        model: createAgentModel,
-        temperature: 0.2,
-        maxTokens: 4000,
-        parser: normalizeAgentDecision,
-        metadata: {
-          createThreadId: String(args.threadId),
-          createMessageId: String(args.userMessageId),
-          toolName: "create.agent.decide",
-        },
-      });
+      const generateDecision = async (messages: ModelMessage[]) =>
+        await provider.generateStructured<AgentDecision>({
+          messages,
+          model: createAgentModel,
+          temperature: 0.2,
+          maxTokens: 4000,
+          schema: AGENT_DECISION_JSON_SCHEMA,
+          schemaName: "create_agent_decision",
+          parser: normalizeAgentDecision,
+          metadata: {
+            createThreadId: String(args.threadId),
+            createMessageId: String(args.userMessageId),
+            toolName: "create.agent.decide",
+          },
+        });
+
+      let result;
+      try {
+        result = await generateDecision(modelMessages);
+      } catch (error) {
+        if (!shouldRepairAgentDecision(error)) throw error;
+        console.error("[create.agent.decide] structured output repair", {
+          ...diagnosticContext,
+          error: createAgentDecisionErrorLog(error),
+        });
+        result = await generateDecision([
+          ...modelMessages,
+          {
+            role: "user",
+            content: `Your previous response was not valid: ${agentDecisionErrorMessage(error)}. Respond again following the required JSON schema exactly.`,
+          },
+        ]);
+      }
 
       await ctx.runMutation(internal.create.agent.applyAgentDecision, {
         checkpointMode: args.checkpointMode,
         decision: result.object,
+        decisionRunId: args.decisionRunId,
         effectiveContent: result.object.kind === "create"
           ? result.object.brief
           : effectiveBrief.content,
@@ -341,7 +512,8 @@ export const decideAgentTurn = internalAction({
         error: createAgentDecisionErrorLog(error),
       });
       await ctx.runMutation(internal.create.agent.failAgentDecision, {
-        errorMessage: error instanceof Error ? error.message : "Unknown model error",
+        decisionRunId: args.decisionRunId,
+        errorMessage: agentDecisionErrorMessage(error),
         threadId: args.threadId,
         userMessageId: args.userMessageId,
       });
@@ -389,14 +561,19 @@ export const submit = mutation({
       kind: "chat",
       referenceMentions: args.referenceMentions,
     });
+    const decisionRunId = crypto.randomUUID();
     await ctx.db.patch(thread._id, {
       checkpointMode,
+      decisionRunId,
+      lastPlanSignature: undefined,
       status: "planning",
       title: thread.title === "New Chat" ? threadTitleFromMessage(content) : thread.title,
+      turnDecisionCount: 0,
       updatedAt: now,
     });
     await ctx.scheduler.runAfter(0, internal.create.agent.decideAgentTurn, {
       checkpointMode,
+      decisionRunId,
       threadId: thread._id,
       userMessageId,
     });
@@ -436,6 +613,17 @@ export const approveCheckpoint = mutation({
           requestId: request._id,
         });
       }
+    }
+
+    if (checkpoint.label === continueWorkingCheckpointLabel) {
+      await ctx.db.patch(thread._id, {
+        lastPlanSignature: undefined,
+        turnDecisionCount: 0,
+        updatedAt: now,
+      });
+      const updatedThread = await ctx.db.get(thread._id);
+      if (!updatedThread) throw new Error("Create thread not found");
+      return await executeRunnableQueuedTools(ctx, updatedThread);
     }
 
     return await executeRunnableQueuedTools(ctx, thread);

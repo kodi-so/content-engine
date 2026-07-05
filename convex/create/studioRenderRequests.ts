@@ -11,6 +11,7 @@ import {
   type MutationCtx,
 } from "../_generated/server";
 import { requireBetaAccess } from "../auth/users";
+import { dataWithArtifactCaption } from "../content/artifactCaptions";
 import {
   assertArtifactAccess,
   assertCreateThreadAccess,
@@ -198,6 +199,7 @@ export const requestForProject = mutation({
           workspaceId: project.workspaceId,
           createThreadId: args.createThreadId,
           toolName: "studio.render",
+          dependsOnToolCallIds: [],
           status: workerConfigured ? "running" : "blocked",
           label: "Render Studio Video",
           input: {
@@ -538,7 +540,7 @@ export const executeWorkerRender = internalAction({
         type: "video",
         title: `${project.title || "Studio render"} render`,
         storageUrl,
-        data: {
+        data: dataWithArtifactCaption({
           source: "studio_render_worker",
           storageId,
           mimeType,
@@ -549,7 +551,7 @@ export const executeWorkerRender = internalAction({
           renderSettings: request.renderSettings,
           studioRenderRequestId: request._id,
           videoProjectId: project._id,
-        },
+        }, project.title || "Studio render"),
         lifecycle: "saved",
         reviewStatus: "approved",
       });

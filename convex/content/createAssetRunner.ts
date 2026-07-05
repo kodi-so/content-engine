@@ -19,6 +19,7 @@ import {
   imageModelUiContractForRun,
   imageProviderInputFromModelSchema,
 } from "../workflows/runtime/providerInputs";
+import { dataWithArtifactCaption } from "./artifactCaptions";
 import { storeGeneratedAsset } from "./assets/assetStorage";
 
 export type CreateReferenceAsset = {
@@ -222,7 +223,7 @@ export async function runCreateImageRequest(
       type: "image",
       title,
       storageUrl: stored.storageUrl,
-      data: {
+      data: dataWithArtifactCaption({
         source: "create_page",
         mode: "image",
         storageId: stored.storageId,
@@ -237,7 +238,7 @@ export async function runCreateImageRequest(
         userPrompt: prompt,
         providerPrompt,
         providerMetadata: result.metadata,
-      },
+      }, prompt),
       provider: result.metadata.provider,
       model: result.metadata.model,
       prompt,
@@ -318,7 +319,7 @@ export async function runCreateVideoRequest(
     type: "video",
     title,
     storageUrl: stored.storageUrl,
-    data: {
+    data: dataWithArtifactCaption({
       source: "create_page",
       mode: "video",
       storageId: stored.storageId,
@@ -334,7 +335,7 @@ export async function runCreateVideoRequest(
       userPrompt: prompt,
       providerPrompt,
       providerMetadata: result.metadata,
-    },
+    }, prompt),
     provider: result.metadata.provider,
     model: result.metadata.model,
     prompt,
@@ -420,7 +421,7 @@ export async function runCreateAudioRequest(
     type: "rendered_asset",
     title,
     storageUrl: stored.storageUrl,
-    data: {
+    data: dataWithArtifactCaption({
       source: "create_page",
       mode: "audio",
       kind: "audio",
@@ -431,7 +432,7 @@ export async function runCreateAudioRequest(
       jobId: result.jobId,
       status: "succeeded",
       providerMetadata: result.metadata,
-    },
+    }, text),
     provider: result.metadata.provider,
     model: result.metadata.model,
     prompt: text,
@@ -511,7 +512,7 @@ export async function runCreateLipsyncRequest(
     type: "video",
     title,
     storageUrl: stored.storageUrl,
-    data: {
+    data: dataWithArtifactCaption({
       source: "create_page",
       mode: "lipsync",
       storageId: stored.storageId,
@@ -526,7 +527,7 @@ export async function runCreateLipsyncRequest(
       hasAudioInput: Boolean(audio),
       userPrompt: prompt,
       providerMetadata: result.metadata,
-    },
+    }, prompt),
     provider: result.metadata.provider,
     model: result.metadata.model,
     prompt,

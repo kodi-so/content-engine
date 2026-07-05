@@ -2,6 +2,7 @@ import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalAction, type MutationCtx } from "../../_generated/server";
 import { v } from "convex/values";
+import { dataWithArtifactCaption } from "../../content/artifactCaptions";
 import { storeGeneratedAsset } from "../../content/assets/assetStorage";
 import { getModelProvider } from "../../providers";
 import { waitForGeneratedVideo } from "../../workflows/runtime/generationWaiters";
@@ -173,7 +174,7 @@ export const executeVideoRender = internalAction({
         type: "video",
         title: "AI rendered video",
         storageUrl: stored.storageUrl,
-        data: {
+        data: dataWithArtifactCaption({
           storageId: stored.storageId,
           mimeType: stored.mimeType,
           fileSize: stored.byteLength,
@@ -187,7 +188,7 @@ export const executeVideoRender = internalAction({
           fps: args.fps,
           mediaAssetCount: args.mediaAssets.length,
           providerMetadata: result.metadata,
-        },
+        }, args.prompt),
         provider: result.metadata.provider,
         model: result.metadata.model,
         prompt: args.prompt,

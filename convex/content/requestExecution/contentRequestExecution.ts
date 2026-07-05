@@ -591,6 +591,7 @@ export async function executeContentRequest(
         provider: result.image.metadata.provider,
         model: result.image.metadata.model,
         prompt: result.prompt,
+        captionPrefix: `Slide ${result.slide.index}`,
         parentArtifactIds: [specArtifactId],
       });
       imageBySlideIndex.set(result.slide.index, { artifactId, url: stored.storageUrl });

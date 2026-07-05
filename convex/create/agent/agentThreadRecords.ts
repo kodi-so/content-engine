@@ -89,6 +89,8 @@ export async function createThreadForTurn(
     title: normalizeOptionalText(args.title) ?? threadTitleFromMessage(args.initialMessage),
     status: "idle",
     checkpointMode: args.checkpointMode,
+    decisionRunId: crypto.randomUUID(),
+    turnDecisionCount: 0,
     createdAt: now,
     updatedAt: now,
   });

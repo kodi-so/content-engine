@@ -18,6 +18,7 @@ import type {
 import { buildAgentCreateOutputArtifacts } from "./model/agentCreateOutputArtifacts";
 import {
   type AgentCreateDefaultProviders,
+  formatAgentCreateCost,
 } from "./model/agentCreateToolProgress";
 import { agentCreateClassNames } from "./model/agentCreateUi";
 import {
@@ -226,6 +227,13 @@ export function AgentCreateSurface() {
     }),
     [artifactsByToolCall, asyncStateLookup, defaultProviders, resolvedModelByContentRequestId, toolCalls]
   );
+  const threadCostLabel = useMemo(() => {
+    const total = toolCalls?.reduce((sum, toolCall) =>
+      sum + (typeof toolCall.costUsd === "number" ? toolCall.costUsd : 0),
+      0
+    ) ?? 0;
+    return total > 0 ? formatAgentCreateCost(total) : undefined;
+  }, [toolCalls]);
   const artifactsByMessage = useMemo(
     () => artifactsByMessageId({
       artifactsByToolCallId: artifactsByToolCall,
@@ -592,6 +600,7 @@ export function AgentCreateSurface() {
 
         <AgentCreateComposerDock
           checkpointMode={checkpointMode}
+          costTotalLabel={threadCostLabel}
           isStopping={isStopping}
           isSubmitting={isSubmitting}
           isWorking={Boolean(activeThreadId && showActivity)}

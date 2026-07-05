@@ -142,6 +142,7 @@ export async function stopCreateThread(ctx: MutationCtx, thread: Doc<"createThre
     kind: "status",
   });
   await ctx.db.patch(thread._id, {
+    decisionRunId: crypto.randomUUID(),
     status: "idle",
     updatedAt: now,
   });

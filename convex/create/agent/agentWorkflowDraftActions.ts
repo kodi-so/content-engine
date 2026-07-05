@@ -22,6 +22,7 @@ export async function saveThreadAsWorkflowDraft(
     workspaceId: thread.workspaceId,
     createThreadId: thread._id,
     toolName: "workflow.createDraft",
+    dependsOnToolCallIds: [],
     status: "succeeded",
     label: "Saved workflow draft",
     input: {

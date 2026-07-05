@@ -115,7 +115,7 @@ export function ToolProgressTimeline({
                   {step.label}
                 </strong>
                 {step.costLabel ? (
-                  <span className="text-[0.7rem] font-[700] text-[var(--color-ink-muted)]">
+                  <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-page-quiet)] px-1.5 py-0.5 text-[0.68rem] font-[760] leading-none text-[var(--color-ink-muted)]">
                     {step.costLabel}
                   </span>
                 ) : null}

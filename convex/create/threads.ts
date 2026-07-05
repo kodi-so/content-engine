@@ -229,6 +229,8 @@ export const create = mutation({
       title: defaultThreadTitle(args.title),
       status: "idle",
       checkpointMode: args.checkpointMode ?? "debug",
+      decisionRunId: crypto.randomUUID(),
+      turnDecisionCount: 0,
       createdAt: now,
       updatedAt: now,
     });
@@ -398,6 +400,7 @@ export const recordToolCall = mutation({
       createThreadId: thread._id,
       messageId: args.messageId,
       toolName,
+      dependsOnToolCallIds: [],
       status: args.status ?? "queued",
       label,
       input: args.input,

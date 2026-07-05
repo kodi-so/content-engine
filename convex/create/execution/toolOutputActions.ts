@@ -202,6 +202,7 @@ export async function prepareDistributionDraftForThread(
       workspaceId: thread.workspaceId,
       createThreadId: thread._id,
       toolName: "publishing.prepare",
+      dependsOnToolCallIds: [],
       status: "succeeded",
       label: "Prepared publishing draft",
       input: {
@@ -274,6 +275,7 @@ export async function prepareArtifactExportForThread(
       workspaceId: thread.workspaceId,
       createThreadId: thread._id,
       toolName: "artifact.export",
+      dependsOnToolCallIds: [],
       status: "succeeded",
       label: "Exported output",
       input: {

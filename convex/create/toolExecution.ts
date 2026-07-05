@@ -2,9 +2,6 @@ import type { Doc } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { listReferencesForToolCall } from "./references/referenceDiscovery";
-import {
-  hasPendingAnalysisContextForThreadToolOutputs,
-} from "./references/sourceAnalysisContext";
 import { updateMediaTextOverlaysForToolCall } from "./studio/mediaOverlayEditing";
 import { createAnalysisJobForToolCall } from "./execution/sourceAnalysisExecution";
 import {
@@ -34,6 +31,7 @@ import {
   errorMessageFromUnknown,
   modelProviderNameValidator,
 } from "./execution/toolExecutionShared";
+import { toolCallHasPendingAsyncOutput } from "./execution/toolCallReadiness";
 import { hasPendingContentRequestsForThreadToolOutputs } from "./execution/threadToolOutputs";
 
 export {
@@ -249,44 +247,23 @@ async function saveReadyOutputsForToolCall(
   return true;
 }
 
-async function waitForPendingAnalysisIfNeeded(
+async function dependenciesReadyForToolCall(
   ctx: MutationCtx,
   thread: Doc<"createThreads">,
   toolCall: Doc<"createToolCalls">
 ) {
-  const hasPendingAnalysis = await hasPendingAnalysisContextForThreadToolOutputs(
-    ctx,
-    thread,
-    toolCall._id
-  );
-  if (!hasPendingAnalysis) return false;
-
-  await appendAgentMessage(ctx, thread, {
-    content:
-      "Waiting for source analysis to finish before generating new assets, so the recreation can use what was actually found in the source.",
-    kind: "status",
-  });
+  for (const dependencyId of toolCall.dependsOnToolCallIds) {
+    const dependency = await ctx.db.get(dependencyId);
+    if (!dependency || dependency.createThreadId !== thread._id) return false;
+    if (dependency.status !== "succeeded") return false;
+    if (await toolCallHasPendingAsyncOutput(ctx, thread, dependency)) return false;
+  }
   return true;
 }
 
-async function waitForPendingContentRequestsIfNeeded(
-  ctx: MutationCtx,
-  thread: Doc<"createThreads">,
-  toolCall: Doc<"createToolCalls">
-) {
-  const hasPendingContent = await hasPendingContentRequestsForThreadToolOutputs(
-    ctx,
-    thread,
-    toolCall._id
-  );
-  if (!hasPendingContent) return false;
-
-  await appendAgentMessage(ctx, thread, {
-    content:
-      "Waiting for the current preview to finish before using it in the next creation step.",
-    kind: "status",
-  });
-  return true;
+function maxParallelTools() {
+  const parsed = Number.parseInt(process.env.CONTENT_ENGINE_AGENT_MAX_PARALLEL_TOOLS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 4;
 }
 
 export async function executeRunnableQueuedTools(
@@ -316,15 +293,40 @@ export async function executeRunnableQueuedTools(
   }
 
   let executedCount = 0;
-  let pausedForPendingAnalysis = false;
-  let pausedForPendingContent = false;
+  let skippedForDependencies = false;
+  const runningToolCallsBeforeStart = await ctx.db
+    .query("createToolCalls")
+    .withIndex("by_thread_status", (q) =>
+      q.eq("createThreadId", thread._id).eq("status", "running")
+    )
+    .collect();
+  const succeededToolCalls = await ctx.db
+    .query("createToolCalls")
+    .withIndex("by_thread_status", (q) =>
+      q.eq("createThreadId", thread._id).eq("status", "succeeded")
+    )
+    .collect();
+  let pendingAsyncOutputCount = 0;
+  for (const toolCall of succeededToolCalls) {
+    if (await toolCallHasPendingAsyncOutput(ctx, thread, toolCall)) pendingAsyncOutputCount += 1;
+  }
+  const availableSlots = Math.max(
+    0,
+    maxParallelTools() - runningToolCallsBeforeStart.length - pendingAsyncOutputCount
+  );
+  if (availableSlots === 0 && queuedToolCalls.length) skippedForDependencies = true;
   for (const toolCall of queuedToolCalls) {
+    if (executedCount >= availableSlots) break;
+    if (!(await dependenciesReadyForToolCall(ctx, thread, toolCall))) {
+      skippedForDependencies = true;
+      continue;
+    }
     try {
       const mediaMode = mediaModeForToolName(toolCall.toolName);
       if (toolCall.toolName === "analyze.source") {
         await createAnalysisJobForToolCall(ctx, thread, toolCall);
         executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "references.list") {
         const references = await listReferencesForToolCall(ctx, thread, toolCall);
@@ -358,48 +360,24 @@ export async function executeRunnableQueuedTools(
       if (toolCall.toolName === "text.generate") {
         const started = await createTextGenerationForToolCall(ctx, thread, toolCall);
         if (started) executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "media.renderVideo") {
-        if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingContent = true;
-          break;
-        }
-        if (await waitForPendingAnalysisIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingAnalysis = true;
-          break;
-        }
         const started = await createVideoRenderForToolCall(ctx, thread, toolCall);
         if (started) executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "slideshow.render") {
-        if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingContent = true;
-          break;
-        }
-        if (await waitForPendingAnalysisIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingAnalysis = true;
-          break;
-        }
         await createSlideshowRequestForToolCall(ctx, thread, toolCall);
         executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "artifact.save") {
-        if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingContent = true;
-          break;
-        }
         const saved = await saveReadyOutputsForToolCall(ctx, thread, toolCall);
         if (saved) executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "artifact.export") {
-        if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingContent = true;
-          break;
-        }
         const result = await prepareArtifactExportForThread(ctx, thread, undefined, {
           recordToolCall: false,
         });
@@ -417,13 +395,9 @@ export async function executeRunnableQueuedTools(
           });
           executedCount += 1;
         }
-        break;
+        continue;
       }
       if (toolCall.toolName === "publishing.prepare") {
-        if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingContent = true;
-          break;
-        }
         const result = await prepareDistributionDraftForThread(ctx, thread, undefined, {
           recordToolCall: false,
         });
@@ -441,39 +415,27 @@ export async function executeRunnableQueuedTools(
           });
           executedCount += 1;
         }
-        break;
+        continue;
       }
       if (toolCall.toolName === "workflow.createDraft") {
         await createWorkflowDraftForToolCall(ctx, thread, toolCall);
         executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "studio.compose") {
-        if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-          pausedForPendingContent = true;
-          break;
-        }
         const composed = await createStudioProjectForToolCall(ctx, thread, toolCall);
         if (composed) executedCount += 1;
-        break;
+        continue;
       }
       if (toolCall.toolName === "studio.render") {
         const requested = await createStudioRenderRequestForToolCall(ctx, thread, toolCall);
         if (requested) executedCount += 1;
-        break;
+        continue;
       }
-      if (!mediaMode) break;
-      if (await waitForPendingContentRequestsIfNeeded(ctx, thread, toolCall)) {
-        pausedForPendingContent = true;
-        break;
-      }
-      if (await waitForPendingAnalysisIfNeeded(ctx, thread, toolCall)) {
-        pausedForPendingAnalysis = true;
-        break;
-      }
+      if (!mediaMode) continue;
       await createGenerationRequestForToolCall(ctx, thread, toolCall, mediaMode);
       executedCount += 1;
-      break;
+      continue;
     } catch (error) {
       const now = Date.now();
       const errorMessage = errorMessageFromUnknown(error);
@@ -505,8 +467,7 @@ export async function executeRunnableQueuedTools(
   if (
     executedCount === 0 &&
     queuedToolCalls.length &&
-    !pausedForPendingAnalysis &&
-    !pausedForPendingContent
+    !skippedForDependencies
   ) {
     await appendAgentMessage(ctx, thread, {
       content:
@@ -546,8 +507,6 @@ export async function executeRunnableQueuedTools(
       thread.status === "running" ||
       thread.status === "waiting_for_user"
     ) &&
-    !pausedForPendingAnalysis &&
-    !pausedForPendingContent &&
     await continueAgentLoopAfterToolCompletion(ctx, thread)
   ) {
     return { executedCount, queuedCount: 0, continuedAgentLoop: true };

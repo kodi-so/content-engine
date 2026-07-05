@@ -116,6 +116,10 @@ function toolStepDetail(args: {
   return modelLabel || promptLabel || toolName;
 }
 
+export function formatAgentCreateCost(costUsd: number) {
+  return `$${costUsd.toFixed(costUsd > 0 && costUsd < 1 ? 3 : 2)}`;
+}
+
 export function pendingContentStatus(status: string): AgentCreateToolStatus | undefined {
   if (status === "queued" || status === "planning" || status === "generating") return "running";
   if (status === "discarded") return "canceled";
@@ -160,7 +164,9 @@ export function toolProgressStepsForCall(args: {
       toolName: toolCall.toolName,
     }),
     artifactIds: toolCall.artifactIds?.map(String),
-    costLabel: typeof toolCall.costUsd === "number" ? `$${toolCall.costUsd.toFixed(2)}` : undefined,
+    costLabel: status === "succeeded" && typeof toolCall.costUsd === "number"
+      ? formatAgentCreateCost(toolCall.costUsd)
+      : undefined,
     errorMessage,
     createdAt: toolCall.createdAt,
     startedAt: toolCall.startedAt,

@@ -11,6 +11,13 @@ import {
   studioRenderRequestIdFromToolOutput,
 } from "./toolExecutionShared";
 
+const continueWorkingCheckpointLabel = "Continue working?";
+
+function maxTurnDecisionCount() {
+  const parsed = Number.parseInt(process.env.CONTENT_ENGINE_AGENT_MAX_TURN_DECISIONS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+}
+
 async function asyncFailureMessageForToolCall(
   ctx: MutationCtx,
   thread: Doc<"createThreads">,
@@ -261,16 +268,38 @@ export async function continueAgentLoopAfterToolCompletion(
   if (!latestUserMessage) return false;
 
   const now = Date.now();
+  const decisionCap = maxTurnDecisionCount();
+  if (thread.turnDecisionCount >= decisionCap) {
+    await ctx.db.insert("createCheckpoints", {
+      userId: thread.userId,
+      workspaceId: thread.workspaceId,
+      createThreadId: thread._id,
+      status: "open",
+      label: continueWorkingCheckpointLabel,
+      message: `The agent has taken ${thread.turnDecisionCount} planning steps on this request, so it is pausing for confirmation before continuing.`,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(thread._id, {
+      status: "waiting_for_user",
+      updatedAt: now,
+    });
+    return true;
+  }
+
+  const decisionRunId = crypto.randomUUID();
   await appendAgentMessage(ctx, thread, {
     content: "Thinking through the next step.",
     kind: "status",
   });
   await ctx.db.patch(thread._id, {
+    decisionRunId,
     status: "planning",
     updatedAt: now,
   });
   await ctx.scheduler.runAfter(0, internal.create.agent.decideAgentTurn, {
     checkpointMode: thread.checkpointMode,
+    decisionRunId,
     threadId: thread._id,
     userMessageId: latestUserMessage._id,
   });
