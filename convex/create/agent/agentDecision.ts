@@ -441,7 +441,7 @@ function nativeSlideshowToolCalls(
   return [{
     toolName: "slideshow.render",
     prompt,
-    planStep: preferredCall?.planStep || "Create the slideshow.",
+    planStep: "Create the slideshow.",
     input: {
       ...slideshowInput,
       brief,

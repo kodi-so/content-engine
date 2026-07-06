@@ -169,8 +169,11 @@ async function artifactsForCompletedAsyncTool(
   const artifactIds = new Set<string>((toolCall.artifactIds ?? []).map(String));
   const contentRequestId = contentRequestIdFromToolOutput(toolCall.output);
   if (contentRequestId && readySource._id === contentRequestId) {
-    for (const artifact of await artifactsForContentRequest(ctx, thread, contentRequestId)) {
-      artifactIds.add(String(artifact._id));
+    const isSlideshowRequest = "contentFormat" in readySource && readySource.contentFormat === "slideshow";
+    if (!isSlideshowRequest) {
+      for (const artifact of await artifactsForContentRequest(ctx, thread, contentRequestId)) {
+        artifactIds.add(String(artifact._id));
+      }
     }
   }
   const studioRenderRequestId = studioRenderRequestIdFromToolOutput(toolCall.output);
@@ -193,6 +196,31 @@ async function artifactsForCompletedAsyncTool(
     if (!artifact) return false;
     return thread.workspaceId ? artifact.workspaceId === thread.workspaceId : artifact.userId === thread.userId;
   });
+}
+
+async function slideshowReadyMessageForRequest(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  request: Doc<"contentRequests">
+) {
+  const slideshows = await ctx.db
+    .query("slideshows")
+    .withIndex("by_content_request", (q) => q.eq("contentRequestId", request._id))
+    .collect();
+  const slideshow = slideshows.find((candidate) =>
+    thread.workspaceId ? candidate.workspaceId === thread.workspaceId : candidate.userId === thread.userId
+  );
+  if (!slideshow) return "Your slideshow is ready to review.";
+
+  const spec = isRecord(slideshow.spec) ? slideshow.spec : {};
+  const slides = Array.isArray(spec.slides) ? spec.slides : [];
+  const activeSlideCount = slides.filter((slide) =>
+    isRecord(slide) ? slide.status !== "deleted" : true
+  ).length;
+  const slideSummary = activeSlideCount > 0
+    ? `${activeSlideCount} slide${activeSlideCount === 1 ? "" : "s"}`
+    : "an editable slideshow";
+  return `Your slideshow "${slideshow.title}" is ready — ${slideSummary}. Want any copy, slide, or layout changes?`;
 }
 
 async function mediaArtifactsProducedSinceUserMessage(
@@ -912,11 +940,15 @@ export const continueAfterAsyncResult = internalMutation({
             role: "agent",
             content: completionMessageForToolResult(toolCall, artifacts),
             kind: "tool_result",
-            artifactIds: artifacts.map((artifact) => artifact._id),
+            ...(artifacts.length ? { artifactIds: artifacts.map((artifact) => artifact._id) } : {}),
           });
-          if (artifacts.length) {
+          const costUsd = "costUsd" in readySource && typeof readySource.costUsd === "number"
+            ? readySource.costUsd
+            : undefined;
+          if (artifacts.length || costUsd !== undefined) {
             await ctx.db.patch(toolCall._id, {
-              artifactIds: artifacts.map((artifact) => artifact._id),
+              ...(artifacts.length ? { artifactIds: artifacts.map((artifact) => artifact._id) } : {}),
+              ...(costUsd !== undefined ? { costUsd } : {}),
               updatedAt: Date.now(),
             });
           }
@@ -927,6 +959,11 @@ export const continueAfterAsyncResult = internalMutation({
           "contentFormat" in readySource &&
           readySource.contentFormat === "slideshow"
         ) {
+          await appendMessage(ctx, thread, {
+            role: "agent",
+            content: await slideshowReadyMessageForRequest(ctx, thread, readySource),
+            kind: "chat",
+          });
           await ctx.db.patch(thread._id, {
             status: "ready",
             updatedAt: Date.now(),

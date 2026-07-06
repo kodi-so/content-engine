@@ -58,6 +58,11 @@ type AgentCreateMentionOptionLookup = Map<string, {
 export function resolvedModelByContentRequestId(threadOutputs?: AgentCreateThreadOutputs) {
   const mapped = new Map<string, string>();
   for (const entry of threadOutputs?.contentRequests ?? []) {
+    const mediaArtifactModel = entry.artifacts.find((artifact) =>
+      (artifact.type === "image" || artifact.type === "video" || artifact.type === "audio") &&
+      typeof artifact.model === "string" &&
+      artifact.model.trim()
+    )?.model;
     const artifactModel = entry.artifacts.find((artifact) =>
       typeof artifact.model === "string" && artifact.model.trim()
     )?.model;
@@ -67,7 +72,7 @@ export function resolvedModelByContentRequestId(threadOutputs?: AgentCreateThrea
     const requestModel = typeof generation.model === "string" && generation.model.trim()
       ? generation.model.trim()
       : undefined;
-    const model = artifactModel?.trim() || requestModel;
+    const model = mediaArtifactModel?.trim() || artifactModel?.trim() || requestModel;
     if (model) mapped.set(String(entry.request._id), model);
   }
   return mapped;
@@ -118,10 +123,12 @@ export function asyncStateLookupForThreadOutputs(threadOutputs?: AgentCreateThre
 export function artifactIdsByContentRequestId(threadOutputs?: AgentCreateThreadOutputs) {
   const mapped = new Map<string, string[]>();
   for (const entry of threadOutputs?.contentRequests ?? []) {
-    const artifactIds = [
-      ...entry.artifacts.map((artifact) => String(artifact._id)),
-      ...entry.slideshows.map((slideshow) => String(slideshow._id)),
-    ];
+    const artifactIds = entry.request.contentFormat === "slideshow"
+      ? entry.slideshows.map((slideshow) => String(slideshow._id))
+      : [
+          ...entry.artifacts.map((artifact) => String(artifact._id)),
+          ...entry.slideshows.map((slideshow) => String(slideshow._id)),
+        ];
     mapped.set(
       String(entry.request._id),
       artifactIds.length ? artifactIds : [`request:${entry.request._id}`]

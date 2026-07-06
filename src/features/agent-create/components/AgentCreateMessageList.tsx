@@ -49,6 +49,15 @@ function visibleChatArtifacts(artifacts: AgentCreateArtifact[] = []) {
   );
 }
 
+function uniqueArtifacts(artifacts: AgentCreateArtifact[]) {
+  const seen = new Set<string>();
+  return artifacts.filter((artifact) => {
+    if (seen.has(artifact.id)) return false;
+    seen.add(artifact.id);
+    return true;
+  });
+}
+
 function formatWorkDuration(ms: number) {
   const totalSeconds = Math.max(1, Math.round(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -315,26 +324,49 @@ export function AgentCreateMessageList({
         {messages.map((message, messageIndex) => {
           const isUser = message.role === "user";
           const isSystem = message.role === "system";
-          const artifacts = visibleChatArtifacts(message.artifacts);
+          const previousUserIndex = !isUser
+            ? messages
+                .slice(0, messageIndex)
+                .map((candidate, index) => ({ candidate, index }))
+                .reverse()
+                .find(({ candidate }) => candidate.role === "user")?.index ?? -1
+            : -1;
+          const nextUserIndex = !isUser
+            ? messages.findIndex((candidate, index) => index > messageIndex && candidate.role === "user")
+            : -1;
+          const turnEndIndex = nextUserIndex >= 0 ? nextUserIndex : messages.length;
+          const turnMessages = !isUser
+            ? messages.slice(previousUserIndex + 1, turnEndIndex)
+            : [];
+          const agentTurnMessages = turnMessages.filter((candidate) => candidate.role !== "user");
+          const firstAgentMessage = agentTurnMessages[0];
+          const lastAgentMessage = agentTurnMessages[agentTurnMessages.length - 1];
+          const isFirstAgentInTurn = !isUser && firstAgentMessage?.id === message.id;
+          const isLastAgentInTurn = !isUser && lastAgentMessage?.id === message.id;
+          const turnMessageIds = new Set(agentTurnMessages.map((candidate) => candidate.id));
+          const turnSteps = agentTurnMessages.flatMap((candidate) =>
+            workingMessageId === candidate.id && activeThinkingStep
+              ? [...(candidate.toolSteps ?? []), activeThinkingStep]
+              : candidate.toolSteps ?? []
+          );
+          const artifacts = isUser
+            ? visibleChatArtifacts(message.artifacts)
+            : isLastAgentInTurn
+              ? visibleChatArtifacts(uniqueArtifacts(agentTurnMessages.flatMap((candidate) => candidate.artifacts ?? [])))
+              : [];
           const hasInlineSlideshow = artifacts.some((artifact) =>
             isInlineSlideshowArtifact(artifact, false)
           );
-          const steps = workingMessageId === message.id && activeThinkingStep
-            ? [...(message.toolSteps ?? []), activeThinkingStep]
-            : message.toolSteps;
-          const showWorkLog = !isUser && (Boolean(steps?.length) || workingMessageId === message.id);
-          const isSingleStepPlan = message.kind === "plan" && (steps?.length ?? 0) <= 1;
+          const isTurnWorking = Boolean(workingMessageId && turnMessageIds.has(workingMessageId));
+          const showWorkLog = isFirstAgentInTurn && (Boolean(turnSteps.length) || isTurnWorking);
+          const isSingleStepPlan = message.kind === "plan" && turnSteps.length <= 1;
+          const messageContent = message.kind === "plan"
+            ? stripRedundantPlan(message.content)
+            : message.content;
           const content = isSingleStepPlan
             ? ""
-            : showWorkLog
-              ? stripRedundantPlan(message.content)
-              : message.content;
-          const previousUserMessage = !isUser
-            ? messages
-                .slice(0, messageIndex)
-                .reverse()
-                .find((candidate) => candidate.role === "user")
-            : undefined;
+            : messageContent;
+          const previousUserMessage = previousUserIndex >= 0 ? messages[previousUserIndex] : undefined;
 
           return (
             <article
@@ -358,11 +390,10 @@ export function AgentCreateMessageList({
               >
                 {showWorkLog ? (
                   <AgentMessageWorkLog
-                    defaultOpen={message.kind === "plan"}
-                    isWorking={workingMessageId === message.id}
+                    isWorking={isTurnWorking}
                     onArtifactOpen={onArtifactOpen}
                     startedAt={previousUserMessage?.createdAt}
-                    steps={steps}
+                    steps={turnSteps}
                   />
                 ) : null}
 

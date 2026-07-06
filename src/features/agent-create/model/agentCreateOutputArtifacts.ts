@@ -161,10 +161,26 @@ function artifactStatusFromRequest(status: string): AgentCreateArtifact["status"
   return "generating";
 }
 
+function isProcessOnlySlideshowArtifact(artifact: {
+  data?: unknown;
+  type: string;
+}) {
+  if (
+    artifact.type === "slide_spec" ||
+    artifact.type === "image_prompt"
+  ) {
+    return true;
+  }
+  const data = isRecord(artifact.data) ? artifact.data : {};
+  return data.format === "slideshow_background" ||
+    data.format === "slideshow_full_graphic";
+}
+
 export function buildAgentCreateOutputArtifacts(threadOutputs?: ThreadOutputs): AgentCreateArtifact[] {
   const artifacts: AgentCreateArtifact[] = [];
 
   for (const artifact of threadOutputs?.directArtifacts ?? []) {
+    if (isProcessOnlySlideshowArtifact(artifact)) continue;
     const kind = artifactKindForRecord(artifact);
     const data = isRecord(artifact.data) ? artifact.data : {};
     const generatedText = typeof data.text === "string" ? data.text : undefined;
