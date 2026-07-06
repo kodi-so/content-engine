@@ -1,15 +1,17 @@
 import { v } from "convex/values";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   mutation,
   query,
+  type ActionCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { getPublishingProvider } from "../providers";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import {
   distributionStatusValidator,
@@ -270,6 +272,69 @@ export const replaceArtifact = mutation({
   },
 });
 
+async function executePlanPublish(
+  ctx: ActionCtx,
+  args: {
+    id: Id<"distributionPlans">;
+    mode: "draft" | "schedule" | "now";
+    userId: string;
+  }
+) {
+  const context = await getDistributionPlanContext(ctx, args.id, args.userId);
+  if (!context) throw new Error("Distribution plan not found");
+  if (context.plan.status === "waiting_for_approval") {
+    throw new Error("Distribution plan is still waiting for approval");
+  }
+  if (context.plan.status === "needs_revision") {
+    throw new Error("Distribution plan needs revision before publishing");
+  }
+  if (context.plan.status !== "draft" && context.plan.status !== "failed") {
+    throw new Error(`Distribution plan cannot be published from ${context.plan.status}`);
+  }
+  if (context.socialAccounts.length === 0 && context.plan.provider !== "manual") {
+    throw new Error("Distribution plan has no target accounts");
+  }
+
+  const provider = getPublishingProvider(context.plan.provider);
+
+  await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
+    id: context.plan._id,
+    userId: args.userId,
+    status: "publishing",
+  });
+
+  try {
+    const input = await loadPublishInput(provider, context);
+    const result =
+      args.mode === "draft"
+        ? await provider.createDraft(input)
+        : args.mode === "schedule"
+        ? await provider.schedulePost(input)
+        : await provider.publishNow(input);
+
+    await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
+      id: context.plan._id,
+      userId: args.userId,
+      status: mapProviderStatus(result.status),
+      externalPostIds: result.externalPostIds,
+      publishedAt: result.publishedAt,
+      providerPayload: result.providerPayload,
+    });
+
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Publishing failed";
+    await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
+      id: context.plan._id,
+      userId: args.userId,
+      status: "failed",
+      errorMessage: message,
+    });
+
+    throw error;
+  }
+}
+
 export const publish = action({
   args: {
     id: v.id("distributionPlans"),
@@ -277,58 +342,41 @@ export const publish = action({
   },
   handler: async (ctx, args) => {
     const identity = await requireBetaAccessForAction(ctx);
+    return await executePlanPublish(ctx, { ...args, userId: identity.subject });
+  },
+});
 
-    const context = await getDistributionPlanContext(ctx, args.id, identity.subject);
-    if (!context) throw new Error("Distribution plan not found");
-    if (context.plan.status === "waiting_for_approval") {
-      throw new Error("Distribution plan is still waiting for approval");
-    }
-    if (context.plan.status === "needs_revision") {
-      throw new Error("Distribution plan needs revision before publishing");
-    }
-    if (context.plan.status !== "draft" && context.plan.status !== "failed") {
-      throw new Error(`Distribution plan cannot be published from ${context.plan.status}`);
-    }
-    if (context.socialAccounts.length === 0 && context.plan.provider !== "manual") {
-      throw new Error("Distribution plan has no target accounts");
-    }
-
-    const provider = getPublishingProvider(context.plan.provider);
-
-    await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
-      id: context.plan._id,
-      userId: identity.subject,
-      status: "publishing",
-    });
-
+// Publish path for automation runs: no interactive identity, and the linked
+// automation run is advanced to published/failed based on the outcome.
+export const publishInternal = internalAction({
+  args: {
+    id: v.id("distributionPlans"),
+    mode: v.union(v.literal("draft"), v.literal("schedule"), v.literal("now")),
+    userId: v.string(),
+    automationRunId: v.optional(v.id("automationRuns")),
+  },
+  handler: async (ctx, args) => {
     try {
-      const input = await loadPublishInput(provider, context);
-      const result =
-        args.mode === "draft"
-          ? await provider.createDraft(input)
-          : args.mode === "schedule"
-          ? await provider.schedulePost(input)
-          : await provider.publishNow(input);
-
-      await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
-        id: context.plan._id,
-        userId: identity.subject,
-        status: mapProviderStatus(result.status),
-        externalPostIds: result.externalPostIds,
-        publishedAt: result.publishedAt,
-        providerPayload: result.providerPayload,
+      const result = await executePlanPublish(ctx, {
+        id: args.id,
+        mode: args.mode,
+        userId: args.userId,
       });
-
+      if (args.automationRunId) {
+        await ctx.runMutation(internal.automations.scheduling.markAutomationRunPublishOutcome, {
+          runId: args.automationRunId,
+          ok: true,
+        });
+      }
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Publishing failed";
-      await ctx.runMutation(internal.publishing.distributionPlans.updateFromProvider, {
-        id: context.plan._id,
-        userId: identity.subject,
-        status: "failed",
-        errorMessage: message,
-      });
-
+      if (args.automationRunId) {
+        await ctx.runMutation(internal.automations.scheduling.markAutomationRunPublishOutcome, {
+          runId: args.automationRunId,
+          ok: false,
+          errorMessage: error instanceof Error ? error.message : "Publishing failed",
+        });
+      }
       throw error;
     }
   },

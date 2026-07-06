@@ -58,6 +58,12 @@ function safeRect(aspectRatio: string, enabled: boolean): SafeRect {
   return { left: 6, top: 6, right: 6, bottom: 6 };
 }
 
+// Percent insets of the platform-safe region (TikTok/Reels UI chrome), shared
+// with the caption renderer and the Studio safe-area guide overlay.
+export function platformSafeInsets(aspectRatio: string): SafeRect {
+  return safeRect(aspectRatio, true);
+}
+
 function defaultZone(role: MediaTextOverlayRole): OverlayZone {
   if (role === "eyebrow") return "top";
   if (role === "headline") return "center";

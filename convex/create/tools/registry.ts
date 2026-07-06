@@ -539,10 +539,14 @@ const toolDefinitions = [
   agentRuntimeTool({
     name: "studio.compose",
     label: "Compose In Studio",
-    description: "Create or update a Studio composition from generated image/video clips, audio tracks, and timed text overlays.",
+    description: "Create or update a Studio composition from generated image/video clips, audio tracks, timed text overlays, transitions, and auto captions.",
     plannerGuidance: [
       "For multi-clip final videos, call studio.compose after generating or selecting the clips. If the user asks to create a finished video rather than only a Studio draft, call studio.render after studio.compose.",
       "When the user asks for text on a video, pass structured textOverlays with role and zone (and clipIndex or start/end when timing matters) instead of quoting text in the brief. To add text to an existing generated video, use studio.compose with that video artifact plus textOverlays, then studio.render.",
+      "Default clip boundaries to cuts. Use input.clips[].transitionToNext with type crossfade for softer mood shifts, dip_to_black for scene or time changes, and whip for energetic reveals such as before/after moments.",
+      "Use input.clips[].trimStartSeconds/trimEndSeconds to cut dead air or select the strongest moment of a generated clip, for example seconds 2-6 of an 8 second generation.",
+      "When combining voiceover and music, add both audio artifacts and set input.audio[].role to music for the music track; music ducks under speech automatically. Do not trim the music around speech.",
+      "When the user asks for captions or subtitles on a voiceover video, set input.autoCaptions (optionally with stylePreset and zone) instead of writing caption text overlays by hand.",
     ],
     category: "studio",
     inputSchema: jsonSchema("Studio composition request.", {
@@ -550,9 +554,12 @@ const toolDefinitions = [
       brief: stringSchema("Optional composition brief; used for quoted overlay text extraction."),
       artifactIds: stringArraySchema("Source media artifact ids."),
       aspectRatio: stringSchema("Optional composition aspect ratio. Common values include 1:1, 4:5, 9:16, and 16:9."),
-      textOverlays: objectArraySchema("Optional timed text overlays or captions. Each record may carry text, role, zone, clipIndex, startSeconds, and endSeconds."),
+      clips: objectArraySchema("Optional per-clip settings addressed by artifactId: trimStartSeconds, trimEndSeconds, durationSeconds (images), transitionToNext {type: cut|crossfade|dip_to_black|dip_to_white|whip, durationSeconds}, and kenBurns {direction: zoom_in|zoom_out|pan_left|pan_right, intensity: subtle|medium} or null for a static image."),
+      audio: objectArraySchema("Optional per-audio-track settings addressed by artifactId: role (voiceover|music|sfx), volume, startSeconds, and ducking {enabled, duckVolume}. Music tracks duck under voiceover by default."),
+      textOverlays: objectArraySchema("Optional timed text overlays. Each record may carry text, role, zone, clipIndex, startSeconds, and endSeconds."),
       overlays: objectArraySchema("Optional timed overlay records; prefer textOverlays."),
-      captions: objectArraySchema("Optional caption records; prefer textOverlays."),
+      captions: objectArraySchema("Optional caption text records rendered as overlays; prefer autoCaptions for spoken-word subtitles."),
+      autoCaptions: looseObjectSchema("Optional auto caption request for the voiceover script: {stylePreset: clean_bold|karaoke_highlight|boxed_lines, zone: bottom|center}. Pass an empty object for defaults."),
     }),
     outputSchema: fieldsSchema("Studio project result.", {
       projectId: "Created or updated Studio project id.",
@@ -560,11 +567,43 @@ const toolDefinitions = [
       audioTrackCount: "Number of audio tracks added to the Studio project.",
       imageClipCount: "Number of static image clips added to the Studio project.",
       textOverlayCount: "Number of timed text overlays added to the Studio project.",
+      captionSegmentCount: "Number of auto caption segments on the Studio project.",
     }),
     artifactBehavior: {
       emitsArtifacts: true,
       artifactTypes: ["video", "file"],
       intermediate: true,
+    },
+  }),
+  agentRuntimeTool({
+    name: "media.captions",
+    label: "Caption Video",
+    description: "Add, restyle, or remove word-timed spoken captions on the current Studio video project, derived from the voiceover script generated in this thread.",
+    plannerGuidance: [
+      "When the user asks for captions or subtitles on an existing Studio video, use media.captions. Captions come from the voiceover script; use text overlays for titles, hooks, CTAs, and design text instead.",
+    ],
+    category: "studio",
+    inputSchema: jsonSchema("Video caption request.", {
+      projectId: stringSchema("Optional Studio video project id. Omit to caption the latest Studio project in the thread."),
+      stylePreset: stringSchema("Caption style preset.", ["clean_bold", "karaoke_highlight", "boxed_lines"]),
+      zone: stringSchema("Caption placement zone.", ["bottom", "center"]),
+      source: stringSchema("Caption timing source; voiceover_script uses the script generated in this thread.", ["voiceover_script", "transcribe"]),
+      remove: booleanSchema("When true, remove captions from the project instead of adding them."),
+    }),
+    outputSchema: fieldsSchema("Caption result.", {
+      projectId: "Captioned Studio project id.",
+      captionSegmentCount: "Number of caption segments after the update.",
+      stylePreset: "Applied caption style preset.",
+      zone: "Applied caption zone.",
+    }),
+    checkpoint: {
+      behavior: "none",
+      defaultInDebugMode: false,
+      label: "Caption video",
+      description: "Caption updates edit the existing Studio project directly.",
+    },
+    artifactBehavior: {
+      emitsArtifacts: false,
     },
   }),
   agentRuntimeTool({

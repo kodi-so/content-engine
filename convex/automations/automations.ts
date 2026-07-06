@@ -1,7 +1,16 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import {
+  action,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server";
+import { internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
+import { requireBetaAccessForAction } from "../auth/actionAccess";
 import {
   requireWorkspaceMember,
   resolveWritableWorkspace,
@@ -10,7 +19,7 @@ import {
   automationApprovalModeValidator,
   automationScheduleValidator,
 } from "../validators";
-import { nextScheduledRunAt } from "./scheduling";
+import { calendarMonthStart, nextScheduledRunAt } from "./scheduling";
 
 const generationDefaultsValidator = v.object({
   imageResolution: v.optional(v.string()),
@@ -70,7 +79,28 @@ export const list = query({
           .withIndex("by_automation_started", (q) => q.eq("automationId", automation._id))
           .order("desc")
           .take(3);
-        return { ...automation, recentRuns: runs };
+        const monthStart = calendarMonthStart(
+          Date.now(),
+          automation.scheduleConfig.timezone || "America/Chicago"
+        );
+        const monthRuns = await ctx.db
+          .query("automationRuns")
+          .withIndex("by_automation_started", (q) =>
+            q.eq("automationId", automation._id).gte("startedAt", monthStart)
+          )
+          .collect();
+        const pendingApprovalRuns = await ctx.db
+          .query("automationRuns")
+          .withIndex("by_automation", (q) => q.eq("automationId", automation._id))
+          .filter((q) => q.eq(q.field("status"), "awaiting_approval"))
+          .collect();
+        const pendingApprovalCount = pendingApprovalRuns.length;
+        return {
+          ...automation,
+          recentRuns: runs,
+          monthToDateSpendUsd: monthRuns.reduce((sum, run) => sum + (run.costUsd ?? 0), 0),
+          pendingApprovalCount,
+        };
       })
     );
   },
@@ -181,6 +211,184 @@ export const setActive = mutation({
       isActive: args.isActive,
       nextRunAt: args.isActive ? nextScheduledRunAt(updated) : undefined,
       updatedAt: Date.now(),
+    });
+  },
+});
+
+// One immediate run outside the schedule. Does not touch nextRunAt or isActive,
+// so it works on paused automations and never disturbs the cadence.
+export const runNow = mutation({
+  args: { id: v.id("automations") },
+  handler: async (ctx, args) => {
+    const { userId } = await ensureCurrentUser(ctx);
+    const automation = await requireAutomationAccess(ctx, args.id, userId);
+    const now = Date.now();
+    const runId = await ctx.db.insert("automationRuns", {
+      automationId: automation._id,
+      userId: automation.userId,
+      workspaceId: automation.workspaceId,
+      topic: "Picking topic",
+      status: "picking_topic",
+      startedAt: now,
+    });
+    await ctx.scheduler.runAfter(0, internal.automations.scheduling.startAutomationRun, {
+      runId,
+    });
+    return runId;
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("automations") },
+  handler: async (ctx, args) => {
+    const { userId } = await ensureCurrentUser(ctx);
+    const automation = await requireAutomationAccess(ctx, args.id, userId);
+    const runs = await ctx.db
+      .query("automationRuns")
+      .withIndex("by_automation", (q) => q.eq("automationId", automation._id))
+      .collect();
+    for (const run of runs) {
+      await ctx.db.delete(run._id);
+    }
+    await ctx.db.delete(automation._id);
+  },
+});
+
+type RunPlanSummary = {
+  status: Doc<"distributionPlans">["status"];
+  caption?: string;
+  externalPostIds?: string[];
+  artifactPreviews: Array<{
+    artifactId: Id<"artifacts">;
+    title?: string;
+    storageUrl?: string;
+    mimeType?: string;
+  }>;
+};
+
+async function runPlanSummary(
+  ctx: QueryCtx,
+  run: Doc<"automationRuns">
+): Promise<RunPlanSummary | null> {
+  if (!run.distributionPlanId) return null;
+  const plan = await ctx.db.get(run.distributionPlanId);
+  if (!plan) return null;
+  const artifacts = await Promise.all(
+    plan.artifactIds.slice(0, 3).map((artifactId) => ctx.db.get(artifactId))
+  );
+  return {
+    status: plan.status,
+    caption: plan.caption,
+    externalPostIds: plan.externalPostIds,
+    artifactPreviews: artifacts.flatMap((artifact) =>
+      artifact
+        ? [{
+            artifactId: artifact._id,
+            title: artifact.title,
+            storageUrl: artifact.storageUrl,
+            mimeType: typeof (artifact.data as Record<string, unknown> | undefined)?.mimeType === "string"
+              ? (artifact.data as Record<string, unknown>).mimeType as string
+              : undefined,
+          }]
+        : []
+    ),
+  };
+}
+
+export const listRuns = query({
+  args: {
+    automationId: v.id("automations"),
+    before: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = currentUserId(await requireBetaAccess(ctx));
+    await requireAutomationAccess(ctx, args.automationId, userId);
+    const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 10)));
+    const runs = await ctx.db
+      .query("automationRuns")
+      .withIndex("by_automation_started", (q) =>
+        args.before === undefined
+          ? q.eq("automationId", args.automationId)
+          : q.eq("automationId", args.automationId).lt("startedAt", args.before)
+      )
+      .order("desc")
+      .take(limit + 1);
+    const page = runs.slice(0, limit);
+    return {
+      runs: await Promise.all(
+        page.map(async (run) => ({
+          ...run,
+          plan: await runPlanSummary(ctx, run),
+        }))
+      ),
+      hasMore: runs.length > limit,
+      nextBefore: page.length ? page[page.length - 1].startedAt : undefined,
+    };
+  },
+});
+
+export const getRunApprovalContext = internalQuery({
+  args: { runId: v.id("automationRuns"), userId: v.string() },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return null;
+    const automation = await ctx.db.get(run.automationId);
+    if (!automation) return null;
+    if (automation.workspaceId) {
+      await requireWorkspaceMember(ctx, automation.workspaceId, args.userId);
+    } else if (automation.userId !== args.userId) {
+      return null;
+    }
+    return { automation, run };
+  },
+});
+
+export const approveRun = action({
+  args: { runId: v.id("automationRuns") },
+  handler: async (ctx, args) => {
+    const identity = await requireBetaAccessForAction(ctx);
+    const context = await ctx.runQuery(internal.automations.automations.getRunApprovalContext, {
+      runId: args.runId,
+      userId: identity.subject,
+    });
+    if (!context) throw new Error("Automation run not found");
+    if (context.run.status !== "awaiting_approval") {
+      throw new Error(`Run is ${context.run.status}, not awaiting approval`);
+    }
+    if (!context.run.distributionPlanId) {
+      throw new Error("Run has no distribution plan to publish");
+    }
+    await ctx.runAction(internal.publishing.distributionPlans.publishInternal, {
+      id: context.run.distributionPlanId,
+      mode: "now",
+      userId: context.run.userId,
+      automationRunId: context.run._id,
+    });
+  },
+});
+
+export const rejectRun = mutation({
+  args: { runId: v.id("automationRuns"), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const { userId } = await ensureCurrentUser(ctx);
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Automation run not found");
+    await requireAutomationAccess(ctx, run.automationId, userId);
+    if (run.status !== "awaiting_approval") {
+      throw new Error(`Run is ${run.status}, not awaiting approval`);
+    }
+    if (run.distributionPlanId) {
+      const plan = await ctx.db.get(run.distributionPlanId);
+      if (plan && plan.status === "draft") {
+        await ctx.db.delete(plan._id);
+      }
+    }
+    await ctx.db.patch(run._id, {
+      status: "skipped",
+      errorMessage: args.reason?.trim() || "Rejected by user",
+      distributionPlanId: undefined,
+      completedAt: Date.now(),
     });
   },
 });

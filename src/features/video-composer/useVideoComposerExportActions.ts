@@ -5,6 +5,7 @@ import { blobToDataUrl } from "../../lib/browser/dataUrl";
 import type { CompositionAspectRatio } from "../../lib/composition/aspectRatios";
 import { renderVideoCompositionToBlob } from "./renderVideoComposition";
 import type {
+  CompositionCaptions,
   TimedTextOverlay,
   VideoComposerAudioTrack,
   VideoComposerClip,
@@ -56,6 +57,7 @@ export function useVideoComposerExportActions({
   aspectRatio,
   audioTracks,
   autoRenderRequested,
+  captions,
   clips,
   completeStudioRenderRequest,
   createArtifact,
@@ -83,6 +85,7 @@ export function useVideoComposerExportActions({
   aspectRatio: CompositionAspectRatio;
   audioTracks: VideoComposerAudioTrack[];
   autoRenderRequested: boolean;
+  captions?: CompositionCaptions;
   clips: VideoComposerClip[];
   completeStudioRenderRequest: CompleteRenderMutation;
   createArtifact: CreateArtifactMutation;
@@ -117,6 +120,7 @@ export function useVideoComposerExportActions({
     audioTracks,
     clips,
     textOverlays,
+    ...(captions ? { captions } : {}),
   });
 
   const exportCompositionInBrowser = async () => {

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "test:e2e": "npm run test:e2e:create:slideshows && npm run test:e2e:create:agent",
-    "test:e2e:create:agent": "node tests/support/runBundledTest.mjs tests/e2e/create/agent/planning.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/overlay-layout-designer.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/studio-composition.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/generation-waiters.e2e.ts && node tests/e2e/create/agent/studio-render-worker.e2e.mjs",
+    "test:e2e:create:agent": "node tests/support/runBundledTest.mjs tests/e2e/create/agent/planning.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/caption-timing.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/overlay-layout-designer.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/studio-composition.e2e.ts && node tests/support/runBundledTest.mjs tests/e2e/create/agent/generation-waiters.e2e.ts && node tests/e2e/create/agent/studio-render-worker.e2e.mjs",
     "test:e2e:create:slideshows": "node tests/support/runBundledTest.mjs tests/e2e/create/slideshows/planning.e2e.ts",
     "preview": "vite preview",
     "studio-render-worker": "node services/studio-render-worker/server.mjs",

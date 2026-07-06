@@ -1,5 +1,4 @@
 import {
-  Clapperboard,
   GalleryHorizontalEnd,
   ScanSearch,
   Link2,
@@ -9,11 +8,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
+// Studio (/studio) is intentionally absent: it is a contextual editor reached
+// from artifact cards in agent chat, the library, and automation approvals.
 export const navItems = [
   { to: "/create", label: "Agent", icon: Sparkles },
   { to: "/tools", label: "Create", icon: SlidersHorizontal },
   { to: "/analyze", label: "Analyze", icon: ScanSearch },
-  { to: "/studio", label: "Studio", icon: Clapperboard },
   { to: "/accounts", label: "Accounts", icon: Link2 },
   { to: "/automations", label: "Automations", icon: Repeat },
   { to: "/library", label: "Library", icon: GalleryHorizontalEnd },

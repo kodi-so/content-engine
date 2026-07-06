@@ -17,27 +17,60 @@ import {
   mediaKindForClip,
   normalizedAudioTrim,
   normalizedClipTrim,
+  type CompositionCaptions,
   type TimedTextOverlay,
   type VideoComposerAudioTrack,
   type VideoComposerClip,
 } from "./videoComposerModel";
+import { CaptionsLayer } from "./remotion/CaptionsLayer";
+import { platformSafeInsets } from "../../../convex/lib/overlayLayoutDesigner";
 import type { CompositionAspectRatio } from "../../lib/composition/aspectRatios";
+
+// Dashed outline of the platform-safe region (outside it, TikTok/Reels UI
+// chrome covers the video). Render-only guide; never exported.
+function SafeAreaGuide({
+  aspectRatio,
+  dimensions,
+}: {
+  aspectRatio: string;
+  dimensions: { width: number; height: number };
+}) {
+  const insets = platformSafeInsets(aspectRatio);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: (insets.left / 100) * dimensions.width,
+        top: (insets.top / 100) * dimensions.height,
+        width: dimensions.width * (1 - (insets.left + insets.right) / 100),
+        height: dimensions.height * (1 - (insets.top + insets.bottom) / 100),
+        border: "2px dashed rgba(255, 255, 255, 0.65)",
+        borderRadius: 8,
+        boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.25)",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
 
 export function VideoComposerPreview({
   audioTracks,
   aspectRatio,
+  captions,
   clips,
   isPlaying,
   onPlayheadChange,
   onPlayingChange,
   playheadSeconds,
   selectedTextId,
+  showSafeArea,
   onChangeText,
   onSelectText,
   textOverlays,
 }: {
   audioTracks: VideoComposerAudioTrack[];
   aspectRatio: CompositionAspectRatio;
+  captions?: CompositionCaptions;
   clips: VideoComposerClip[];
   isPlaying: boolean;
   onChangeText?: (textId: string, patch: Partial<TextOverlayBlock>) => void;
@@ -46,6 +79,7 @@ export function VideoComposerPreview({
   onSelectText?: (textId: string) => void;
   playheadSeconds: number;
   selectedTextId?: string;
+  showSafeArea?: boolean;
   textOverlays: TimedTextOverlay[];
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -284,6 +318,15 @@ export function VideoComposerPreview({
               stageScale={stageScale}
             />
           ))}
+          {captions ? (
+            <CaptionsLayer
+              aspectRatio={aspectRatio}
+              captions={captions}
+              dimensions={dimensions}
+              timeSeconds={playheadSeconds}
+            />
+          ) : null}
+          {showSafeArea ? <SafeAreaGuide aspectRatio={aspectRatio} dimensions={dimensions} /> : null}
         </div>
         {activeClip && !isPlaying ? (
           <button

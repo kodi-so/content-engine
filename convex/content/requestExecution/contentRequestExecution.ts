@@ -359,6 +359,8 @@ export async function executeContentRequest(
         schema: planSchemaForMode(requestedRenderingMode),
         schemaName: "slideshow_create_plan",
         temperature: 0.7,
+        // Full multi-slide plans overflow provider default output limits (Gemini defaults to 2048).
+        maxTokens: 8192,
         parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
       });
       costUsd = sumCost(costUsd, structured.metadata);

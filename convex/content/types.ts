@@ -220,15 +220,15 @@ const overlayLayoutSchema = {
   },
 };
 
+// Strict structured-output schemas (OpenAI/Azure via OpenRouter) require every key in
+// `properties` to appear in `required`, so this schema carries only the semantic fields
+// the planner must always produce. Concrete geometry/styling is computed downstream by
+// the overlay layout designer; explicit geometry still validates when supplied through
+// editing paths, it is just never requested from the planner.
 const overlayTextBlockSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "id",
-    "role",
-    "text",
-    "emphasis",
-  ],
+  required: ["id", "role", "text", "emphasis", "zone", "align"],
   properties: {
     id: { type: "string" },
     role: { type: "string", enum: ["eyebrow", "headline", "body", "bullet_list", "cta"] },
@@ -239,19 +239,7 @@ const overlayTextBlockSchema = {
       enum: ["top", "center", "bottom"],
       description: "Semantic placement zone chosen to match negative space reserved in backgroundPrompt.",
     },
-    x: { type: "number", description: "Optional explicit left position as a percentage of slide width. Omit unless user supplied exact geometry." },
-    y: { type: "number", description: "Optional explicit top position as a percentage of slide height. Omit unless user supplied exact geometry." },
-    width: { type: "number", description: "Optional explicit text box width as a percentage of slide width." },
-    height: { type: "number", description: "Optional explicit text box height as a percentage of slide height." },
     align: { type: "string", enum: ["left", "center", "right"] },
-    fontSize: { type: "number", description: "Optional explicit font size in pixels for a 1080x1920 export canvas." },
-    fontWeight: { type: "number", enum: [400, 500, 600, 700, 800, 900] },
-    color: { type: "string", description: "Optional text fill color as a hex value." },
-    strokeColor: { type: "string", description: "Optional text stroke color as a hex value." },
-    strokeWidth: { type: "number", description: "Optional text stroke width in pixels for a 1080x1920 export canvas." },
-    backgroundStyle: { type: "string", enum: ["none", "solid"] },
-    backgroundColor: { type: "string", description: "Optional text box background color as a hex value." },
-    backgroundOpacity: { type: "number" },
   },
 };
 

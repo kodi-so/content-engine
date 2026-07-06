@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
+import { internal } from "../../_generated/api";
 import {
   artifactMediaKind,
   artifactMimeType,
@@ -178,23 +179,55 @@ export async function prepareDistributionDraftForThread(
     return { distributionPlanId: null, artifactCount: 0 };
   }
 
+  // Automation-origin threads bind the plan to the run: the plan targets the
+  // automation's accounts and the run advances to awaiting_approval or straight
+  // to publishing depending on the automation's approval mode.
+  const automationRun = thread.automationRunId ? await ctx.db.get(thread.automationRunId) : null;
+  const automation = automationRun ? await ctx.db.get(automationRun.automationId) : null;
+
   const now = Date.now();
   const distributionPlanId = await ctx.db.insert("distributionPlans", {
     userId: thread.userId,
     workspaceId: thread.workspaceId,
+    automationId: automation?._id,
+    automationRunId: automationRun?._id,
     artifactIds,
-    socialAccountIds: [],
-    provider: "manual",
+    socialAccountIds: automation?.socialAccountIds ?? [],
+    provider: automation ? "post_bridge" : "manual",
     status: "draft",
-    caption: "Prepared from Create Agent. Add accounts, caption, and schedule before publishing.",
+    caption: automation && automationRun
+      ? automationRun.topic
+      : "Prepared from Create Agent. Add accounts, caption, and schedule before publishing.",
     providerPayload: {
-      source: "create_agent",
+      source: automation ? "automation_run" : "create_agent",
       createThreadId: thread._id,
-      note: "Manual draft distribution plan created from Create Agent final review.",
+      note: automation
+        ? `Distribution plan created by automation "${automation.name}".`
+        : "Manual draft distribution plan created from Create Agent final review.",
     },
     createdAt: now,
     updatedAt: now,
   });
+
+  if (automation && automationRun) {
+    if (automation.approvalMode === "auto_publish") {
+      await ctx.db.patch(automationRun._id, {
+        distributionPlanId,
+        status: "publishing",
+      });
+      await ctx.scheduler.runAfter(0, internal.publishing.distributionPlans.publishInternal, {
+        id: distributionPlanId,
+        mode: "now",
+        userId: thread.userId,
+        automationRunId: automationRun._id,
+      });
+    } else {
+      await ctx.db.patch(automationRun._id, {
+        distributionPlanId,
+        status: "awaiting_approval",
+      });
+    }
+  }
 
   if (options.recordToolCall ?? true) {
     await ctx.db.insert("createToolCalls", {

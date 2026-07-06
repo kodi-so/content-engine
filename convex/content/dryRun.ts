@@ -88,6 +88,7 @@ export const slideshowPromptPlan = action({
       schemaName: "slideshow_create_plan",
       model: process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() || "openai/gpt-4.1",
       temperature: 0.7,
+      maxTokens: 8192,
       parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
     });
 

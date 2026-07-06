@@ -1,12 +1,15 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Archive,
+  ChevronDown,
+  ChevronUp,
   Download,
   ExternalLink,
   Music,
   Pencil,
   Play,
   Send,
+  Sparkles,
 } from "lucide-react";
 import {
   AgentCreateSlideshowArtifact,
@@ -18,6 +21,68 @@ import type { PostComposerMedia } from "../../publishing/postMedia";
 import type { AgentCreateArtifact } from "../model/agentCreateTypes";
 import { agentCreateClassNames } from "../model/agentCreateUi";
 import type { Id } from "../../../../convex/_generated/dataModel";
+
+// The reference brief is the agent's working memory for later generations, not
+// a user deliverable: show a compact gist and keep the full analysis behind an
+// expander so the chat reads like a conversation, not a report.
+function CollapsibleReferenceBrief({
+  artifact,
+}: {
+  artifact: AgentCreateArtifact & { referenceBrief: NonNullable<AgentCreateArtifact["referenceBrief"]> };
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const brief = artifact.referenceBrief;
+  const gist = brief.oneLineSummary?.trim() || artifact.description?.trim() || brief.coreIdea?.trim();
+  const sourceType = brief.sourceType && brief.sourceType !== "unknown" ? brief.sourceType : undefined;
+
+  if (isExpanded) {
+    return (
+      <div className="grid min-w-0 gap-[var(--space-2)]">
+        <ReferenceBriefPanel
+          brief={brief}
+          summary={artifact.description}
+          title={artifact.title}
+          variant="embedded"
+        />
+        <button
+          className="inline-flex w-fit items-center gap-1 text-[0.76rem] font-[780] text-[var(--color-primary)]"
+          onClick={() => setIsExpanded(false)}
+          type="button"
+        >
+          <ChevronUp size={14} />
+          Collapse analysis
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid min-w-0 max-w-[34rem] gap-[var(--space-2)] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-3)]">
+      <div className="flex flex-wrap items-center gap-[var(--space-2)]">
+        <Sparkles size={15} className="shrink-0 text-[var(--color-primary)]" strokeWidth={1.9} />
+        <strong className="min-w-0 text-[0.92rem] font-[820] leading-tight text-[var(--color-ink)]">
+          {artifact.title}
+        </strong>
+        {sourceType ? (
+          <span className="rounded-full border border-[var(--color-border)] px-[var(--space-2)] py-[0.14rem] text-[0.68rem] font-[760] capitalize text-[var(--color-muted)]">
+            {sourceType}
+          </span>
+        ) : null}
+      </div>
+      {gist ? (
+        <p className="m-0 text-[0.86rem] leading-[1.5] text-[var(--color-ink)]">{gist}</p>
+      ) : null}
+      <button
+        className="inline-flex w-fit items-center gap-1 text-[0.76rem] font-[780] text-[var(--color-primary)]"
+        onClick={() => setIsExpanded(true)}
+        type="button"
+      >
+        <ChevronDown size={14} />
+        View full analysis
+      </button>
+    </div>
+  );
+}
 
 function postMediaForAgentArtifact(
   artifact: AgentCreateArtifact
@@ -190,11 +255,8 @@ export function AgentCreateArtifactCard({
 
   if (artifact.referenceBrief && !compact) {
     return (
-      <ReferenceBriefPanel
-        brief={artifact.referenceBrief}
-        summary={artifact.description}
-        title={artifact.title}
-        variant="embedded"
+      <CollapsibleReferenceBrief
+        artifact={artifact as AgentCreateArtifact & { referenceBrief: NonNullable<AgentCreateArtifact["referenceBrief"]> }}
       />
     );
   }

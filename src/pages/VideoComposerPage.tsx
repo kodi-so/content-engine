@@ -1,5 +1,7 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
+  ArrowLeft,
+  Bot,
   Film,
   FolderOpen,
   Upload,
@@ -34,6 +36,7 @@ import {
   createTimedTextOverlay,
   formatTimelineTime,
   normalizedClipTrim,
+  type CompositionCaptions,
   type TimedTextOverlay,
   type VideoComposerAudioTrack,
   type VideoComposerClip,
@@ -80,6 +83,7 @@ export function VideoComposerPage() {
   const completeStudioRenderRequest = useMutation(api.create.studioRenderRequests.complete);
   const requestStudioRender = useMutation(api.create.studioRenderRequests.requestForProject);
   const createVideoProject = useMutation(api.content.videoProjects.create);
+  const submitAgentMessage = useMutation(api.create.agent.submit);
   const updateVideoProject = useMutation(api.content.videoProjects.update);
   const touchVideoProject = useMutation(api.content.videoProjects.touch);
   const archiveVideoProject = useMutation(api.content.videoProjects.archive);
@@ -88,6 +92,7 @@ export function VideoComposerPage() {
   const [clips, setClips] = useState<VideoComposerClip[]>([]);
   const [selectedClipId, setSelectedClipId] = useState("");
   const [textOverlays, setTextOverlays] = useState<TimedTextOverlay[]>([]);
+  const [captions, setCaptions] = useState<CompositionCaptions | undefined>(undefined);
   const [selectedTextId, setSelectedTextId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [title, setTitle] = useState("Composed video");
@@ -97,6 +102,9 @@ export function VideoComposerPage() {
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [draggedClipId, setDraggedClipId] = useState("");
+  const [agentPrompt, setAgentPrompt] = useState("");
+  const [isAskingAgent, setIsAskingAgent] = useState(false);
+  const [showSafeArea, setShowSafeArea] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState("");
   const [loadedProjectId, setLoadedProjectId] = useState("");
@@ -133,6 +141,7 @@ export function VideoComposerPage() {
     aspectRatio,
     audioTracks,
     autoRenderRequested,
+    captions,
     clips,
     completeStudioRenderRequest,
     createArtifact,
@@ -233,6 +242,7 @@ export function VideoComposerPage() {
     setAudioTracks(draft.audioTracks ?? []);
     setClips(draft.clips);
     setTextOverlays(draft.textOverlays);
+    setCaptions(draft.captions);
     setTitle(currentProject.title);
     setSelectedClipId(draft.clips[0]?.id ?? "");
     setSelectedTextId(draft.textOverlays[0]?.id ?? "");
@@ -256,6 +266,7 @@ export function VideoComposerPage() {
       audioTracks,
       clips,
       textOverlays,
+      ...(captions ? { captions } : {}),
     };
     const snapshot = JSON.stringify({
       title,
@@ -285,6 +296,7 @@ export function VideoComposerPage() {
   }, [
     aspectRatio,
     audioTracks,
+    captions,
     clips,
     currentProject,
     loadedProjectId,
@@ -386,6 +398,25 @@ export function VideoComposerPage() {
     setSelectedTextId(overlay.id ?? "");
   };
 
+  // Round-trip escape hatch: anything the editor can't do goes back to the
+  // agent with the project referenced, and the editor closes into that thread.
+  const askAgent = async () => {
+    const prompt = agentPrompt.trim();
+    if (!prompt || !projectId || isAskingAgent) return;
+    setIsAskingAgent(true);
+    try {
+      const result = await submitAgentMessage({
+        workspaceId: activeWorkspaceId,
+        checkpointMode: "auto",
+        content: `Regarding the Studio video project ${String(projectId)} ("${title}"): ${prompt}`,
+      });
+      navigate(`/create?threadId=${encodeURIComponent(String(result.threadId))}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not reach the agent");
+      setIsAskingAgent(false);
+    }
+  };
+
   if (!projectId) {
     if (incomingSource) {
       return (
@@ -424,6 +455,14 @@ export function VideoComposerPage() {
       <div className="grid h-full min-h-0 grid-rows-[2.75rem_minmax(0,1fr)_20rem]">
         <header className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3">
           <div className="flex items-center gap-3 text-[0.78rem] font-[760] text-[var(--color-ink-muted)]">
+            <button
+              className="inline-flex min-h-8 items-center justify-center gap-2 rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] px-2 text-[0.76rem] font-[820] text-[var(--color-ink)] transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary-strong)]"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/create"))}
+              type="button"
+            >
+              <ArrowLeft size={15} />
+              Back
+            </button>
             <button
               className="inline-flex min-h-8 items-center justify-center gap-2 rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] px-2 text-[0.76rem] font-[820] text-[var(--color-ink)] transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary-strong)]"
               onClick={() => navigate("/studio")}
@@ -479,17 +518,57 @@ export function VideoComposerPage() {
             />
 
             <main className="grid min-h-0 grid-rows-[2.5rem_minmax(0,1fr)] overflow-hidden rounded-[0.4rem] bg-[var(--color-surface)]">
-              <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4">
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4">
                 <h2 className="m-0 text-[0.9rem] font-[820] text-[var(--color-ink)]">Player</h2>
-                <span className="text-[0.72rem] font-[760] text-[var(--color-ink-muted)]">
-                  {formatTimelineTime(playheadSeconds, 2)} / {formatTimelineTime(durationSeconds, 2)}
-                </span>
+                <form
+                  className="flex min-w-0 flex-1 items-center justify-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void askAgent();
+                  }}
+                >
+                  <input
+                    className="h-7 w-full max-w-[20rem] rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] px-2 text-[0.74rem] text-[var(--color-ink)] outline-none focus:border-[var(--color-primary)]"
+                    disabled={isAskingAgent}
+                    onChange={(event) => setAgentPrompt(event.target.value)}
+                    placeholder="Ask the agent to change this video..."
+                    value={agentPrompt}
+                  />
+                  <button
+                    className="inline-flex h-7 items-center gap-1 rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] px-2 text-[0.72rem] font-[800] text-[var(--color-ink)] transition hover:border-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={!agentPrompt.trim() || isAskingAgent}
+                    type="submit"
+                  >
+                    <Bot size={13} />
+                    Ask
+                  </button>
+                </form>
+                <div className="flex items-center gap-2">
+                  <button
+                    className={[
+                      "inline-flex h-7 items-center gap-1 rounded-[0.35rem] border px-2 text-[0.72rem] font-[800] transition",
+                      showSafeArea
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]"
+                        : "border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-ink-muted)] hover:border-[var(--color-border-strong)]",
+                    ].join(" ")}
+                    onClick={() => setShowSafeArea((current) => !current)}
+                    title="Toggle the platform safe-area guide (TikTok/Reels UI chrome)"
+                    type="button"
+                  >
+                    Safe area
+                  </button>
+                  <span className="text-[0.72rem] font-[760] text-[var(--color-ink-muted)]">
+                    {formatTimelineTime(playheadSeconds, 2)} / {formatTimelineTime(durationSeconds, 2)}
+                  </span>
+                </div>
               </div>
               <div className="grid min-h-0 place-items-center p-3">
               <VideoComposerPreview
                 audioTracks={audioTracks}
                 aspectRatio={aspectRatio}
+                captions={captions}
                 clips={clips}
+                showSafeArea={showSafeArea}
                 isPlaying={isPreviewPlaying}
                 onChangeText={(textId, patch) => updateTextOverlay(textId, patch as Partial<TimedTextOverlay>)}
                 onPlayheadChange={setPlayheadSeconds}
@@ -507,9 +586,17 @@ export function VideoComposerPage() {
 
             <VideoComposerInspectorPanel
               aspectRatio={aspectRatio}
+              audioTracks={audioTracks}
+              captions={captions}
               clips={clips}
               durationSeconds={durationSeconds}
               onAddTextOverlay={addTextOverlay}
+              onUpdateAudioTrack={(trackId, patch) =>
+                setAudioTracks((current) =>
+                  current.map((track) => (track.id === trackId ? { ...track, ...patch } : track))
+                )
+              }
+              onUpdateCaptions={setCaptions}
               onRemoveSelectedClip={() => {
                 if (!selectedClip) return;
                 setClips((current) => current.filter((clip) => clip.id !== selectedClip.id));

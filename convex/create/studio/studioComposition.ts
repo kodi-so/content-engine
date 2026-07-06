@@ -7,6 +7,15 @@ import {
   designTimedOverlayBlocks,
   type OverlayDesignBlockIntent,
 } from "../../lib/overlayLayoutDesigner";
+import { estimateCaptionSegments } from "../../lib/captionTiming";
+import {
+  normalizeAudioDucking,
+  normalizeClipKenBurns,
+  normalizeClipTransition,
+  type AudioTrackRole,
+  type CaptionStylePreset,
+  type CompositionCaptions,
+} from "../../../src/features/video-composer/videoComposerModel";
 
 type StudioVideoArtifact = Pick<
   Doc<"artifacts">,
@@ -20,7 +29,7 @@ type StudioImageArtifact = Pick<
 
 type StudioAudioArtifact = Pick<
   Doc<"artifacts">,
-  "_id" | "storageUrl" | "title" | "data"
+  "_id" | "storageUrl" | "title" | "data" | "prompt"
 >;
 
 function textFromOverlayRecord(record: Record<string, unknown>) {
@@ -175,6 +184,61 @@ export function selectCreateAgentStudioVisualArtifacts(args: {
   };
 }
 
+// Per-clip planner settings (trims, transition, Ken Burns) arrive as
+// input.clips records addressed by artifactId, or by position when no id.
+function clipInputRecords(input: Record<string, unknown>): Record<string, unknown>[] {
+  return Array.isArray(input.clips) ? input.clips.filter(isRecord) : [];
+}
+
+function clipInputForArtifact(
+  records: Record<string, unknown>[],
+  artifactId: string,
+  index: number
+): Record<string, unknown> {
+  return records.find((record) => optionalText(record.artifactId) === artifactId) ??
+    (records[index] && !optionalText(records[index].artifactId) ? records[index] : {});
+}
+
+function audioInputRecords(input: Record<string, unknown>): Record<string, unknown>[] {
+  const candidates = [input.audio, input.audioTracks];
+  return candidates.flatMap((candidate) =>
+    Array.isArray(candidate) ? candidate.filter(isRecord) : []
+  );
+}
+
+function audioRoleFromRecord(record: Record<string, unknown>): AudioTrackRole | undefined {
+  return record.role === "voiceover" || record.role === "music" || record.role === "sfx"
+    ? record.role
+    : undefined;
+}
+
+function autoCaptionsRequest(input: Record<string, unknown>): Record<string, unknown> | null {
+  const value = input.autoCaptions;
+  if (value === true || value === "auto") return {};
+  if (isRecord(value)) return value;
+  return null;
+}
+
+function captionStylePresetFromRecord(record: Record<string, unknown>): CaptionStylePreset {
+  return record.stylePreset === "karaoke_highlight" || record.stylePreset === "boxed_lines"
+    ? record.stylePreset
+    : "clean_bold";
+}
+
+export function buildAutoCaptionsForVoiceover(args: {
+  request: Record<string, unknown>;
+  script: string;
+  voiceoverDurationSeconds?: number;
+}): CompositionCaptions | null {
+  const segments = estimateCaptionSegments(args.script, args.voiceoverDurationSeconds);
+  if (!segments.length) return null;
+  return {
+    segments,
+    stylePreset: captionStylePresetFromRecord(args.request),
+    zone: args.request.zone === "center" ? "center" : "bottom",
+  };
+}
+
 export function buildCreateAgentStudioDraft(args: {
   audioArtifacts?: StudioAudioArtifact[];
   aspectRatio?: unknown;
@@ -191,54 +255,114 @@ export function buildCreateAgentStudioDraft(args: {
     ...selectedVisualArtifacts.videoArtifacts.map((artifact) => ({ artifact, mediaKind: "video" as const })),
     ...selectedVisualArtifacts.imageArtifacts.map((artifact) => ({ artifact, mediaKind: "image" as const })),
   ];
-  const totalDurationSeconds = selectedVisualArtifacts.videoArtifacts.reduce(
-    (total, artifact) => total + (artifactDurationSeconds(artifact as Doc<"artifacts">) || 4),
-    0
-  ) + selectedVisualArtifacts.imageArtifacts.length * 4;
   const aspectRatio = args.aspectRatio === "4:5" ||
     args.aspectRatio === "1:1" ||
     args.aspectRatio === "16:9"
     ? args.aspectRatio
     : "9:16";
-  const clips = visualArtifacts.map(({ artifact, mediaKind }, index) => ({
-    id: `create-agent-${String(artifact._id)}-${index}`,
-    sourceId: String(artifact._id),
-    title: artifact.title ?? `Clip ${index + 1}`,
-    storageUrl: artifact.storageUrl,
-    mediaKind,
-    mimeType: artifactMimeType(artifact as Doc<"artifacts">),
-    artifactId: artifact._id as Id<"artifacts">,
-    durationSeconds: artifactDurationSeconds(artifact as Doc<"artifacts">) ??
-      (mediaKind === "image" ? 4 : undefined),
-    trimEndSeconds: mediaKind === "image"
-      ? artifactDurationSeconds(artifact as Doc<"artifacts">) ?? 4
-      : undefined,
-    trimStartSeconds: 0,
-  }));
+  const clipRecords = clipInputRecords(args.input);
+  const clips = visualArtifacts.map(({ artifact, mediaKind }, index) => {
+    const record = clipInputForArtifact(clipRecords, String(artifact._id), index);
+    const sourceDuration = artifactDurationSeconds(artifact as Doc<"artifacts">);
+    const requestedDuration = finiteNumber(record.durationSeconds);
+    const durationSeconds = mediaKind === "image"
+      ? requestedDuration ?? sourceDuration ?? 4
+      : sourceDuration;
+    const trimStart = Math.max(0, finiteNumber(record.trimStartSeconds) ?? 0);
+    const requestedTrimEnd = finiteNumber(record.trimEndSeconds);
+    const trimEndSeconds = mediaKind === "image"
+      ? durationSeconds
+      : requestedTrimEnd !== undefined && requestedTrimEnd > trimStart
+        ? Math.min(requestedTrimEnd, durationSeconds ?? requestedTrimEnd)
+        : undefined;
+    const clipShape = {
+      mediaKind,
+      mimeType: artifactMimeType(artifact as Doc<"artifacts">),
+      storageUrl: artifact.storageUrl ?? "",
+    };
+    // Image clips animate by default: static full-frame stills read as broken
+    // in short-form video. The planner passes kenBurns: null to force static.
+    const kenBurns = record.kenBurns === null
+      ? undefined
+      : normalizeClipKenBurns(clipShape, record.kenBurns) ??
+        (mediaKind === "image"
+          ? { direction: "zoom_in" as const, intensity: "subtle" as const }
+          : undefined);
+    return {
+      id: `create-agent-${String(artifact._id)}-${index}`,
+      sourceId: String(artifact._id),
+      title: artifact.title ?? `Clip ${index + 1}`,
+      storageUrl: artifact.storageUrl,
+      mediaKind,
+      mimeType: artifactMimeType(artifact as Doc<"artifacts">),
+      artifactId: artifact._id as Id<"artifacts">,
+      durationSeconds,
+      trimEndSeconds,
+      trimStartSeconds: trimStart,
+      transitionToNext: normalizeClipTransition(record.transitionToNext ?? record.transition),
+      kenBurns,
+    };
+  });
+  const clipVisibleDuration = (clip: (typeof clips)[number]) => {
+    const duration = clip.durationSeconds ?? 4;
+    const end = clip.trimEndSeconds !== undefined ? Math.min(clip.trimEndSeconds, duration) : duration;
+    return Math.max(0, end - Math.min(clip.trimStartSeconds, end));
+  };
   let elapsed = 0;
   const clipBoundariesSeconds = clips.map((clip) => {
-    elapsed += clip.durationSeconds ?? 4;
+    elapsed += clipVisibleDuration(clip);
     return elapsed;
   });
+  const totalDurationSeconds = elapsed;
 
-  return {
-    aspectRatio,
-    audioTracks: (args.audioArtifacts ?? []).map((artifact, index) => ({
+  const audioRecords = audioInputRecords(args.input);
+  const audioArtifacts = args.audioArtifacts ?? [];
+  const audioTracks = audioArtifacts.map((artifact, index) => {
+    const record = clipInputForArtifact(audioRecords, String(artifact._id), index);
+    return {
       id: `create-agent-audio-${String(artifact._id)}-${index}`,
       sourceId: String(artifact._id),
       title: artifact.title ?? `Audio ${index + 1}`,
       storageUrl: artifact.storageUrl,
       mimeType: artifactMimeType(artifact as Doc<"artifacts">),
       artifactId: artifact._id as Id<"artifacts">,
-      startSeconds: 0,
+      startSeconds: Math.max(0, finiteNumber(record.startSeconds) ?? 0),
       durationSeconds: artifactDurationSeconds(artifact as Doc<"artifacts">),
       trimStartSeconds: 0,
-      volume: 1,
-    })),
+      volume: Math.min(1, Math.max(0, finiteNumber(record.volume) ?? 1)),
+      role: audioRoleFromRecord(record) ?? "voiceover",
+      ducking: normalizeAudioDucking(record.ducking) ??
+        (audioRoleFromRecord(record) === "music"
+          ? { enabled: true, duckVolume: 0.25 }
+          : undefined),
+    };
+  });
+
+  const captionsRequest = autoCaptionsRequest(args.input);
+  let captions: CompositionCaptions | undefined;
+  if (captionsRequest) {
+    const voiceoverTrack = audioTracks.find((track) => track.role === "voiceover");
+    const voiceoverArtifact = voiceoverTrack
+      ? audioArtifacts.find((artifact) => String(artifact._id) === voiceoverTrack.sourceId)
+      : undefined;
+    const script = voiceoverArtifact?.prompt?.trim();
+    if (script) {
+      captions = buildAutoCaptionsForVoiceover({
+        request: captionsRequest,
+        script,
+        voiceoverDurationSeconds: voiceoverTrack?.durationSeconds ?? totalDurationSeconds,
+      }) ?? undefined;
+    }
+  }
+
+  return {
+    aspectRatio,
+    audioTracks,
     clips,
     textOverlays: buildStudioTextOverlaysFromInput(args.input, totalDurationSeconds, {
       aspectRatio,
       clipBoundariesSeconds,
     }),
+    ...(captions ? { captions } : {}),
   };
 }

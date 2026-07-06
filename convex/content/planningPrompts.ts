@@ -149,7 +149,7 @@ export function buildOverlayPlannerPrompt(args: PromptArgs): string {
     "- Preserve user-provided slide text exactly inside textBlocks when the prompt gives explicit slides.",
     "- Use textBlocks to represent the user's intended on-slide copy structure. If a slide has multiple distinct pieces of copy, keep them as separate editable text blocks instead of collapsing them into one.",
     "- User wording such as title, label, exercise name, caption, cue, note, CTA, and supporting copy describes on-slide text intent; model each distinct piece as editable slide text.",
-    "- For each textBlock, provide id, role, text, emphasis, optional align, and optional zone (top, center, bottom). Do not provide x/y/width/height/fontSize/fontWeight/stroke/color unless the user supplied exact geometry.",
+    "- For each textBlock, provide id, role, text, emphasis, align, and zone (top, center, bottom). Exact position, size, and styling are computed automatically from zone and role; if the user requested specific placement, express it through zone and align.",
     "- Choose each block's zone so text sits over the negative space reserved in the generated background image.",
     "- State that reserved negative space explicitly in the paired backgroundPrompt so the image leaves room for the text.",
     "",

@@ -3,6 +3,7 @@ import { internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { listReferencesForToolCall } from "./references/referenceDiscovery";
 import { updateMediaTextOverlaysForToolCall } from "./studio/mediaOverlayEditing";
+import { updateVideoProjectCaptionsForToolCall } from "./studio/captionEditing";
 import { createAnalysisJobForToolCall } from "./execution/sourceAnalysisExecution";
 import {
   createGenerationRequestForToolCall,
@@ -356,6 +357,24 @@ export async function executeRunnableQueuedTools(
           content: result.targetKind === "slideshow"
             ? `Updated ${result.textOverlayCount} text overlay${result.textOverlayCount === 1 ? "" : "s"} on the slideshow.`
             : `Updated ${result.textOverlayCount} text overlay${result.textOverlayCount === 1 ? "" : "s"} on the Studio video project.`,
+          kind: "tool_result",
+        });
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "media.captions") {
+        const result = await updateVideoProjectCaptionsForToolCall(ctx, thread, toolCall.input);
+        const now = Date.now();
+        await ctx.db.patch(toolCall._id, {
+          status: "succeeded",
+          output: result,
+          completedAt: now,
+          updatedAt: now,
+        });
+        await appendAgentMessage(ctx, thread, {
+          content: "removed" in result && result.removed
+            ? "Removed captions from the Studio video project."
+            : `Added ${result.captionSegmentCount} caption segment${result.captionSegmentCount === 1 ? "" : "s"} to the Studio video project.`,
           kind: "tool_result",
         });
         executedCount += 1;

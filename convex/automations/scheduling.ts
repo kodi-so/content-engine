@@ -109,7 +109,7 @@ function nextRunAfterDueAutomation(automation: AutomationDoc, now: number) {
   return nextRunAt;
 }
 
-function calendarMonthStart(timestamp: number, timezone: string) {
+export function calendarMonthStart(timestamp: number, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
@@ -291,6 +291,21 @@ export const markAutomationRunFailed = internalMutation({
     await ctx.db.patch(args.runId, {
       status: "failed",
       errorMessage: args.errorMessage,
+      completedAt: Date.now(),
+    });
+  },
+});
+
+export const markAutomationRunPublishOutcome = internalMutation({
+  args: {
+    errorMessage: v.optional(v.string()),
+    ok: v.boolean(),
+    runId: v.id("automationRuns"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      status: args.ok ? "published" : "failed",
+      errorMessage: args.ok ? undefined : args.errorMessage ?? "Publishing failed",
       completedAt: Date.now(),
     });
   },

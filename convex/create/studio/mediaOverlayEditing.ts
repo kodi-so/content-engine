@@ -69,7 +69,7 @@ function normalizeOperationInput(input: Record<string, unknown>): OverlayOperati
   };
 }
 
-async function latestThreadTargets(ctx: MutationCtx, thread: Doc<"createThreads">) {
+export async function latestThreadTargets(ctx: MutationCtx, thread: Doc<"createThreads">) {
   const toolCalls = await ctx.db
     .query("createToolCalls")
     .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))

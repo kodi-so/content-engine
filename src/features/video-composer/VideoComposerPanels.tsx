@@ -15,9 +15,16 @@ import { CustomSelect } from "../../components/CustomSelect";
 import { isImageOutput } from "../library/libraryMedia";
 import type { LibraryOutput } from "../library/libraryTypes";
 import {
+  audioTrackRole,
   clipStartTime,
+  DEFAULT_DUCK_VOLUME,
   formatTimelineTime,
+  mediaKindForClip,
+  type AudioTrackRole,
+  type ClipTransitionType,
+  type CompositionCaptions,
   type TimedTextOverlay,
+  type VideoComposerAudioTrack,
   type VideoComposerClip,
 } from "./videoComposerModel";
 import {
@@ -187,8 +194,32 @@ export function VideoComposerMediaPanel({
   );
 }
 
+const transitionOptions: Array<{ value: ClipTransitionType; label: string }> = [
+  { value: "cut", label: "Cut" },
+  { value: "crossfade", label: "Crossfade" },
+  { value: "dip_to_black", label: "Dip to black" },
+  { value: "dip_to_white", label: "Dip to white" },
+  { value: "whip", label: "Whip" },
+];
+
+const kenBurnsOptions = [
+  { value: "none", label: "Static" },
+  { value: "zoom_in", label: "Zoom in" },
+  { value: "zoom_out", label: "Zoom out" },
+  { value: "pan_left", label: "Pan left" },
+  { value: "pan_right", label: "Pan right" },
+];
+
+const captionPresetOptions = [
+  { value: "clean_bold", label: "Clean bold" },
+  { value: "karaoke_highlight", label: "Karaoke highlight" },
+  { value: "boxed_lines", label: "Boxed lines" },
+];
+
 export function VideoComposerInspectorPanel({
   aspectRatio,
+  audioTracks,
+  captions,
   clips,
   durationSeconds,
   selectedClip,
@@ -202,10 +233,14 @@ export function VideoComposerInspectorPanel({
   onSelectText,
   onSetAspectRatio,
   onSetPlayhead,
+  onUpdateAudioTrack,
+  onUpdateCaptions,
   onUpdateSelectedClip,
   onUpdateSelectedText,
 }: {
   aspectRatio: CompositionAspectRatio;
+  audioTracks: VideoComposerAudioTrack[];
+  captions?: CompositionCaptions;
   clips: VideoComposerClip[];
   durationSeconds: number;
   selectedClip?: VideoComposerClip;
@@ -219,9 +254,13 @@ export function VideoComposerInspectorPanel({
   onSelectText: Dispatch<SetStateAction<string>>;
   onSetAspectRatio: (aspectRatio: CompositionAspectRatio) => void;
   onSetPlayhead: (timeSeconds: number) => void;
+  onUpdateAudioTrack: (trackId: string, patch: Partial<VideoComposerAudioTrack>) => void;
+  onUpdateCaptions: (captions: CompositionCaptions | undefined) => void;
   onUpdateSelectedClip: (patch: Partial<VideoComposerClip>) => void;
   onUpdateSelectedText: (patch: Partial<TimedTextOverlay>) => void;
 }) {
+  const selectedClipIsImage = selectedClip ? mediaKindForClip(selectedClip) === "image" : false;
+  const selectedClipIsLast = selectedClipIndex === clips.length - 1;
   return (
     <aside className="grid min-h-0 content-start gap-4 overflow-y-auto rounded-[0.4rem] bg-[var(--color-surface)] p-4">
       <div className="grid gap-2 border-b border-[var(--color-border)] pb-4">
@@ -309,6 +348,70 @@ export function VideoComposerInspectorPanel({
                 value={selectedClipTrim.endSeconds}
               />
             </div>
+            {selectedClipIsImage ? (
+              <div className="grid gap-2">
+                <span className="text-[0.76rem] font-[760] text-[var(--color-ink-muted)]">Motion</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CustomSelect
+                    onChange={(value) =>
+                      onUpdateSelectedClip({
+                        kenBurns: value === "none"
+                          ? undefined
+                          : {
+                              direction: value as NonNullable<VideoComposerClip["kenBurns"]>["direction"],
+                              intensity: selectedClip.kenBurns?.intensity ?? "subtle",
+                            },
+                      })
+                    }
+                    options={kenBurnsOptions}
+                    placeholder="Motion"
+                    value={selectedClip.kenBurns?.direction ?? "none"}
+                  />
+                  {selectedClip.kenBurns ? (
+                    <CustomSelect
+                      onChange={(value) =>
+                        onUpdateSelectedClip({
+                          kenBurns: {
+                            direction: selectedClip.kenBurns!.direction,
+                            intensity: value === "medium" ? "medium" : "subtle",
+                          },
+                        })
+                      }
+                      options={[
+                        { value: "subtle", label: "Subtle" },
+                        { value: "medium", label: "Medium" },
+                      ]}
+                      placeholder="Intensity"
+                      value={selectedClip.kenBurns.intensity}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {!selectedClipIsLast ? (
+              <div className="grid gap-2">
+                <span className="text-[0.76rem] font-[760] text-[var(--color-ink-muted)]">
+                  Transition to next clip
+                </span>
+                <CustomSelect
+                  onChange={(value) =>
+                    onUpdateSelectedClip({
+                      transitionToNext: value === "cut"
+                        ? undefined
+                        : {
+                            type: value as ClipTransitionType,
+                            durationSeconds: value === "whip"
+                              ? 0.3
+                              : selectedClip.transitionToNext?.durationSeconds ?? 0.5,
+                          },
+                    })
+                  }
+                  options={transitionOptions}
+                  placeholder="Transition"
+                  value={selectedClip.transitionToNext?.type ?? "cut"}
+                />
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] p-3 text-[0.78rem] font-[700] text-[var(--color-ink-muted)]">
@@ -437,6 +540,157 @@ export function VideoComposerInspectorPanel({
             </div>
           </div>
         ) : null}
+      </div>
+
+      {audioTracks.length > 0 ? (
+        <div className="grid gap-2 border-t border-[var(--color-border)] pt-4">
+          <h3 className="m-0 text-[0.9rem] font-[820] text-[var(--color-ink)]">Audio</h3>
+          {audioTracks.map((track) => {
+            const role = audioTrackRole(track);
+            return (
+              <div
+                className="grid gap-2 rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] p-3"
+                key={track.id}
+              >
+                <p className="m-0 text-[0.8rem] font-[780] leading-tight text-[var(--color-ink)] [overflow-wrap:anywhere]">
+                  {track.title}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CustomSelect
+                    onChange={(value) =>
+                      onUpdateAudioTrack(track.id, {
+                        role: value as AudioTrackRole,
+                        ducking: value === "music"
+                          ? track.ducking ?? { enabled: true, duckVolume: DEFAULT_DUCK_VOLUME }
+                          : track.ducking,
+                      })
+                    }
+                    options={[
+                      { value: "voiceover", label: "Voiceover" },
+                      { value: "music", label: "Music" },
+                      { value: "sfx", label: "Sound effect" },
+                    ]}
+                    placeholder="Role"
+                    value={role}
+                  />
+                  {role !== "voiceover" ? (
+                    <label className="flex items-center gap-2 text-[0.74rem] font-[760] text-[var(--color-ink-muted)]">
+                      <input
+                        checked={track.ducking?.enabled === true}
+                        onChange={(event) =>
+                          onUpdateAudioTrack(track.id, {
+                            ducking: event.target.checked
+                              ? { enabled: true, duckVolume: track.ducking?.duckVolume ?? DEFAULT_DUCK_VOLUME }
+                              : undefined,
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      Duck under voiceover
+                    </label>
+                  ) : null}
+                </div>
+                <SliderControl
+                  label="Volume"
+                  max={100}
+                  min={0}
+                  onChange={(volume) => onUpdateAudioTrack(track.id, { volume: volume / 100 })}
+                  suffix="%"
+                  value={Math.round((track.volume ?? 1) * 100)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="grid gap-2 border-t border-[var(--color-border)] pt-4">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="m-0 text-[0.9rem] font-[820] text-[var(--color-ink)]">Captions</h3>
+          {captions ? (
+            <button
+              aria-label="Remove captions"
+              className="grid size-8 place-items-center rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-danger)] transition hover:border-[var(--color-danger)]"
+              onClick={() => onUpdateCaptions(undefined)}
+              type="button"
+            >
+              <Trash2 size={15} />
+            </button>
+          ) : null}
+        </div>
+        {!captions ? (
+          <div className="rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] p-3 text-[0.78rem] font-[700] text-[var(--color-ink-muted)]">
+            No captions. Ask the agent to caption this video from its voiceover script.
+          </div>
+        ) : (
+          <div className="grid gap-3 rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-page)] p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <CustomSelect
+                onChange={(value) =>
+                  onUpdateCaptions({
+                    ...captions,
+                    stylePreset: value as CompositionCaptions["stylePreset"],
+                  })
+                }
+                options={captionPresetOptions}
+                placeholder="Style"
+                value={captions.stylePreset}
+              />
+              <CustomSelect
+                onChange={(value) =>
+                  onUpdateCaptions({
+                    ...captions,
+                    zone: value === "center" ? "center" : "bottom",
+                  })
+                }
+                options={[
+                  { value: "bottom", label: "Bottom" },
+                  { value: "center", label: "Center" },
+                ]}
+                placeholder="Zone"
+                value={captions.zone}
+              />
+            </div>
+            <div className="grid max-h-56 gap-2 overflow-y-auto">
+              {captions.segments.map((segment) => (
+                <div className="grid gap-1" key={segment.id}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="min-h-8 flex-1 rounded-[0.35rem] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[0.78rem] text-[var(--color-ink)] outline-none focus:border-[var(--color-primary)]"
+                      onChange={(event) =>
+                        onUpdateCaptions({
+                          ...captions,
+                          segments: captions.segments.map((item) =>
+                            item.id === segment.id
+                              ? { ...item, text: event.target.value, words: undefined }
+                              : item
+                          ),
+                        })
+                      }
+                      value={segment.text}
+                    />
+                    <button
+                      aria-label="Remove caption segment"
+                      className="grid size-7 place-items-center rounded-[0.35rem] text-[var(--color-danger)] hover:bg-[var(--color-page-quiet)]"
+                      onClick={() =>
+                        onUpdateCaptions({
+                          ...captions,
+                          segments: captions.segments.filter((item) => item.id !== segment.id),
+                        })
+                      }
+                      type="button"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  <span className="text-[0.68rem] font-[700] text-[var(--color-ink-muted)]">
+                    {formatTimelineTime(segment.startSeconds, 1)} - {formatTimelineTime(segment.endSeconds, 1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

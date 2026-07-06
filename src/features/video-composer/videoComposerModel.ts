@@ -8,6 +8,20 @@ import {
 import type { CompositionAspectRatio } from "../../lib/composition/aspectRatios";
 import { dimensionsForAspectRatio } from "../../lib/composition/aspectRatios";
 
+export type ClipTransitionType = "cut" | "crossfade" | "dip_to_black" | "dip_to_white" | "whip";
+
+export type ClipTransition = {
+  type: ClipTransitionType;
+  durationSeconds: number;
+};
+
+export type ClipKenBurnsDirection = "zoom_in" | "zoom_out" | "pan_left" | "pan_right";
+
+export type ClipKenBurns = {
+  direction: ClipKenBurnsDirection;
+  intensity: "subtle" | "medium";
+};
+
 export type VideoComposerClip = {
   id: string;
   sourceId: string;
@@ -20,6 +34,15 @@ export type VideoComposerClip = {
   durationSeconds?: number;
   trimStartSeconds: number;
   trimEndSeconds?: number;
+  transitionToNext?: ClipTransition;
+  kenBurns?: ClipKenBurns;
+};
+
+export type AudioTrackRole = "voiceover" | "music" | "sfx";
+
+export type AudioTrackDucking = {
+  enabled: boolean;
+  duckVolume: number;
 };
 
 export type VideoComposerAudioTrack = {
@@ -35,6 +58,8 @@ export type VideoComposerAudioTrack = {
   trimStartSeconds: number;
   trimEndSeconds?: number;
   volume: number;
+  role?: AudioTrackRole;
+  ducking?: AudioTrackDucking;
 };
 
 export type TimedTextOverlay = TextOverlayBlock & {
@@ -42,12 +67,165 @@ export type TimedTextOverlay = TextOverlayBlock & {
   endSeconds?: number;
 };
 
+export type CaptionWord = {
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+export type CaptionSegment = {
+  id: string;
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+  words?: CaptionWord[];
+};
+
+export type CaptionStylePreset = "clean_bold" | "karaoke_highlight" | "boxed_lines";
+
+export type CompositionCaptions = {
+  segments: CaptionSegment[];
+  stylePreset: CaptionStylePreset;
+  zone: "center" | "bottom";
+};
+
 export type VideoCompositionDraft = {
   aspectRatio: CompositionAspectRatio;
   audioTracks: VideoComposerAudioTrack[];
   clips: VideoComposerClip[];
   textOverlays: TimedTextOverlay[];
+  captions?: CompositionCaptions;
 };
+
+export const CLIP_TRANSITION_TYPES: ClipTransitionType[] = [
+  "cut",
+  "crossfade",
+  "dip_to_black",
+  "dip_to_white",
+  "whip",
+];
+
+export const MIN_TRANSITION_SECONDS = 0.2;
+export const MAX_TRANSITION_SECONDS = 1.0;
+export const DEFAULT_TRANSITION_SECONDS = 0.5;
+
+// "cut" carries no timing so it normalizes to undefined (the absence of a transition).
+export function normalizeClipTransition(value: unknown): ClipTransition | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : undefined;
+  if (!type || type === "cut" || !CLIP_TRANSITION_TYPES.includes(type as ClipTransitionType)) {
+    return undefined;
+  }
+  const requested = typeof record.durationSeconds === "number" && Number.isFinite(record.durationSeconds)
+    ? record.durationSeconds
+    : DEFAULT_TRANSITION_SECONDS;
+  return {
+    type: type as ClipTransitionType,
+    durationSeconds: type === "whip"
+      ? 0.3
+      : Math.min(MAX_TRANSITION_SECONDS, Math.max(MIN_TRANSITION_SECONDS, requested)),
+  };
+}
+
+// Ken Burns only applies to still images; video clips ignore it.
+export function normalizeClipKenBurns(
+  clip: Pick<VideoComposerClip, "mediaKind" | "mimeType" | "storageUrl">,
+  value: unknown
+): ClipKenBurns | undefined {
+  if (mediaKindForClip(clip) !== "image") return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const direction = record.direction;
+  if (
+    direction !== "zoom_in" &&
+    direction !== "zoom_out" &&
+    direction !== "pan_left" &&
+    direction !== "pan_right"
+  ) {
+    return undefined;
+  }
+  return {
+    direction,
+    intensity: record.intensity === "medium" ? "medium" : "subtle",
+  };
+}
+
+export const DEFAULT_DUCK_VOLUME = 0.25;
+
+export function audioTrackRole(track: Pick<VideoComposerAudioTrack, "role">): AudioTrackRole {
+  return track.role === "music" || track.role === "sfx" ? track.role : "voiceover";
+}
+
+export function normalizeAudioDucking(value: unknown): AudioTrackDucking | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.enabled !== true) return undefined;
+  const duckVolume = typeof record.duckVolume === "number" && Number.isFinite(record.duckVolume)
+    ? Math.min(1, Math.max(0, record.duckVolume))
+    : DEFAULT_DUCK_VOLUME;
+  return { enabled: true, duckVolume };
+}
+
+export function normalizeCaptionSegments(
+  value: unknown,
+  totalDurationSeconds: number
+): CaptionSegment[] {
+  if (!Array.isArray(value)) return [];
+  const safeDuration = Math.max(0.5, totalDurationSeconds);
+  return value
+    .flatMap((item, index): CaptionSegment[] => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const record = item as Record<string, unknown>;
+      const text = typeof record.text === "string" ? record.text.trim().slice(0, 200) : "";
+      if (!text) return [];
+      const startSeconds = typeof record.startSeconds === "number" && Number.isFinite(record.startSeconds)
+        ? Math.min(Math.max(0, record.startSeconds), safeDuration)
+        : 0;
+      const endCandidate = typeof record.endSeconds === "number" && Number.isFinite(record.endSeconds)
+        ? record.endSeconds
+        : startSeconds + 2;
+      const endSeconds = Math.min(safeDuration, Math.max(startSeconds + 0.2, endCandidate));
+      const words = Array.isArray(record.words)
+        ? record.words.flatMap((word): CaptionWord[] => {
+            if (!word || typeof word !== "object" || Array.isArray(word)) return [];
+            const wordRecord = word as Record<string, unknown>;
+            const wordText = typeof wordRecord.text === "string" ? wordRecord.text.trim() : "";
+            const wordStart = typeof wordRecord.startSeconds === "number" ? wordRecord.startSeconds : NaN;
+            const wordEnd = typeof wordRecord.endSeconds === "number" ? wordRecord.endSeconds : NaN;
+            if (!wordText || !Number.isFinite(wordStart) || !Number.isFinite(wordEnd)) return [];
+            return [{ text: wordText, startSeconds: wordStart, endSeconds: wordEnd }];
+          })
+        : undefined;
+      return [{
+        id: typeof record.id === "string" && record.id ? record.id.slice(0, 64) : `caption-${index + 1}`,
+        text,
+        startSeconds,
+        endSeconds,
+        ...(words?.length ? { words } : {}),
+      }];
+    })
+    .slice(0, 200);
+}
+
+export function normalizeCompositionCaptions(
+  value: unknown,
+  totalDurationSeconds: number
+): CompositionCaptions | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const segments = normalizeCaptionSegments(record.segments, totalDurationSeconds);
+  if (!segments.length) return undefined;
+  const stylePreset: CaptionStylePreset =
+    record.stylePreset === "karaoke_highlight" || record.stylePreset === "boxed_lines"
+      ? record.stylePreset
+      : "clean_bold";
+  return {
+    segments,
+    stylePreset,
+    zone: record.zone === "center" ? "center" : "bottom",
+  };
+}
 
 export const DEFAULT_IMAGE_CLIP_DURATION_SECONDS = 4;
 
