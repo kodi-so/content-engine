@@ -64,7 +64,7 @@ export function AutomationsPage() {
   const [videoModel, setVideoModel] = useState("");
   const [status, setStatus] = useState("");
   const selected = useMemo(
-    () => automations?.find((automation) => String(automation._id) === selectedId) ?? automations?.[0],
+    () => automations?.find((automation) => String(automation._id) === selectedId) ?? null,
     [automations, selectedId]
   );
 
@@ -80,6 +80,7 @@ export function AutomationsPage() {
     setImageResolution("2K");
     setImageModel("");
     setVideoModel("");
+    setStatus("");
   };
 
   const loadAutomation = (automation: AutomationRow) => {
@@ -150,7 +151,12 @@ export function AutomationsPage() {
       <div className="grid min-w-0 gap-[var(--space-5)] xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
         <section className="grid content-start gap-[var(--space-3)] border-y border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-4)]">
           <div className="flex items-center justify-between gap-[var(--space-3)]">
-            <h2 className="m-0 text-[1rem] font-[820] text-[var(--color-ink)]">Series</h2>
+            <div className="grid gap-1">
+              <h2 className="m-0 text-[1rem] font-[820] text-[var(--color-ink)]">Automations</h2>
+              <p className="m-0 text-[0.76rem] leading-snug text-[var(--color-ink-muted)]">
+                Recurring content briefs that the agent runs on a schedule.
+              </p>
+            </div>
             <button className="secondary-button" onClick={resetDraft} type="button">
               <Plus size={16} />
               New
@@ -192,7 +198,7 @@ export function AutomationsPage() {
           <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
             <div>
               <div className="entity-eyebrow">Automation detail</div>
-              <h2 className="m-0 text-[1.1rem] font-[820] text-[var(--color-ink)]">{selectedId ? "Edit series" : "New series"}</h2>
+              <h2 className="m-0 text-[1.1rem] font-[820] text-[var(--color-ink)]">{selectedId ? "Edit automation" : "New automation"}</h2>
             </div>
             <div className="flex flex-wrap gap-[var(--space-2)]">
               {selected ? (
