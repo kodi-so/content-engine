@@ -83,5 +83,5 @@ export function artifactSummary(artifact: ArtifactDoc): string {
     if (data.text) return data.text;
   }
 
-  return artifact.prompt || "Artifact metadata will appear here as workflows run.";
+  return artifact.prompt || "Artifact metadata will appear here as content runs.";
 }

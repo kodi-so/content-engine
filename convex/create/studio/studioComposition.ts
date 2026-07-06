@@ -1,12 +1,12 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import { artifactDurationSeconds, artifactMimeType, isRecord } from "../references/referenceResolution";
 import {
-  clampNumber,
-  finiteNumber,
-  normalizeMediaTextOverlayBlock,
   optionalText,
-  type TimedMediaTextOverlayBlock,
 } from "../../lib/mediaTextOverlays";
+import {
+  designTimedOverlayBlocks,
+  type OverlayDesignBlockIntent,
+} from "../../lib/overlayLayoutDesigner";
 
 type StudioVideoArtifact = Pick<
   Doc<"artifacts">,
@@ -75,82 +75,66 @@ function overlayTextItems(input: Record<string, unknown>) {
   return quotedOverlayTextsFromInput(input).map((text) => ({ record: {}, text }));
 }
 
-function defaultOverlayFrame(index: number, total: number) {
-  if (total <= 1) return { y: 72, height: 12 };
-  if (index === 0) return { y: 12, height: 12 };
-  if (index === total - 1) return { y: 76, height: 12 };
-  return { y: 44, height: 12 };
+function finiteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function buildTextOverlay(args: {
-  index: number;
-  record: Record<string, unknown>;
-  text: string;
-  total: number;
-  totalDurationSeconds: number;
-}): TimedMediaTextOverlayBlock {
-  const segmentDuration = args.total > 0
-    ? args.totalDurationSeconds / args.total
-    : args.totalDurationSeconds;
-  const defaultStart = segmentDuration * args.index;
-  const defaultEnd = args.index === args.total - 1
-    ? args.totalDurationSeconds
-    : segmentDuration * (args.index + 1);
-  const startSeconds = clampNumber(
-    args.record.startSeconds ?? args.record.start,
-    defaultStart,
-    0,
-    args.totalDurationSeconds
-  );
-  const endCandidate = finiteNumber(args.record.endSeconds) ?? finiteNumber(args.record.end) ?? defaultEnd;
-  const endSeconds = clampNumber(endCandidate, defaultEnd, startSeconds + 0.1, args.totalDurationSeconds);
-  const frame = defaultOverlayFrame(args.index, args.total);
-  const emphasis = args.index === 0 ? "primary" : "secondary";
-  const block = normalizeMediaTextOverlayBlock(
-    {
-      ...args.record,
-      id: optionalText(args.record.id) ?? `create-agent-text-${args.index + 1}`,
-      role: args.index === 0 ? "headline" : "body",
-      text: args.text,
-      items: [],
-      emphasis,
-      x: finiteNumber(args.record.x) ?? 8,
-      y: finiteNumber(args.record.y) ?? frame.y,
-      width: finiteNumber(args.record.width) ?? 84,
-      height: finiteNumber(args.record.height) ?? frame.height,
-      fontSize: finiteNumber(args.record.fontSize) ?? (emphasis === "primary" ? 68 : 46),
-      fontWeight: finiteNumber(args.record.fontWeight) ?? (emphasis === "primary" ? 850 : 760),
-      strokeWidth: finiteNumber(args.record.strokeWidth) ?? (emphasis === "primary" ? 8 : 5),
-    },
-    args.index,
-    { defaultIdPrefix: "create-agent-text" }
-  );
-  if (!block) {
-    throw new Error("Text overlay is missing text");
-  }
+function overlayIntentFromItem(
+  item: { record: Record<string, unknown>; text: string },
+  index: number
+): OverlayDesignBlockIntent {
+  const record = item.record;
   return {
-    ...block,
-    startSeconds,
-    endSeconds,
+    id: optionalText(record.id) ?? `create-agent-text-${index + 1}`,
+    role:
+      record.role === "eyebrow" ||
+      record.role === "headline" ||
+      record.role === "body" ||
+      record.role === "bullet_list" ||
+      record.role === "cta"
+        ? record.role
+        : index === 0 ? "headline" : "body",
+    text: item.text,
+    emphasis:
+      record.emphasis === "primary" ||
+      record.emphasis === "secondary" ||
+      record.emphasis === "muted"
+        ? record.emphasis
+        : index === 0 ? "primary" : "secondary",
+    zone:
+      record.zone === "top" || record.zone === "center" || record.zone === "bottom"
+        ? record.zone
+        : undefined,
+    align:
+      record.align === "left" || record.align === "center" || record.align === "right"
+        ? record.align
+        : undefined,
+    x: finiteNumber(record.x),
+    y: finiteNumber(record.y),
+    width: finiteNumber(record.width),
+    height: finiteNumber(record.height),
+    fontSize: finiteNumber(record.fontSize),
+    startSeconds: finiteNumber(record.startSeconds) ?? finiteNumber(record.start),
+    endSeconds: finiteNumber(record.endSeconds) ?? finiteNumber(record.end),
+    clipIndex: finiteNumber(record.clipIndex),
   };
 }
 
 export function buildStudioTextOverlaysFromInput(
   input: Record<string, unknown>,
-  totalDurationSeconds: number
+  totalDurationSeconds: number,
+  options: { aspectRatio?: string; clipBoundariesSeconds?: number[] } = {}
 ) {
   const items = overlayTextItems(input).slice(0, 6);
   if (!items.length) return [];
   const safeDuration = Math.max(0.5, totalDurationSeconds);
-  return items.map((item, index) =>
-    buildTextOverlay({
-      index,
-      record: item.record,
-      text: item.text,
-      total: items.length,
-      totalDurationSeconds: safeDuration,
-    })
-  );
+  return designTimedOverlayBlocks({
+    medium: "video",
+    aspectRatio: options.aspectRatio ?? "9:16",
+    blocks: items.map(overlayIntentFromItem),
+    totalDurationSeconds: safeDuration,
+    clipBoundariesSeconds: options.clipBoundariesSeconds,
+  });
 }
 
 function artifactIdSetFromInput(input: Record<string, unknown>) {
@@ -216,6 +200,26 @@ export function buildCreateAgentStudioDraft(args: {
     args.aspectRatio === "16:9"
     ? args.aspectRatio
     : "9:16";
+  const clips = visualArtifacts.map(({ artifact, mediaKind }, index) => ({
+    id: `create-agent-${String(artifact._id)}-${index}`,
+    sourceId: String(artifact._id),
+    title: artifact.title ?? `Clip ${index + 1}`,
+    storageUrl: artifact.storageUrl,
+    mediaKind,
+    mimeType: artifactMimeType(artifact as Doc<"artifacts">),
+    artifactId: artifact._id as Id<"artifacts">,
+    durationSeconds: artifactDurationSeconds(artifact as Doc<"artifacts">) ??
+      (mediaKind === "image" ? 4 : undefined),
+    trimEndSeconds: mediaKind === "image"
+      ? artifactDurationSeconds(artifact as Doc<"artifacts">) ?? 4
+      : undefined,
+    trimStartSeconds: 0,
+  }));
+  let elapsed = 0;
+  const clipBoundariesSeconds = clips.map((clip) => {
+    elapsed += clip.durationSeconds ?? 4;
+    return elapsed;
+  });
 
   return {
     aspectRatio,
@@ -231,21 +235,10 @@ export function buildCreateAgentStudioDraft(args: {
       trimStartSeconds: 0,
       volume: 1,
     })),
-    clips: visualArtifacts.map(({ artifact, mediaKind }, index) => ({
-      id: `create-agent-${String(artifact._id)}-${index}`,
-      sourceId: String(artifact._id),
-      title: artifact.title ?? `Clip ${index + 1}`,
-      storageUrl: artifact.storageUrl,
-      mediaKind,
-      mimeType: artifactMimeType(artifact as Doc<"artifacts">),
-      artifactId: artifact._id as Id<"artifacts">,
-      durationSeconds: artifactDurationSeconds(artifact as Doc<"artifacts">) ??
-        (mediaKind === "image" ? 4 : undefined),
-      trimEndSeconds: mediaKind === "image"
-        ? artifactDurationSeconds(artifact as Doc<"artifacts">) ?? 4
-        : undefined,
-      trimStartSeconds: 0,
-    })),
-    textOverlays: buildStudioTextOverlaysFromInput(args.input, totalDurationSeconds),
+    clips,
+    textOverlays: buildStudioTextOverlaysFromInput(args.input, totalDurationSeconds, {
+      aspectRatio,
+      clipBoundariesSeconds,
+    }),
   };
 }

@@ -7,7 +7,7 @@ export type SelectableMediaKind = "image" | "video" | "audio" | "media";
 
 export type SelectableLibraryAsset = {
   id: string;
-  source: "create" | "workflow_export" | "creative_asset";
+  source: "create" | "creative_asset";
   sourceId: string;
   title: string;
   storageUrl: string;
@@ -55,22 +55,6 @@ function mediaKindFromAsset(asset: Doc<"creativeAssets">): SelectableMediaKind {
   return "media";
 }
 
-function exportedToMediaLibrary(artifact: Doc<"artifacts">) {
-  if (artifact.type !== "publish_payload" || !isRecord(artifact.data)) return false;
-
-  if (
-    isRecord(artifact.data.exportStatus) &&
-    artifact.data.exportStatus.destination === "media_library"
-  ) {
-    return true;
-  }
-
-  return Array.isArray(artifact.data.exports) &&
-    artifact.data.exports.some((item) =>
-      isRecord(item) && item.destination === "media_library"
-    );
-}
-
 function artifactAspectMimeType(artifact?: Doc<"artifacts">) {
   if (!artifact || !isRecord(artifact.data)) return undefined;
   return typeof artifact.data.mimeType === "string" ? artifact.data.mimeType : undefined;
@@ -116,56 +100,6 @@ function creativeAssetToSelectable(asset: Doc<"creativeAssets">): SelectableLibr
   };
 }
 
-function exportTimestamp(artifact: Doc<"artifacts">) {
-  if (!isRecord(artifact.data) || !isRecord(artifact.data.exportStatus)) {
-    return artifact.createdAt;
-  }
-
-  return typeof artifact.data.exportStatus.exportedAt === "number"
-    ? artifact.data.exportStatus.exportedAt
-    : artifact.createdAt;
-}
-
-function workflowExportAssetsFromArtifacts(
-  artifact: Doc<"artifacts">,
-  artifactsById: Map<string, Doc<"artifacts">>
-): SelectableLibraryAsset[] {
-  if (!exportedToMediaLibrary(artifact) || !isRecord(artifact.data)) return [];
-  if (!Array.isArray(artifact.data.mediaItems)) return [];
-
-  return artifact.data.mediaItems.flatMap((item, index): SelectableLibraryAsset[] => {
-    if (!isRecord(item)) return [];
-    const storageUrl = typeof item.storageUrl === "string" ? item.storageUrl.trim() : "";
-    if (!storageUrl) return [];
-
-    const artifactId = typeof item.artifactId === "string" ? item.artifactId : undefined;
-    const sourceArtifact = artifactId ? artifactsById.get(artifactId) : undefined;
-    const mimeType =
-      typeof item.mimeType === "string"
-        ? item.mimeType
-        : artifactAspectMimeType(sourceArtifact);
-
-    return [{
-      id: `workflow_export:${String(artifact._id)}:${artifactId ?? index}`,
-      source: "workflow_export",
-      sourceId: artifactId ?? String(artifact._id),
-      title: sourceArtifact?.title?.trim() ||
-        (typeof item.title === "string" && item.title.trim()
-          ? item.title.trim()
-          : "Workflow export"),
-      storageUrl,
-      mimeType,
-      mediaKind: sourceArtifact
-        ? mediaKindFromArtifact(sourceArtifact)
-        : mediaKindFromMimeType(mimeType),
-      prompt: sourceArtifact?.prompt,
-      provider: typeof item.provider === "string" ? item.provider : sourceArtifact?.provider,
-      model: typeof item.model === "string" ? item.model : sourceArtifact?.model,
-      createdAt: exportTimestamp(artifact),
-    }];
-  });
-}
-
 function matchesMediaKind(asset: SelectableLibraryAsset, mediaKind?: SelectableMediaKind) {
   if (!mediaKind || mediaKind === "media") return true;
   return asset.mediaKind === mediaKind;
@@ -209,19 +143,11 @@ export async function listSelectableLibraryAssets(
           .withIndex("by_user", (q) => q.eq("userId", args.userId))
           .collect(),
   ]);
-  const artifactsById = new Map(artifacts.map((artifact) => [
-    String(artifact._id),
-    artifact,
-  ]));
-
   return [
     ...artifacts.flatMap((artifact) => {
       const createAsset = createAssetFromArtifact(artifact);
       return createAsset ? [createAsset] : [];
     }),
-    ...artifacts.flatMap((artifact) =>
-      workflowExportAssetsFromArtifacts(artifact, artifactsById)
-    ),
     ...creativeAssets.map(creativeAssetToSelectable),
   ]
     .filter((asset) => matchesMediaKind(asset, args.mediaKind))

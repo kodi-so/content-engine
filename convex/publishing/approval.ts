@@ -77,11 +77,11 @@ export async function replaceArtifactInPlan(
   if (!newArtifact || newArtifact.userId !== userId) {
     throw new Error("Replacement artifact not found");
   }
-  if (oldArtifact.workflowRunId !== plan.workflowRunId) {
-    throw new Error("Original artifact does not belong to this plan's workflow run");
+  if (oldArtifact.automationRunId !== plan.automationRunId) {
+    throw new Error("Original artifact does not belong to this plan's automation run");
   }
-  if (newArtifact.workflowRunId !== plan.workflowRunId) {
-    throw new Error("Replacement artifact must belong to the same workflow run");
+  if (newArtifact.automationRunId !== plan.automationRunId) {
+    throw new Error("Replacement artifact must belong to the same automation run");
   }
 
   const parentIds = new Set((newArtifact.parentArtifactIds ?? []).map(String));
@@ -117,43 +117,6 @@ export async function replaceArtifactInPlan(
     },
     updatedAt: now,
   });
-
-  if (plan.workflowRunId && plan.workflowId) {
-    await ctx.db.insert("workflowRunEvents", {
-      userId,
-      workflowRunId: plan.workflowRunId,
-      workflowId: plan.workflowId,
-      type: "approval_resolved",
-      message: "Distribution plan artifact replaced with regenerated output.",
-      data: {
-        distributionPlanId: plan._id,
-        oldArtifactId: args.oldArtifactId,
-        newArtifactId: args.newArtifactId,
-        status: nextStatus,
-      },
-      createdAt: now,
-    });
-
-    const run = await ctx.db.get(plan.workflowRunId);
-    if (
-      run &&
-      (run.status === "waiting_for_approval" ||
-        run.status === "needs_revision" ||
-        run.status === "completed")
-    ) {
-      await ctx.db.patch(run._id, {
-        status: nextStatus === "draft" ? "completed" : nextStatus,
-        summary:
-          nextStatus === "draft"
-            ? "Approved and ready for publishing."
-            : nextStatus === "needs_revision"
-              ? "Review requested revisions before publishing."
-              : run.summary,
-        completedAt: nextStatus === "draft" ? now : run.completedAt,
-        updatedAt: now,
-      });
-    }
-  }
 
   return { status: nextStatus, artifactIds };
 }

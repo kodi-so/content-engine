@@ -1,9 +1,9 @@
 import {
-  Bot,
   Clapperboard,
   GalleryHorizontalEnd,
   ScanSearch,
   Link2,
+  Repeat,
   Settings,
   SlidersHorizontal,
   Sparkles,
@@ -15,7 +15,7 @@ export const navItems = [
   { to: "/analyze", label: "Analyze", icon: ScanSearch },
   { to: "/studio", label: "Studio", icon: Clapperboard },
   { to: "/accounts", label: "Accounts", icon: Link2 },
-  { to: "/workflows", label: "Workflows", icon: Bot },
+  { to: "/automations", label: "Automations", icon: Repeat },
   { to: "/library", label: "Library", icon: GalleryHorizontalEnd },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

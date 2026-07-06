@@ -3,7 +3,6 @@ import type { MediaTextOverlayBlock } from "./lib/composition/textOverlays";
 
 export type CreativeAssetId = Id<"creativeAssets">;
 export type SocialAccountId = Id<"socialAccounts">;
-export type WorkflowId = Id<"workflows">;
 export type ContentRequestId = Id<"contentRequests">;
 
 export type PublishingProvider = "postiz" | "post_bridge" | "manual";
@@ -41,8 +40,6 @@ export type CreativeAssetKind =
   | "other";
 
 export type ArtifactDoc = Doc<"artifacts">;
-export type WorkflowDoc = Doc<"workflows">;
-export type WorkflowRunDoc = Doc<"workflowRuns">;
 export type ContentRequestDoc = Doc<"contentRequests">;
 export type SlideshowDoc = Doc<"slideshows">;
 export type CreativeAssetDoc = Doc<"creativeAssets">;

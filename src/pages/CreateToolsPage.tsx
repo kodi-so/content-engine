@@ -4,10 +4,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { Field, LoadingSignal, Page, Select } from "../components/ui";
+import { LoadingSignal, Page, Select } from "../components/ui";
 import type { RichMentionToken } from "../components/references/RichMentionTextarea";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import { CreateGenerationFields } from "../features/create/CreateGenerationFields";
@@ -15,7 +14,6 @@ import { CreateModeTabs } from "../features/create/CreateModeTabs";
 import { CreateResultPanel } from "../features/create/CreateResultPanel";
 import { SlideshowEditor } from "../features/create/slideshow/SlideshowEditor";
 import {
-  draftName,
   mediaPreviewTitle,
   numberConfigValue,
   referenceMentionOptionsFromConfig,
@@ -39,6 +37,14 @@ import {
   durationForSelectedFalVideoModel,
 } from "../lib/generation/videoDurationConstraints";
 import {
+  defaultRosterModelForMode,
+  falModelIdForRosterModel,
+  rosterModelById,
+  rosterModelPricingDescription,
+  rosterModelsForMode,
+  type RosterModelMode,
+} from "../lib/generation/modelRoster";
+import {
   createGenerationFields,
   createGenerationPromptValue,
   createGenerationRequiredFieldsSatisfied,
@@ -48,27 +54,18 @@ import {
 } from "../lib/create/createGenerationConfig";
 import {
   getCreateModeDefinition,
-  workflowNodeTypeForCreateMode,
+  createNodeTypeForMode,
   type CreateMode,
 } from "../lib/create/createModes";
-import { DEFAULT_PUBLISHING_PROVIDER } from "../lib/publishingRouting";
 import {
   generationDefaultForMode,
   generationModeForCreateMode,
 } from "../lib/providers/aiGenerationDefaults";
-import { createStarterWorkflowGraph } from "../lib/workflow/workflowGraph";
-import { imageModelUiContractFromModel } from "../lib/workflow/workflowModelCatalog";
-import {
-  modelOptionSourcesForNode,
-  richModelPickerOptions,
-} from "../lib/workflow/workflowModelPickerOptions";
 
 export function CreateToolsPage() {
-  const navigate = useNavigate();
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
   const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
   const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
-  const createWorkflow = useMutation(api.workflows.definitions.create);
   const createGeneration = useMutation(api.content.requests.createGeneration);
   const saveContentRequest = useMutation(api.content.requests.save);
   const discardContentRequest = useMutation(api.content.requests.discard);
@@ -86,14 +83,7 @@ export function CreateToolsPage() {
   );
   const selectedCreateProvider = createGenerationDefault?.provider ?? "bulkapis";
   const [prompt, setPrompt] = useState("");
-  const [name, setName] = useState("");
   const [model, setModel] = useState("");
-  const modelCatalog = useQuery(
-    api.providers.modelCatalog.list,
-    modeDefinition.modelCategory
-      ? { provider: selectedCreateProvider, category: modeDefinition.modelCategory }
-      : "skip"
-  );
   const [generationConfig, setGenerationConfig] = useState<Record<string, unknown>>(
     defaultCreateGenerationConfig("image")
   );
@@ -118,7 +108,8 @@ export function CreateToolsPage() {
   );
 
   const selectedModel = model;
-  const createNodeType = workflowNodeTypeForCreateMode(mode) ?? "image_generation";
+  const createNodeType = createNodeTypeForMode(mode) ?? "image_generation";
+  const rosterMode = isCreateGenerationMode(mode) ? mode as RosterModelMode : null;
   const selectedGenerationOperation = useMemo(
     () => generationOperationForConfig(createNodeType, generationConfig),
     [createNodeType, generationConfig]
@@ -132,41 +123,48 @@ export function CreateToolsPage() {
       })),
     [createNodeType]
   );
-  const modelOptionSources = modelOptionSourcesForNode({
-    nodeType: createNodeType,
-    operationId: selectedGenerationOperation?.id,
-    providerName: selectedCreateProvider,
-    providerModels: modelCatalog,
-  });
-  const availableModels = richModelPickerOptions({
-    modelOptions: modelOptionSources,
-    nodeType: createNodeType,
-    operationId: selectedGenerationOperation?.id,
-    providerModels: modelCatalog,
-    selectedModel,
-  });
-  const selectedProviderModel = useMemo(
-    () => modelCatalog?.find((catalogModel) => catalogModel.modelId === selectedModel) ?? null,
-    [modelCatalog, selectedModel]
-  );
-  const selectedImageModelUiContract = useMemo(
+  const availableModels = useMemo(
     () =>
-      createNodeType === "image_generation"
-        ? imageModelUiContractFromModel(selectedProviderModel)
-        : null,
-    [createNodeType, selectedProviderModel]
+      rosterMode
+        ? rosterModelsForMode(rosterMode).map((rosterModel) => ({
+            value: rosterModel.id,
+            label: rosterModel.label,
+            description: rosterModelPricingDescription(rosterModel),
+            meta: rosterModel.strengths,
+            recommendationTag: rosterModel.isDefault ? "Default" : undefined,
+            tags: [
+              rosterModel.falModelId,
+              rosterModel.textToVideoModelId,
+              rosterModel.imageToVideoModelId,
+              rosterModel.referenceToVideoModelId,
+              ...rosterModel.aliases,
+            ].filter((value): value is string => Boolean(value)),
+          }))
+        : [],
+    [rosterMode]
   );
+  const selectedRosterModel = useMemo(
+    () => rosterModelById(selectedModel) ?? null,
+    [selectedModel]
+  );
+  const selectedModelLabel = selectedRosterModel?.label ?? selectedModel;
+  const selectedGenerationProvider =
+    selectedRosterModel?.falModelId ||
+    selectedRosterModel?.textToVideoModelId ||
+    selectedRosterModel?.imageToVideoModelId ||
+    selectedRosterModel?.referenceToVideoModelId
+      ? "fal"
+      : selectedCreateProvider;
   const generationFields = useMemo(
     () =>
-      createNodeType && isCreateGenerationMode(mode)
+      isCreateGenerationMode(mode)
         ? createGenerationFields({
             config: generationConfig,
-            imageModelUiContract: selectedImageModelUiContract,
-            nodeType: createNodeType,
-            selectedModel: selectedProviderModel,
+            mode,
+            selectedModel: selectedRosterModel,
           })
         : [],
-    [createNodeType, generationConfig, mode, selectedImageModelUiContract, selectedProviderModel]
+    [generationConfig, mode, selectedRosterModel]
   );
   const generationFieldGroups = useMemo(
     () => groupCreateGenerationFields(generationFields),
@@ -190,8 +188,19 @@ export function CreateToolsPage() {
     : Boolean(currentPrompt);
 
   useEffect(() => {
-    setModel("");
-  }, [selectedCreateProvider, mode]);
+    if (!rosterMode) return;
+    const configuredDefault = createGenerationDefault?.model
+      ? rosterModelById(createGenerationDefault.model)
+      : null;
+    const fallback = configuredDefault?.mode === rosterMode
+      ? configuredDefault
+      : defaultRosterModelForMode(rosterMode);
+    setModel((current) => {
+      const currentRosterModel = rosterModelById(current);
+      if (currentRosterModel?.mode === rosterMode) return current;
+      return fallback?.id ?? "";
+    });
+  }, [createGenerationDefault?.model, rosterMode]);
 
   const handleModeChange = (nextMode: CreateMode) => {
     revokeDraftReferencesInConfig(generationConfig);
@@ -199,7 +208,6 @@ export function CreateToolsPage() {
     setModel("");
     setGenerationConfig(defaultCreateGenerationConfig(nextMode));
     setPrompt("");
-    setName("");
     setStatus("");
     setResult(null);
     setActiveRequestId(null);
@@ -214,11 +222,13 @@ export function CreateToolsPage() {
 
   const handleSelectedModelChange = (nextModel: string) => {
     setModel(nextModel);
-    if (mode !== "video" || selectedCreateProvider !== "fal") return;
+    if (mode !== "video") return;
+    const rosterModel = rosterModelById(nextModel);
+    const falModelId = rosterModel ? falModelIdForRosterModel(rosterModel) ?? nextModel : nextModel;
 
     setGenerationConfig((current) => ({
       ...current,
-      durationSeconds: durationForSelectedFalVideoModel(nextModel, current.durationSeconds),
+      durationSeconds: durationForSelectedFalVideoModel(falModelId, current.durationSeconds),
     }));
   };
 
@@ -242,7 +252,6 @@ export function CreateToolsPage() {
   } = useCreateReferenceFiles({
     createNodeType,
     generationConfig,
-    selectedImageModelUiContract,
     setGenerationConfig,
     setIsUploadingReference,
     setStatus,
@@ -276,7 +285,7 @@ export function CreateToolsPage() {
     );
 
     return uploaded
-      .filter((file) => file.alias)
+      .filter((file): file is typeof file & { alias: string } => Boolean(file.alias))
       .map((file) => ({
         token: file.alias,
         asset: {
@@ -300,7 +309,7 @@ export function CreateToolsPage() {
     const nextResult = resultFromRequest({
       artifacts: activeRequestArtifacts ?? [],
       request: activeRequest,
-      selectedModelLabel: selectedProviderModel?.displayName ?? selectedModel,
+      selectedModelLabel: selectedModelLabel,
       slideshows: activeRequestSlideshows ?? [],
     });
     if (nextResult) setResult(nextResult);
@@ -310,7 +319,7 @@ export function CreateToolsPage() {
     activeRequestId,
     activeRequestSlideshows,
     selectedModel,
-    selectedProviderModel,
+    selectedModelLabel,
   ]);
 
   const saveResultToLibrary = async (currentResult: CreateResult) => {
@@ -365,16 +374,14 @@ export function CreateToolsPage() {
         status: "pending",
         title: mediaPreviewTitle(mode),
         detail: "Generating a preview. Save it if it looks right.",
-        model: selectedProviderModel?.displayName ?? selectedModel,
+        model: selectedModelLabel,
         prompt: creativeRequest,
       });
     } else {
       setResult(null);
     }
     setStatus(
-      mode === "workflow"
-        ? "Creating workflow draft"
-        : mode === "slideshow"
+      mode === "slideshow"
           ? "Queueing slideshow"
           : `Generating ${mode}`
     );
@@ -395,24 +402,6 @@ export function CreateToolsPage() {
         generationFields.map((field) => field.key)
       );
 
-      if (mode === "workflow") {
-        const workflowId = await createWorkflow({
-          ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-          name: name.trim() || draftName(creativeRequest),
-          description: `Prompt draft: ${creativeRequest}`,
-          trigger: "manual",
-          approvalPolicy: { mode: "always" },
-          publishingPolicy: {
-            provider: DEFAULT_PUBLISHING_PROVIDER,
-            autoPublish: false,
-            defaultPlatforms: ["tiktok"],
-          },
-          graph: createStarterWorkflowGraph(),
-        });
-        navigate(`/workflows/${workflowId}`);
-        return;
-      }
-
       if (mode === "image" || mode === "video" || mode === "audio" || mode === "slideshow") {
         const providerInput = providerInputForGenerationSubmit({
           generationOperationId,
@@ -427,13 +416,19 @@ export function CreateToolsPage() {
           prompt: creativeRequest,
           provider: mode === "slideshow"
             ? slideshowImageGenerationDefault.provider
-            : selectedCreateProvider,
+            : selectedGenerationProvider,
           model: mode === "slideshow" ? undefined : selectedModel || undefined,
           generationOperation: selectedGenerationOperation?.id,
           providerInput,
           aspectRatio: stringConfigValue(generationConfig.aspectRatio),
           count: numberConfigValue(generationConfig.count) ?? undefined,
           durationSeconds: numberConfigValue(generationConfig.durationSeconds),
+          options:
+            generationConfig.options &&
+            typeof generationConfig.options === "object" &&
+            !Array.isArray(generationConfig.options)
+              ? generationConfig.options as Record<string, string | boolean>
+              : undefined,
           audioMode: stringConfigValue(generationConfig.mode),
           referenceImages: mode === "image" ? imageReferenceImages : videoReferenceImages,
           referenceVideos: videoReferenceVideos,
@@ -450,7 +445,7 @@ export function CreateToolsPage() {
           requestId,
           title: mediaPreviewTitle(mode),
           detail: mode === "slideshow" ? "Planning the slideshow." : "Generating a preview.",
-          model: selectedProviderModel?.displayName ?? selectedModel,
+          model: selectedModelLabel,
           prompt: creativeRequest,
         });
       }
@@ -468,7 +463,7 @@ export function CreateToolsPage() {
           status: "error",
           title: "Generation failed",
           detail: message,
-          model: selectedProviderModel?.displayName ?? selectedModel,
+          model: selectedModelLabel,
           prompt: creativeRequest,
         });
       }
@@ -489,7 +484,7 @@ export function CreateToolsPage() {
           <div>
             <h2>Create Studio</h2>
             <p className="muted">
-              Make one-off assets now, then save or reuse them in workflows when they earn their keep.
+              Make one-off assets now, then save or reuse the best ones when they earn their keep.
             </p>
           </div>
         </div>
@@ -504,17 +499,6 @@ export function CreateToolsPage() {
           }
         >
           <section className="grid min-w-0 max-w-[68rem] content-start gap-[var(--space-5)]">
-            {mode === "workflow" ? (
-              <div className="grid min-w-0 gap-[var(--space-3)] lg:grid-cols-[minmax(14rem,1fr)]">
-                <Field
-                  label="Workflow name"
-                  value={name}
-                  onChange={setName}
-                  placeholder="Untitled workflow"
-                />
-              </div>
-            ) : null}
-
             <CreateGenerationFields
               availableModels={availableModels}
               config={generationConfig}
@@ -525,7 +509,8 @@ export function CreateToolsPage() {
               localFileFieldMeta={localFileFieldMeta}
               modePromptLabel={modeDefinition.promptLabel}
               modePromptPlaceholder={modeDefinition.promptPlaceholder}
-              modelCatalogLoading={modelCatalog === undefined}
+              modelCatalogLoading={false}
+              rosterModel={selectedRosterModel}
               nonGenerationPrompt={prompt}
               onConfigChange={handleGenerationConfigChange}
               onGenerationOperationChange={handleGenerationOperationChange}
@@ -563,9 +548,7 @@ export function CreateToolsPage() {
               )}
               {isSubmitting
                 ? "Creating"
-                : mode === "workflow"
-                  ? "Create workflow draft"
-                  : `Create ${mode}`}
+                : `Create ${mode}`}
               <ArrowRight size={16} />
             </button>
             {status && <p className="muted">{status}</p>}

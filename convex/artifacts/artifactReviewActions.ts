@@ -79,12 +79,12 @@ export async function reconcileApprovalForArtifact(
   ctx: MutationCtx,
   artifact: Doc<"artifacts">
 ) {
-  if (!artifact.workflowRunId || !artifact.workflowId) return;
+  if (!artifact.automationRunId) return;
 
   const plans = await ctx.db
     .query("distributionPlans")
-    .withIndex("by_workflow_run", (q) =>
-      q.eq("workflowRunId", artifact.workflowRunId!)
+    .withIndex("by_automation_run", (q) =>
+      q.eq("automationRunId", artifact.automationRunId!)
     )
     .collect();
   const relatedPlans = plans.filter((plan) =>
@@ -119,52 +119,8 @@ export async function reconcileApprovalForArtifact(
       });
     }
 
-    const run = await ctx.db.get(artifact.workflowRunId);
-    if (run) {
-      const nextRunStatus =
-        resolution === "approved"
-          ? "completed"
-          : resolution === "needs_revision"
-            ? "needs_revision"
-            : "waiting_for_approval";
-
-      if (
-        run.status === "waiting_for_approval" ||
-        run.status === "needs_revision" ||
-        (run.status === "completed" && resolution === "needs_revision")
-      ) {
-        await ctx.db.patch(run._id, {
-          status: nextRunStatus,
-          summary:
-            resolution === "approved"
-              ? "Approved and ready for publishing."
-              : resolution === "needs_revision"
-                ? "Review requested revisions before publishing."
-                : run.summary,
-          completedAt: resolution === "approved" ? Date.now() : run.completedAt,
-          updatedAt: Date.now(),
-        });
-      }
-    }
-
-    if (resolution !== "pending" && statusChanged) {
-      await ctx.db.insert("workflowRunEvents", {
-        userId: artifact.userId,
-        workspaceId: artifact.workspaceId,
-        workflowRunId: artifact.workflowRunId,
-        workflowId: artifact.workflowId,
-        type: "approval_resolved",
-        message:
-          resolution === "approved"
-            ? "Distribution plan approved and ready for publishing."
-            : "Distribution plan marked as needing revision.",
-        data: {
-          distributionPlanId: plan._id,
-          status: nextStatus,
-        },
-        createdAt: Date.now(),
-      });
-    }
+    void resolution;
+    void statusChanged;
   }
 }
 
@@ -288,21 +244,7 @@ export async function requestArtifactRevisionForUser(
     updatedAt: now,
   });
 
-  if (artifact.workflowRunId && artifact.workflowId) {
-    await ctx.db.insert("workflowRunEvents", {
-      userId: artifact.userId,
-      workspaceId: artifact.workspaceId,
-      workflowRunId: artifact.workflowRunId,
-      workflowId: artifact.workflowId,
-      type: "revision_requested",
-      message: `Revision requested for ${artifact.title || artifact.type}.`,
-      data: {
-        artifactId: artifact._id,
-        note: data.latestRevisionNote,
-      },
-      createdAt: now,
-    });
-  }
+  void data;
 
   await reconcileApprovalForArtifact(ctx, {
     ...artifact,

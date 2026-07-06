@@ -78,6 +78,7 @@ export function providerInputForGenerationSubmit(args: {
         "prompt",
         "aspectRatio",
         "count",
+        "options",
         "localReferenceImages",
         "generationOperation",
       ])
@@ -86,6 +87,7 @@ export function providerInputForGenerationSubmit(args: {
           "prompt",
           "aspectRatio",
           "durationSeconds",
+          "options",
           "localReferenceImages",
           "localStartFrameImages",
           "localEndFrameImages",

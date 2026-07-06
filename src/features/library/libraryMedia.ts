@@ -1,5 +1,4 @@
 import type { MediaLightboxItem } from "../../components/MediaLightbox";
-import type { WorkflowRunDoc } from "../../types";
 import type { LibraryOutput } from "./libraryTypes";
 
 export function formatDateTime(value: number) {
@@ -7,10 +6,6 @@ export function formatDateTime(value: number) {
     dateStyle: "medium",
     timeStyle: "short",
   });
-}
-
-export function formatRunTime(run: WorkflowRunDoc | undefined, fallback: number) {
-  return formatDateTime(run?.completedAt ?? run?.startedAt ?? run?.createdAt ?? fallback);
 }
 
 export function isImageOutput(output: LibraryOutput) {
@@ -29,9 +24,7 @@ export function lightboxMediaForOutput(output: LibraryOutput): MediaLightboxItem
     meta: [
       output.source === "create"
         ? "Create"
-        : output.source === "creative_asset"
-          ? "Reusable asset"
-          : "Workflow export",
+        : "Reusable asset",
       output.provider,
       output.model,
     ].filter(Boolean).join(" · "),

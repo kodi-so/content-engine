@@ -5,7 +5,6 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { storeGeneratedAsset } from "../content/assets/assetStorage";
 import { getModelProvider } from "../providers";
-import type { ModelProviderName } from "../providers/model";
 
 function latestRevisionNote(artifact: Doc<"artifacts">): string {
   if (!artifact.data || typeof artifact.data !== "object") {
@@ -38,18 +37,6 @@ function getArtifactPrompt(artifact: Doc<"artifacts">): string | undefined {
   return typeof prompt === "string" && prompt.trim() ? prompt.trim() : undefined;
 }
 
-function getModelProviderName(
-  value: unknown,
-  fallback: ModelProviderName
-): ModelProviderName {
-  return value === "gemini" ||
-    value === "fal" ||
-    value === "openrouter" ||
-    value === "manual"
-    ? value
-    : fallback;
-}
-
 export const regenerate = action({
   args: { id: v.id("artifacts") },
   handler: async (ctx, args): Promise<{ artifactIds: Id<"artifacts">[] }> => {
@@ -61,16 +48,13 @@ export const regenerate = action({
     });
     if (!context) throw new Error("Artifact not found");
 
-    const { artifact, parentArtifacts, workflow } = context;
+    const { artifact, parentArtifacts } = context;
     if (artifact.reviewStatus !== "needs_revision") {
       throw new Error("Only artifacts marked as needs_revision can be regenerated");
     }
 
     const note = latestRevisionNote(artifact);
-    const modelDefaults = workflow?.modelDefaults;
-    const textProvider = getModelProvider(
-      getModelProviderName(modelDefaults?.textProvider, "openrouter")
-    );
+    const textProvider = getModelProvider("openrouter");
 
     if (artifact.type === "image_prompt") {
       const sourcePrompt = getArtifactPrompt(artifact);
@@ -84,7 +68,7 @@ export const regenerate = action({
           `Original prompt: ${sourcePrompt}`,
           `Review note: ${note}`,
         ].join("\n"),
-        model: modelDefaults?.preferredTextModel,
+        model: undefined,
         maxTokens: 500,
         metadata: { sourceArtifactId: artifact._id },
       });
@@ -95,8 +79,8 @@ export const regenerate = action({
           : {};
       const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
-        workflowId: artifact.workflowId,
-        workflowRunId: artifact.workflowRunId,
+        automationId: artifact.automationId,
+        automationRunId: artifact.automationRunId,
         parentArtifactIds: [artifact._id],
         type: "image_prompt",
         title: `${artifact.title || "Image prompt"} revision`,
@@ -116,17 +100,6 @@ export const regenerate = action({
         reviewStatus: "pending",
       });
 
-      if (artifact.workflowRunId && artifact.workflowId) {
-        await ctx.runMutation(internal.workflows.runs.recordEvent, {
-          userId: identity.subject,
-          workflowRunId: artifact.workflowRunId,
-          workflowId: artifact.workflowId,
-          type: "artifact_created",
-          message: "Regenerated image prompt from revision feedback.",
-          data: { artifactId, sourceArtifactId: artifact._id, note },
-        });
-      }
-
       return { artifactIds: [artifactId] };
     }
 
@@ -144,15 +117,15 @@ export const regenerate = action({
           `Original prompt: ${sourcePrompt}`,
           `Review note: ${note}`,
         ].join("\n"),
-        model: modelDefaults?.preferredTextModel,
+        model: undefined,
         maxTokens: 500,
         metadata: { sourceArtifactId: artifact._id },
       });
       const revisedPrompt = rewrite.text.trim() || sourcePrompt;
       const promptArtifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
-        workflowId: artifact.workflowId,
-        workflowRunId: artifact.workflowRunId,
+        automationId: artifact.automationId,
+        automationRunId: artifact.automationRunId,
         parentArtifactIds: [
           artifact._id,
           ...parentArtifacts.map((item: Doc<"artifacts">) => item._id),
@@ -174,9 +147,7 @@ export const regenerate = action({
         reviewStatus: "pending",
       });
 
-      const mediaProvider = getModelProvider(
-        getModelProviderName(modelDefaults?.mediaProvider, "fal")
-      );
+      const mediaProvider = getModelProvider("fal");
       const sourceData =
         artifact.data && typeof artifact.data === "object"
           ? (artifact.data as Record<string, unknown>)
@@ -185,7 +156,7 @@ export const regenerate = action({
         typeof sourceData.aspectRatio === "string" ? sourceData.aspectRatio : undefined;
       const imageResult = await mediaProvider.generateImage({
         prompt: revisedPrompt,
-        model: modelDefaults?.preferredImageModel,
+        model: undefined,
         aspectRatio,
         count: 1,
         metadata: {
@@ -200,8 +171,8 @@ export const regenerate = action({
         artifactIds.push(
           await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
-            workflowId: artifact.workflowId,
-            workflowRunId: artifact.workflowRunId,
+            automationId: artifact.automationId,
+            automationRunId: artifact.automationRunId,
             parentArtifactIds: [artifact._id, promptArtifactId],
             type: "image",
             title: `${artifact.title || "Image"} revision ${index + 1}`,
@@ -223,8 +194,8 @@ export const regenerate = action({
         artifactIds.push(
           await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
-            workflowId: artifact.workflowId,
-            workflowRunId: artifact.workflowRunId,
+            automationId: artifact.automationId,
+            automationRunId: artifact.automationRunId,
             parentArtifactIds: [artifact._id, promptArtifactId],
             type: "image",
             title: `${artifact.title || "Image"} revision job`,
@@ -240,23 +211,6 @@ export const regenerate = action({
             reviewStatus: "pending",
           })
         );
-      }
-
-      if (artifact.workflowRunId && artifact.workflowId) {
-        await ctx.runMutation(internal.workflows.runs.recordEvent, {
-          userId: identity.subject,
-          workflowRunId: artifact.workflowRunId,
-          workflowId: artifact.workflowId,
-          type: "artifact_created",
-          message: "Regenerated image artifacts from revision feedback.",
-          data: {
-            artifactIds,
-            sourceArtifactId: artifact._id,
-            note,
-            provider: imageResult.metadata.provider,
-            model: imageResult.metadata.model,
-          },
-        });
       }
 
       return { artifactIds };

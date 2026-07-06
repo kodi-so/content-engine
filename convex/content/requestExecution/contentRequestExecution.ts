@@ -25,7 +25,7 @@ import type {
   ModelProviderName,
 } from "../../providers/model";
 import { isProviderError } from "../../providers/errors";
-import { waitForGeneratedImage } from "../../workflows/runtime/generationWaiters";
+import { waitForGeneratedImage } from "./generationWaiters";
 import {
   createRequestArtifact,
   imageModelForProviderRenderingMode,
@@ -59,6 +59,7 @@ export type CreateGenerationPayload = {
   count?: number;
   durationSeconds?: number;
   nativeAudio?: boolean;
+  options?: Record<string, string | boolean>;
   resolution?: string;
   audioMode?: string;
   referenceImages?: CreateReferenceAsset[];
@@ -217,6 +218,7 @@ async function runNonSlideshowRequest(
       model: args.generation.model,
       aspectRatio: args.generation.aspectRatio,
       count: args.generation.count,
+      options: args.generation.options,
       providerInput: args.generation.providerInput,
       referenceImages: args.generation.referenceImages,
     });
@@ -241,6 +243,7 @@ async function runNonSlideshowRequest(
       aspectRatio: args.generation.aspectRatio,
       durationSeconds: args.generation.durationSeconds,
       nativeAudio: args.generation.nativeAudio,
+      options: args.generation.options,
       providerInput: args.generation.providerInput,
       referenceImages: args.generation.referenceImages,
       referenceVideos: args.generation.referenceVideos,

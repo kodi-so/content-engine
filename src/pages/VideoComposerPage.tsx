@@ -13,7 +13,6 @@ import { useWorkspace } from "../contexts/WorkspaceContext";
 import {
   createOutputsFromArtifacts,
   creativeAssetOutputsFromAssets,
-  workflowOutputsFromArtifacts,
 } from "../features/library/libraryOutputs";
 import { isImageOutput, isVideoOutput } from "../features/library/libraryMedia";
 import type { LibraryOutput } from "../features/library/libraryTypes";
@@ -110,7 +109,6 @@ export function VideoComposerPage() {
       [
         ...creativeAssetOutputsFromAssets(creativeAssets ?? []),
         ...createOutputsFromArtifacts(artifacts ?? []),
-        ...workflowOutputsFromArtifacts(artifacts ?? []),
       ]
         .filter((output) => isVideoOutput(output) || isImageOutput(output))
         .sort((first, second) => second.createdAt - first.createdAt),

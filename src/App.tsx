@@ -14,6 +14,7 @@ import { LoadingScreen, PrivateBetaScreen, SignInScreen } from "./components/ui"
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { AccountsPage } from "./pages/AccountsPage";
 import { AnalyzePage } from "./pages/AnalyzePage";
+import { AutomationsPage } from "./pages/AutomationsPage";
 import { CreatePage } from "./pages/CreatePage";
 import { CreateToolsPage } from "./pages/CreateToolsPage";
 import { LandingPage } from "./pages/LandingPage";
@@ -21,8 +22,6 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SlideshowEditorPage } from "./pages/SlideshowEditorPage";
 import { VideoComposerPage } from "./pages/VideoComposerPage";
-import { WorkflowCanvasPage } from "./pages/WorkflowCanvasPage";
-import { WorkflowsPage } from "./pages/WorkflowsPage";
 
 function AppContent() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -30,8 +29,7 @@ function AppContent() {
   const location = useLocation();
   const ensureCurrentUser = useMutation(api.auth.users.ensure);
   const requestAccess = useMutation(api.waitlist.requestAccess);
-  const isFullScreenWorkspaceRoute = /^\/workflows\/[^/]+/.test(location.pathname) ||
-    location.pathname === "/studio";
+  const isFullScreenWorkspaceRoute = location.pathname === "/studio";
   const [accessStatus, setAccessStatus] = useState<"checking" | "approved" | "pending">(
     "checking"
   );
@@ -92,8 +90,7 @@ function AppContent() {
             <Route path="/analyze" element={<AnalyzePage />} />
             <Route path="/studio" element={<VideoComposerPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/workflows" element={<WorkflowsPage />} />
-            <Route path="/workflows/:workflowId" element={<WorkflowCanvasPage />} />
+            <Route path="/automations" element={<AutomationsPage />} />
             <Route path="/slideshows/:slideshowId" element={<SlideshowEditorPage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/settings" element={<SettingsPage />} />

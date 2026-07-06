@@ -43,6 +43,13 @@ import {
   executeContentRequest,
   type CreateGenerationPayload,
 } from "./requestExecution/contentRequestExecution";
+import {
+  normalizeRosterOptionValue,
+  resolveRosterModelAlias,
+  rosterModelByProviderModelId,
+  rosterOptionsForModel,
+  type RosterModelOptionKey,
+} from "../../src/lib/generation/modelRoster";
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
@@ -67,6 +74,37 @@ const createReferenceAssetValidator = v.object({
 });
 
 type CreateGenerationMode = "image" | "video" | "audio" | "lipsync" | "slideshow";
+
+function resolveRequestOptions(args: {
+  mode: CreateGenerationMode;
+  model?: string;
+  options?: Record<string, string | boolean>;
+  workspace: Doc<"workspaces">;
+}): Record<string, string | boolean> | undefined {
+  if (args.mode !== "image" && args.mode !== "video") return undefined;
+  const rosterModel = resolveRosterModelAlias(args.model) ?? rosterModelByProviderModelId(args.model);
+  if (!rosterModel || rosterModel.mode !== args.mode) return args.options;
+  const rosterOptions = rosterOptionsForModel(rosterModel);
+  const resolved: Record<string, string | boolean> = {};
+  for (const [key, option] of Object.entries(rosterOptions) as Array<[
+    RosterModelOptionKey,
+    NonNullable<ReturnType<typeof rosterOptionsForModel>[RosterModelOptionKey]>
+  ]>) {
+    const explicit = normalizeRosterOptionValue(option, args.options?.[key]);
+    if (explicit !== undefined) {
+      resolved[key] = explicit;
+      continue;
+    }
+    const workspaceDefault = normalizeRosterOptionValue(
+      option,
+      key === "resolution" && args.mode === "image"
+        ? args.workspace.aiGenerationSettings?.imageResolution
+        : undefined
+    );
+    resolved[key] = workspaceDefault ?? option.default;
+  }
+  return Object.keys(resolved).length ? resolved : args.options;
+}
 
 function storageIdFromUrl(url: string): Id<"_storage"> | null {
   const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
@@ -175,6 +213,7 @@ export const createGeneration = mutation({
     count: v.optional(v.number()),
     durationSeconds: v.optional(v.number()),
     nativeAudio: v.optional(v.boolean()),
+    options: v.optional(v.record(v.string(), v.union(v.string(), v.boolean()))),
     resolution: v.optional(v.string()),
     audioMode: v.optional(v.string()),
     referenceImages: v.optional(v.array(createReferenceAssetValidator)),
@@ -232,6 +271,12 @@ export const createGeneration = mutation({
     }
 
     const now = Date.now();
+    const options = resolveRequestOptions({
+      mode: args.mode,
+      model: args.model,
+      options: args.options,
+      workspace,
+    });
     const requestId = await ctx.db.insert("contentRequests", {
       userId,
       workspaceId: workspace._id,
@@ -249,6 +294,7 @@ export const createGeneration = mutation({
         count: args.count,
         durationSeconds: args.durationSeconds,
         nativeAudio: args.nativeAudio,
+        options,
         resolution: args.resolution,
         audioMode: args.audioMode,
         referenceImages: args.referenceImages ?? [],

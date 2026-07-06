@@ -19,8 +19,12 @@ import {
 import {
   createStudioProjectForToolCall,
   createStudioRenderRequestForToolCall,
-  createWorkflowDraftForToolCall,
 } from "./execution/studioToolExecution";
+import {
+  createAutomationForToolCall,
+  listAutomationsForToolCall,
+  updateAutomationForToolCall,
+} from "./execution/automationToolExecution";
 import {
   prepareArtifactExportForThread,
   prepareDistributionDraftForThread,
@@ -417,8 +421,18 @@ export async function executeRunnableQueuedTools(
         }
         continue;
       }
-      if (toolCall.toolName === "workflow.createDraft") {
-        await createWorkflowDraftForToolCall(ctx, thread, toolCall);
+      if (toolCall.toolName === "automation.create") {
+        await createAutomationForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "automation.update") {
+        await updateAutomationForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "automation.list") {
+        await listAutomationsForToolCall(ctx, thread, toolCall);
         executedCount += 1;
         continue;
       }

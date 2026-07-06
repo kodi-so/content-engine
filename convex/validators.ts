@@ -23,6 +23,7 @@ export const generationModelProviderValidator = v.union(
 export const aiGenerationSettingsValidator = v.object({
   imageProvider: v.optional(generationModelProviderValidator),
   imageModel: v.optional(v.string()),
+  imageResolution: v.optional(v.string()),
   videoProvider: v.optional(generationModelProviderValidator),
   videoModel: v.optional(v.string()),
   audioProvider: v.optional(generationModelProviderValidator),
@@ -144,61 +145,6 @@ export const contentFormatValidator = v.union(
   v.literal("caption_set")
 );
 
-export const workflowTriggerValidator = v.union(
-  v.literal("manual"),
-  v.literal("schedule"),
-  v.literal("event"),
-  v.literal("metric")
-);
-
-export const workflowRunStatusValidator = v.union(
-  v.literal("queued"),
-  v.literal("running"),
-  v.literal("waiting_for_approval"),
-  v.literal("needs_revision"),
-  v.literal("completed"),
-  v.literal("failed"),
-  v.literal("canceled")
-);
-
-export const workflowRunModeValidator = v.union(
-  v.literal("test"),
-  v.literal("production")
-);
-
-export const workflowArtifactRetentionModeValidator = v.union(
-  v.literal("keep_all"),
-  v.literal("final_only"),
-  v.literal("keep_on_failure")
-);
-
-export const workflowRunNodeStatusValidator = v.union(
-  v.literal("idle"),
-  v.literal("queued"),
-  v.literal("running"),
-  v.literal("succeeded"),
-  v.literal("failed"),
-  v.literal("blocked"),
-  v.literal("skipped")
-);
-
-export const workflowRunProviderJobValidator = v.object({
-  provider: v.string(),
-  model: v.optional(v.string()),
-  externalJobId: v.string(),
-  status: v.optional(v.string()),
-  submittedAt: v.optional(v.number()),
-  completedAt: v.optional(v.number()),
-  raw: v.optional(v.any()),
-});
-
-export const workflowRunOutputRefValidator = v.object({
-  nodeId: v.string(),
-  port: v.string(),
-  artifactIds: v.optional(v.array(v.id("artifacts"))),
-  value: v.optional(v.any()),
-});
-
 export const nodeInputBindingValidator = v.union(
   v.object({
     type: v.literal("literal"),
@@ -289,6 +235,32 @@ export const createInferredOutputTypeValidator = v.union(
   v.literal("unknown")
 );
 
+export const automationScheduleValidator = v.object({
+  timezone: v.string(),
+  postingTimes: v.array(
+    v.object({
+      dayOfWeek: v.number(),
+      hour: v.number(),
+      minute: v.number(),
+    })
+  ),
+});
+
+export const automationApprovalModeValidator = v.union(
+  v.literal("auto_publish"),
+  v.literal("require_approval")
+);
+
+export const automationRunStatusValidator = v.union(
+  v.literal("picking_topic"),
+  v.literal("generating"),
+  v.literal("awaiting_approval"),
+  v.literal("publishing"),
+  v.literal("published"),
+  v.literal("failed"),
+  v.literal("skipped")
+);
+
 export const studioRenderRequestStatusValidator = v.union(
   v.literal("queued"),
   v.literal("blocked"),
@@ -313,68 +285,6 @@ export const createReferenceMentionValidator = v.object({
   mimeType: v.optional(v.string()),
   storageUrl: v.optional(v.string()),
   instruction: v.optional(v.string()),
-});
-
-export const workflowRunEventTypeValidator = v.union(
-  v.literal("run_created"),
-  v.literal("node_started"),
-  v.literal("node_completed"),
-  v.literal("tool_call"),
-  v.literal("model_call"),
-  v.literal("artifact_created"),
-  v.literal("approval_requested"),
-  v.literal("approval_resolved"),
-  v.literal("revision_requested"),
-  v.literal("publish_requested"),
-  v.literal("publish_completed"),
-  v.literal("metric_synced"),
-  v.literal("error")
-);
-
-export const workflowGraphValidator = v.object({
-  schemaVersion: v.literal(1),
-  nodes: v.array(
-    v.object({
-      id: v.string(),
-      type: v.string(),
-      label: v.string(),
-      position: v.object({
-        x: v.number(),
-        y: v.number(),
-      }),
-      provider: v.optional(v.string()),
-      model: v.optional(v.string()),
-      config: v.record(v.string(), v.any()),
-      inputBindings: v.optional(v.record(v.string(), nodeInputBindingValidator)),
-      retention: v.optional(v.any()),
-    })
-  ),
-  edges: v.array(
-    v.object({
-      id: v.string(),
-      sourceNodeId: v.string(),
-      sourcePort: v.string(),
-      targetNodeId: v.string(),
-      targetPort: v.string(),
-    })
-  ),
-  canvas: v.optional(
-    v.object({
-      viewport: v.optional(
-        v.object({
-          x: v.number(),
-          y: v.number(),
-          zoom: v.number(),
-        })
-      ),
-    })
-  ),
-  runSettings: v.optional(
-    v.object({
-      mode: v.optional(workflowRunModeValidator),
-      artifactRetention: v.optional(workflowArtifactRetentionModeValidator),
-    })
-  ),
 });
 
 export const artifactTypeValidator = v.union(
@@ -424,17 +334,6 @@ export const distributionStatusValidator = v.union(
   v.literal("failed"),
   v.literal("canceled")
 );
-
-export const scheduleConfigValidator = v.object({
-  timezone: v.string(),
-  postingTimes: v.array(
-    v.object({
-      dayOfWeek: v.number(),
-      hour: v.number(),
-      minute: v.number(),
-    })
-  ),
-});
 
 export const approvalPolicyValidator = v.object({
   mode: v.union(

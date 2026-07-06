@@ -4,6 +4,7 @@ export type TextBlockAlign = "left" | "center" | "right";
 export type TextBlockBackgroundStyle = "none" | "solid";
 export type SlideTemplate = "center_punch" | "bottom_stack" | "top_hook_bottom_body" | "checklist";
 export type TextPlacement = "top" | "center" | "bottom" | "split";
+export type TextBlockZone = "top" | "center" | "bottom";
 export type TextDensity = "sparse" | "medium" | "dense";
 export type ContrastStrategy = "none" | "shadow" | "gradient_scrim" | "solid_scrim";
 export type SlideshowRenderingMode = "background_plus_overlay" | "full_graphic_generation";
@@ -19,6 +20,7 @@ export type SlideshowTextBlock = {
   text: string;
   items: string[];
   emphasis: TextBlockEmphasis;
+  zone?: TextBlockZone;
   x?: number;
   y?: number;
   width?: number;
@@ -223,35 +225,33 @@ const overlayTextBlockSchema = {
   additionalProperties: false,
   required: [
     "id",
+    "role",
     "text",
-    "x",
-    "y",
-    "width",
-    "height",
-    "align",
-    "fontSize",
-    "fontWeight",
-    "color",
-    "strokeColor",
-    "strokeWidth",
-    "backgroundStyle",
-    "backgroundColor",
+    "emphasis",
   ],
   properties: {
     id: { type: "string" },
+    role: { type: "string", enum: ["eyebrow", "headline", "body", "bullet_list", "cta"] },
     text: { type: "string" },
-    x: { type: "number", description: "Left position as a percentage of slide width, 0-100." },
-    y: { type: "number", description: "Top position as a percentage of slide height, 0-100." },
-    width: { type: "number", description: "Text box width as a percentage of slide width, 12-96." },
-    height: { type: "number", description: "Text box height as a percentage of slide height, 4-96." },
+    emphasis: { type: "string", enum: ["primary", "secondary", "muted"] },
+    zone: {
+      type: "string",
+      enum: ["top", "center", "bottom"],
+      description: "Semantic placement zone chosen to match negative space reserved in backgroundPrompt.",
+    },
+    x: { type: "number", description: "Optional explicit left position as a percentage of slide width. Omit unless user supplied exact geometry." },
+    y: { type: "number", description: "Optional explicit top position as a percentage of slide height. Omit unless user supplied exact geometry." },
+    width: { type: "number", description: "Optional explicit text box width as a percentage of slide width." },
+    height: { type: "number", description: "Optional explicit text box height as a percentage of slide height." },
     align: { type: "string", enum: ["left", "center", "right"] },
-    fontSize: { type: "number", description: "Font size in pixels for a 1080x1920 export canvas." },
+    fontSize: { type: "number", description: "Optional explicit font size in pixels for a 1080x1920 export canvas." },
     fontWeight: { type: "number", enum: [400, 500, 600, 700, 800, 900] },
-    color: { type: "string", description: "Text fill color as a hex value." },
-    strokeColor: { type: "string", description: "Text stroke color as a hex value." },
-    strokeWidth: { type: "number", description: "Text stroke width in pixels for a 1080x1920 export canvas." },
+    color: { type: "string", description: "Optional text fill color as a hex value." },
+    strokeColor: { type: "string", description: "Optional text stroke color as a hex value." },
+    strokeWidth: { type: "number", description: "Optional text stroke width in pixels for a 1080x1920 export canvas." },
     backgroundStyle: { type: "string", enum: ["none", "solid"] },
-    backgroundColor: { type: "string", description: "Text box background color as a hex value. Use #000000 when backgroundStyle is none." },
+    backgroundColor: { type: "string", description: "Optional text box background color as a hex value." },
+    backgroundOpacity: { type: "number" },
   },
 };
 

@@ -36,8 +36,7 @@ export function Sidebar() {
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [workspaceStatus, setWorkspaceStatus] = useState("");
   const createWorkspace = useMutation(api.workspaces.workspaces.createWorkspace);
-  const isFullScreenWorkspaceRoute = /^\/workflows\/[^/]+/.test(location.pathname) ||
-    location.pathname === "/studio";
+  const isFullScreenWorkspaceRoute = location.pathname === "/studio";
   const navTooltipStyle = navTooltip
     ? ({
         top: `${navTooltip.top}px`,

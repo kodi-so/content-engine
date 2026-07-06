@@ -96,6 +96,7 @@ export interface GenerateImageInput {
   model?: string;
   aspectRatio?: "1:1" | "4:5" | "9:16" | string;
   count?: number;
+  options?: Record<string, string | boolean>;
   referenceImages?: ReferenceAsset[];
   metadata?: Record<string, unknown>;
 }
@@ -120,6 +121,7 @@ export interface GenerateVideoInput {
   aspectRatio?: string;
   durationSeconds?: number;
   nativeAudio?: boolean;
+  options?: Record<string, string | boolean>;
   referenceImages?: ReferenceAsset[];
   metadata?: Record<string, unknown>;
 }

@@ -375,7 +375,7 @@ export function SignInScreen() {
       <div className="signin-copy">
         <ContentEngineMark className="size-12" />
         <h1>Content Engine</h1>
-        <p>Create reviewable content and run repeatable publishing workflows from one focused workspace.</p>
+        <p>Create reviewable content and run repeatable publishing automations from one focused workspace.</p>
         <SignInButton mode="modal">
           <button className="primary-button" type="button">
             Sign in

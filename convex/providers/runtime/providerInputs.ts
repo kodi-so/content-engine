@@ -1,53 +1,19 @@
 import type { Doc } from "../../_generated/dataModel";
-import type { ReferenceAsset } from "../../providers/model";
-import type { ModelProviderName } from "../../providers/model";
-import type { WorkflowGraphNodeForRun } from "./executionTypes";
-import { numberFromInputValue, objectValue } from "./inputValues";
+import type { ReferenceAsset } from "../model";
 
-export function modelProviderNameForNode(node: WorkflowGraphNodeForRun): ModelProviderName {
-  switch (node.provider) {
-    case "bulkapis":
-    case "gemini":
-    case "fal":
-    case "openrouter":
-    case "manual":
-      return node.provider;
-    default:
-      return "bulkapis";
-  }
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
-export function providerOverridesFromConfig(config: Record<string, unknown>) {
-  const overrides = {
-    ...objectValue(config.bulkapisInput),
-    ...objectValue(config.providerInput),
-  };
-  const seed = numberFromInputValue(config.seed);
-  if (seed !== undefined) overrides.seed = seed;
-  return overrides;
-}
-
-export function generationProviderInputFromConfig(
-  config: Record<string, unknown>,
-  excludedKeys: string[]
-) {
-  const overrides = {
-    ...objectValue(config.bulkapisInput),
-    ...objectValue(config.providerInput),
-  };
-  const excluded = new Set([
-    ...excludedKeys,
-    "bulkapisInput",
-    "providerInput",
-    "model",
-  ]);
-
-  for (const [key, value] of Object.entries(config)) {
-    if (excluded.has(key) || value === undefined || value === "") continue;
-    overrides[key] = value;
+function numberFromInputValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
-
-  return overrides;
+  return undefined;
 }
 
 type ImageModelUiContractForRun = {

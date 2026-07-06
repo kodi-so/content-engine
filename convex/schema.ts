@@ -1,10 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
-  approvalPolicyValidator,
   aiGenerationSettingsValidator,
   artifactLifecycleValidator,
   artifactTypeValidator,
+  automationApprovalModeValidator,
+  automationRunStatusValidator,
+  automationScheduleValidator,
   contentRequestStatusValidator,
   contentFormatValidator,
   createCheckpointModeValidator,
@@ -24,10 +26,8 @@ import {
   providerModelCapabilitiesValidator,
   providerModelCategoryValidator,
   providerModelSchemaSnapshotValidator,
-  publishingPolicyValidator,
   publishingProviderValidator,
   reviewStatusValidator,
-  scheduleConfigValidator,
   slideshowStatusValidator,
   socialAccountStatusValidator,
   studioRenderRequestStatusValidator,
@@ -35,13 +35,6 @@ import {
   videoAnalysisSourcePlatformValidator,
   videoAnalysisSourceTypeValidator,
   videoAnalysisStatusValidator,
-  workflowGraphValidator,
-  workflowRunEventTypeValidator,
-  workflowRunNodeStatusValidator,
-  workflowRunOutputRefValidator,
-  workflowRunProviderJobValidator,
-  workflowRunStatusValidator,
-  workflowTriggerValidator,
 } from "./validators";
 
 export default defineSchema({
@@ -250,24 +243,28 @@ export default defineSchema({
     .index("by_user_provider", ["userId", "provider"])
     .index("by_external_account", ["provider", "externalAccountId"]),
 
-  workflows: defineTable({
+  automations: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    socialAccountId: v.optional(v.id("socialAccounts")),
+    socialAccountIds: v.array(v.id("socialAccounts")),
     name: v.string(),
-    description: v.optional(v.string()),
-    trigger: workflowTriggerValidator,
-    scheduleConfig: v.optional(scheduleConfigValidator),
-    approvalPolicy: approvalPolicyValidator,
-    publishingPolicy: publishingPolicyValidator,
-    graph: workflowGraphValidator,
-    modelDefaults: v.optional(
+    brief: v.string(),
+    pillars: v.array(v.string()),
+    formatMix: v.optional(v.string()),
+    scheduleConfig: automationScheduleValidator,
+    approvalMode: automationApprovalModeValidator,
+    generationDefaults: v.optional(
       v.object({
-        textProvider: v.optional(modelProviderValidator),
-        mediaProvider: v.optional(modelProviderValidator),
-        preferredTextModel: v.optional(v.string()),
-        preferredImageModel: v.optional(v.string()),
-        preferredVideoModel: v.optional(v.string()),
+        imageResolution: v.optional(v.string()),
+        aspectRatio: v.optional(v.string()),
+        imageModel: v.optional(v.string()),
+        videoModel: v.optional(v.string()),
+      })
+    ),
+    budget: v.optional(
+      v.object({
+        maxUsdPerRun: v.optional(v.number()),
+        maxUsdPerMonth: v.optional(v.number()),
       })
     ),
     isActive: v.boolean(),
@@ -278,6 +275,24 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_active_next_run", ["isActive", "nextRunAt"]),
+
+  automationRuns: defineTable({
+    automationId: v.id("automations"),
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    createThreadId: v.optional(v.id("createThreads")),
+    topic: v.string(),
+    pillar: v.optional(v.string()),
+    status: automationRunStatusValidator,
+    distributionPlanId: v.optional(v.id("distributionPlans")),
+    costUsd: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_automation", ["automationId"])
+    .index("by_automation_started", ["automationId", "startedAt"])
+    .index("by_status", ["status"]),
 
   contentRequests: defineTable({
     userId: v.string(),
@@ -320,6 +335,8 @@ export default defineSchema({
   createThreads: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
+    origin: v.optional(v.union(v.literal("user"), v.literal("automation"))),
+    automationRunId: v.optional(v.id("automationRuns")),
     title: v.optional(v.string()),
     status: createThreadStatusValidator,
     checkpointMode: createCheckpointModeValidator,
@@ -397,79 +414,12 @@ export default defineSchema({
     .index("by_thread", ["createThreadId"])
     .index("by_thread_status", ["createThreadId", "status"]),
 
-  workflowRuns: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    workflowId: v.id("workflows"),
-    socialAccountId: v.optional(v.id("socialAccounts")),
-    trigger: workflowTriggerValidator,
-    status: workflowRunStatusValidator,
-    currentNodeId: v.optional(v.string()),
-    generatedTopic: v.optional(v.string()),
-    generatedHook: v.optional(v.string()),
-    summary: v.optional(v.string()),
-    costUsd: v.optional(v.number()),
-    errorMessage: v.optional(v.string()),
-    errorNodeId: v.optional(v.string()),
-    scheduledFor: v.optional(v.number()),
-    startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_workspace", ["workspaceId"])
-    .index("by_workflow", ["workflowId"])
-    .index("by_status", ["status"])
-    .index("by_user_status", ["userId", "status"]),
-
-  workflowRunEvents: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    workflowRunId: v.id("workflowRuns"),
-    workflowId: v.id("workflows"),
-    type: workflowRunEventTypeValidator,
-    nodeId: v.optional(v.string()),
-    message: v.string(),
-    data: v.optional(v.any()),
-    createdAt: v.number(),
-  })
-    .index("by_workspace", ["workspaceId"])
-    .index("by_run", ["workflowRunId"])
-    .index("by_workflow", ["workflowId"]),
-
-  workflowRunNodeStates: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    workflowRunId: v.id("workflowRuns"),
-    workflowId: v.id("workflows"),
-    nodeId: v.string(),
-    nodeType: v.string(),
-    label: v.string(),
-    status: workflowRunNodeStatusValidator,
-    dependencyNodeIds: v.array(v.string()),
-    blockedByNodeIds: v.optional(v.array(v.string())),
-    providerJobs: v.optional(v.array(workflowRunProviderJobValidator)),
-    outputRefs: v.optional(v.array(workflowRunOutputRefValidator)),
-    costUsd: v.optional(v.number()),
-    errorMessage: v.optional(v.string()),
-    startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_workspace", ["workspaceId"])
-    .index("by_run", ["workflowRunId"])
-    .index("by_run_node", ["workflowRunId", "nodeId"])
-    .index("by_run_status", ["workflowRunId", "status"])
-    .index("by_workflow", ["workflowId"]),
-
   artifacts: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
     type: artifactTypeValidator,
     title: v.optional(v.string()),
@@ -486,7 +436,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_content_request", ["contentRequestId"])
-    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_automation_run", ["automationRunId"])
     .index("by_type", ["type"]),
 
   slideshows: defineTable({
@@ -494,8 +444,8 @@ export default defineSchema({
     workspaceId: v.optional(v.id("workspaces")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     title: v.string(),
     status: slideshowStatusValidator,
     spec: v.any(),
@@ -506,7 +456,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_content_request", ["contentRequestId"])
-    .index("by_workflow_run", ["workflowRunId"]),
+    .index("by_automation_run", ["automationRunId"]),
 
   videoProjects: defineTable({
     userId: v.string(),
@@ -548,8 +498,8 @@ export default defineSchema({
   distributionPlans: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     artifactIds: v.array(v.id("artifacts")),
     socialAccountIds: v.array(v.id("socialAccounts")),
     provider: publishingProviderValidator,
@@ -566,14 +516,14 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_automation_run", ["automationRunId"])
     .index("by_status", ["status"]),
 
   postMetrics: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     distributionPlanId: v.optional(v.id("distributionPlans")),
     socialAccountId: v.id("socialAccounts"),
     platform: platformValidator,
@@ -585,7 +535,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_automation_run", ["automationRunId"])
     .index("by_distribution_plan", ["distributionPlanId"])
     .index("by_social_account", ["socialAccountId"])
     .index("by_external_post", ["platform", "externalPostId"]),

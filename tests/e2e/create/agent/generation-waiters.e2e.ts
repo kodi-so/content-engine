@@ -4,7 +4,7 @@ import type { ModelProvider } from "../../../../convex/providers/model";
 import {
   waitForGeneratedImage,
   waitForGeneratedImages,
-} from "../../../../convex/workflows/runtime/generationWaiters";
+} from "../../../../convex/content/requestExecution/generationWaiters";
 
 let retryAttempts = 0;
 const retryingProvider = {

@@ -1,4 +1,5 @@
 import { getSlideDimensions } from "./slideshowDimensions";
+import { designOverlayBlocks } from "../../lib/overlayLayoutDesigner";
 import type {
   CanonicalSlideshowSlide,
   CanonicalSlideshowSpec,
@@ -65,18 +66,7 @@ function normalizeTextBlock(block: SlideshowTextBlock, index: number): Slideshow
     id: block.id ?? `text-${index + 1}`,
     items: block.items ?? [],
     emphasis: block.emphasis ?? (isPrimary ? "primary" : block.role === "eyebrow" ? "muted" : "secondary"),
-    x: block.x ?? 10,
-    y: block.y ?? (isPrimary ? 42 : 56),
-    width: block.width ?? 80,
     align: block.align ?? "center",
-    fontSize: block.fontSize ?? (isPrimary ? 72 : 46),
-    fontWeight: block.fontWeight ?? (isPrimary ? 800 : 700),
-    color: block.color ?? "#FFFFFF",
-    strokeColor: block.strokeColor ?? "#000000",
-    strokeWidth: block.strokeWidth ?? (isPrimary ? 5 : 3),
-    backgroundStyle: block.backgroundStyle ?? "none",
-    backgroundColor: block.backgroundColor ?? "#FFFFFF",
-    backgroundOpacity: block.backgroundStyle === "solid" ? block.backgroundOpacity ?? 1 : 0,
   };
 }
 
@@ -181,8 +171,22 @@ export function buildCanonicalSlideshowSpec(args: {
     strategy: args.plan.strategy,
     slides: args.plan.slides.map((slide): CanonicalSlideshowSlide => {
       const image = args.imageBySlideIndex.get(slide.index);
+      const textBlocks = slide.renderingMode === "background_plus_overlay"
+        ? designOverlayBlocks({
+            medium: "slideshow_slide",
+            aspectRatio: args.plan.aspectRatio,
+            blocks: slide.textBlocks.map((block) => ({
+              ...block,
+              zone: block.zone ?? (
+                slide.layout.textZone === "split" ? undefined : slide.layout.textZone
+              ),
+            })),
+            contrastStrategy: slide.layout.contrast,
+          })
+        : undefined;
       return {
         ...slide,
+        ...(textBlocks ? { textBlocks } : {}),
         status: "active",
         dimensions: args.dimensions,
         backgroundImageUrl: image?.url,

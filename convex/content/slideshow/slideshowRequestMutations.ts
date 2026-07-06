@@ -4,7 +4,7 @@ import type { Id } from "../../_generated/dataModel";
 import { storeGeneratedAsset } from "../assets/assetStorage";
 import { getSlideDimensions } from "./slideshowDimensions";
 import { getModelProvider } from "../../providers/index";
-import { waitForGeneratedImage } from "../../workflows/runtime/generationWaiters";
+import { waitForGeneratedImage } from "../requestExecution/generationWaiters";
 import {
   createRequestArtifact,
   imageModelForRenderingMode,

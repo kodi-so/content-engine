@@ -1,5 +1,5 @@
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
@@ -12,21 +12,14 @@ import {
   TitleRenameModal,
 } from "../features/library/LibraryModals";
 import { LibraryOutputCard } from "../features/library/LibraryOutputCard";
-import {
-  LibraryFolderButton,
-  LibraryRunRow,
-} from "../features/library/LibraryWorkflowBrowser";
 import { LibrarySlideshowCard } from "../features/library/LibrarySlideshowCard";
 import {
   createOutputsFromArtifacts,
   creativeAssetOutputsFromAssets,
-  groupLibraryOutputs,
-  workflowOutputsFromArtifacts,
 } from "../features/library/libraryOutputs";
 import {
   assetKindFromFile,
   editableImageOutput,
-  formatRunTime,
   generationAspectRatio,
   libraryImageEditPrompt,
   libraryImageReference,
@@ -49,8 +42,6 @@ export function LibraryPage() {
     ...workspaceArgs,
     includeDebug: true,
   });
-  const workflows = useQuery(api.workflows.definitions.list, workspaceArgs);
-  const runs = useQuery(api.workflows.runs.list, workspaceArgs);
   const creativeAssets = useQuery(api.accounts.creativeAssets.list, workspaceArgs);
   const slideshows = useQuery(api.content.slideshows.list, workspaceArgs);
   const generateImage = useAction(api.content.createAssets.generateImage);
@@ -62,10 +53,7 @@ export function LibraryPage() {
   const deleteSlideshow = useMutation(api.content.slideshows.remove);
   const updateArtifactTitle = useMutation(api.artifacts.records.updateTitle);
   const approveImageReplacement = useMutation(api.artifacts.records.approveImageReplacement);
-  const [libraryView, setLibraryView] = useState<"assets" | "workflows">("assets");
   const [typeFilter, setTypeFilter] = useState("");
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [deletingArtifactId, setDeletingArtifactId] = useState<string | null>(null);
   const [deletingSlideshowId, setDeletingSlideshowId] = useState<string | null>(null);
   const [libraryStatus, setLibraryStatus] = useState("");
@@ -92,10 +80,6 @@ export function LibraryPage() {
     setRevisionStatus("");
   }, [editingOutput]);
 
-  const workflowOutputs = useMemo(
-    () => workflowOutputsFromArtifacts(artifacts ?? []),
-    [artifacts]
-  );
   const createOutputs = useMemo(
     () =>
       [
@@ -127,38 +111,18 @@ export function LibraryPage() {
     [savedSlideshows, typeFilter]
   );
 
-  const filteredWorkflowOutputs = useMemo(
-    () => workflowOutputs.filter((output) => {
-      if (typeFilter && output.type !== typeFilter) return false;
-      return true;
-    }),
-    [typeFilter, workflowOutputs]
-  );
-
-  const folders = useMemo(
-    () => groupLibraryOutputs({ outputs: filteredWorkflowOutputs, runs, workflows }),
-    [filteredWorkflowOutputs, runs, workflows]
-  );
-
-  const selectedFolder = folders.find((folder) => folder.id === selectedWorkflowId);
-  const selectedRun = selectedFolder?.runs.find((run) => run.id === selectedRunId);
   const outputTypes = useMemo(
     () =>
       Array.from(
-        new Set([...createOutputs, ...workflowOutputs].map((output) => output.type))
+        new Set(createOutputs.map((output) => output.type))
       ).sort(),
-    [createOutputs, workflowOutputs]
+    [createOutputs]
   );
   const visibleOutputTypes = useMemo(
     () => Array.from(new Set([...outputTypes, "slideshow"])).sort(),
     [outputTypes]
   );
-  const loading = !artifacts || !runs || !workflows || !creativeAssets || !slideshows;
-
-  const clearSelection = () => {
-    setSelectedWorkflowId(null);
-    setSelectedRunId(null);
-  };
+  const loading = !artifacts || !creativeAssets || !slideshows;
 
   const removeSavedAsset = async (output: LibraryOutput) => {
     if (!output.artifactId && !output.creativeAssetId) return;
@@ -237,8 +201,6 @@ export function LibraryPage() {
       });
       setAddMediaStatus("");
       setLibraryStatus("Media added to library");
-      setLibraryView("assets");
-      clearSelection();
       setIsAddMediaOpen(false);
     } catch (error) {
       setAddMediaStatus(error instanceof Error ? error.message : "Unable to add media");
@@ -320,66 +282,17 @@ export function LibraryPage() {
     }
   };
 
-  const title = selectedRun
-    ? formatRunTime(selectedRun.run, selectedRun.createdAt)
-    : selectedFolder?.workflow?.name ??
-      (libraryView === "assets" ? "Saved Assets" : "Workflow Exports");
-
   return (
     <Page
       title="Library"
-      description={`Saved assets and workflow exports for ${activeWorkspace?.name ?? "this workspace"}.`}
+      description={`Saved assets for ${activeWorkspace?.name ?? "this workspace"}.`}
     >
-      <Panel title={title}>
+      <Panel title="Saved Assets">
         <div className="section-toolbar">
           <div className="grid min-w-0 gap-[var(--space-3)]">
-            <div className="flex flex-wrap gap-[var(--space-2)]">
-              <button
-                className={libraryView === "assets" ? "primary-button" : "secondary-button"}
-                type="button"
-                onClick={() => {
-                  setLibraryView("assets");
-                  clearSelection();
-                }}
-              >
-                Saved assets
-              </button>
-              <button
-                className={libraryView === "workflows" ? "primary-button" : "secondary-button"}
-                type="button"
-                onClick={() => {
-                  setLibraryView("workflows");
-                  clearSelection();
-                }}
-              >
-                Workflow exports
-              </button>
-            </div>
             <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
-              {(selectedFolder || selectedRun) && (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => {
-                    if (selectedRun) {
-                      setSelectedRunId(null);
-                    } else {
-                      clearSelection();
-                    }
-                  }}
-                >
-                  <ArrowLeft size={16} />
-                  Back
-                </button>
-              )}
               <div className="min-w-0 text-[0.9rem] text-[var(--color-ink-muted)]">
-                {selectedRun
-                  ? `${selectedRun.outputs.length} output${selectedRun.outputs.length === 1 ? "" : "s"}`
-                  : selectedFolder
-                    ? `${selectedFolder.runs.length} run${selectedFolder.runs.length === 1 ? "" : "s"} · ${selectedFolder.outputCount} output${selectedFolder.outputCount === 1 ? "" : "s"}`
-                    : libraryView === "assets"
-                      ? `${filteredCreateOutputs.length + filteredSlideshows.length} saved asset${filteredCreateOutputs.length + filteredSlideshows.length === 1 ? "" : "s"}`
-                      : `${folders.length} workflow folder${folders.length === 1 ? "" : "s"} · ${filteredWorkflowOutputs.length} output${filteredWorkflowOutputs.length === 1 ? "" : "s"}`}
+                {`${filteredCreateOutputs.length + filteredSlideshows.length} saved asset${filteredCreateOutputs.length + filteredSlideshows.length === 1 ? "" : "s"}`}
               </div>
             </div>
           </div>
@@ -397,24 +310,21 @@ export function LibraryPage() {
               type="button"
               onClick={() => {
                 setTypeFilter("");
-                clearSelection();
               }}
             >
               Clear filters
             </button>
-            {libraryView === "assets" && !selectedFolder && !selectedRun ? (
-              <button
-                className="primary-button self-end"
-                type="button"
-                onClick={() => {
-                  setAddMediaStatus("");
-                  setIsAddMediaOpen(true);
-                }}
-              >
-                <Plus size={16} />
-                Add media
-              </button>
-            ) : null}
+            <button
+              className="primary-button self-end"
+              type="button"
+              onClick={() => {
+                setAddMediaStatus("");
+                setIsAddMediaOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              Add media
+            </button>
           </div>
         </div>
         {libraryStatus ? (
@@ -423,26 +333,19 @@ export function LibraryPage() {
 
         {loading && (
           <LoadingState
-            detail="Fetching saved assets, workflow exports, and run history."
+            detail="Fetching saved assets and slideshows."
             title="Loading library"
           />
         )}
-        {!loading && libraryView === "assets" && filteredCreateOutputs.length === 0 && filteredSlideshows.length === 0 && (
+        {!loading && filteredCreateOutputs.length === 0 && filteredSlideshows.length === 0 && (
           <div className="empty-state">
             {createOutputs.length === 0 && savedSlideshows.length === 0
               ? "No saved assets yet. Add reusable media or save a generated result here."
               : "No saved assets match these filters."}
           </div>
         )}
-        {!loading && libraryView === "workflows" && folders.length === 0 && (
-          <div className="empty-state">
-            {workflowOutputs.length === 0
-              ? "No media library exports yet."
-              : "No exports match these filters."}
-          </div>
-        )}
 
-        {!loading && libraryView === "assets" && (filteredCreateOutputs.length > 0 || filteredSlideshows.length > 0) && (
+        {!loading && (filteredCreateOutputs.length > 0 || filteredSlideshows.length > 0) && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
             {filteredSlideshows.map((slideshow) => (
               <LibrarySlideshowCard
@@ -475,59 +378,6 @@ export function LibraryPage() {
                 onDelete={() => void removeSavedAsset(output)}
                 onRename={
                   output.artifactId || output.creativeAssetId
-                    ? () => setRenamingOutput(output)
-                    : undefined
-                }
-                output={output}
-              />
-            ))}
-          </div>
-        )}
-
-        {!loading && libraryView === "workflows" && !selectedFolder && folders.length > 0 && (
-          <div className="artifact-grid">
-            {folders.map((folder) => (
-              <LibraryFolderButton
-                key={folder.id}
-                folder={folder}
-                onOpen={() => {
-                  setSelectedWorkflowId(folder.id);
-                  setSelectedRunId(null);
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {!loading && libraryView === "workflows" && selectedFolder && !selectedRun && (
-          <div className="grid gap-[var(--space-3)]">
-            {selectedFolder.runs.map((runGroup) => (
-              <LibraryRunRow
-                key={runGroup.id}
-                group={runGroup}
-                onOpen={() => setSelectedRunId(runGroup.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        {!loading && libraryView === "workflows" && selectedRun && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
-            {selectedRun.outputs.map((output) => (
-              <LibraryOutputCard
-                key={output.id}
-                onOpenMedia={(mediaOutput) => setLightboxMedia(lightboxMediaForOutput(mediaOutput))}
-                onCompose={
-                  output.mimeType?.startsWith("video/") || output.type === "video"
-                    ? () => navigate(`/studio?${
-                        output.artifactId
-                          ? `artifactId=${encodeURIComponent(String(output.artifactId))}`
-                          : `outputId=${encodeURIComponent(output.id)}`
-                      }`)
-                    : undefined
-                }
-                onRename={
-                  output.artifactId
                     ? () => setRenamingOutput(output)
                     : undefined
                 }

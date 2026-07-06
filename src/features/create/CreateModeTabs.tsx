@@ -1,4 +1,4 @@
-import { FileText, Image, Music, Video, Workflow } from "lucide-react";
+import { FileText, Image, Music, Video } from "lucide-react";
 import { CREATE_MODE_DEFINITIONS, type CreateMode } from "../../lib/create/createModes";
 
 const createModeIcons: Record<CreateMode, typeof Image> = {
@@ -6,7 +6,6 @@ const createModeIcons: Record<CreateMode, typeof Image> = {
   video: Video,
   audio: Music,
   slideshow: FileText,
-  workflow: Workflow,
 };
 
 export function CreateModeTabs({

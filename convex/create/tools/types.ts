@@ -14,7 +14,7 @@ export type CreateToolCategory =
   | "library"
   | "export"
   | "publishing"
-  | "workflow";
+  | "automation";
 
 export type CreateToolAvailability = "available" | "planned";
 

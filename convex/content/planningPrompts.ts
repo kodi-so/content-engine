@@ -40,6 +40,13 @@ function overlayPromptPlannerSlide(slide: OverlayPlannerSlide) {
     purpose: slide.purpose,
     useReferenceImage: slide.useReferenceImage,
     sceneCues: slide.textBlocks.map((block) => block.text).filter((cue) => Boolean(cue.trim())),
+    textBlocks: slide.textBlocks.map((block) => ({
+      role: block.role,
+      text: block.text,
+      emphasis: block.emphasis,
+      zone: block.zone,
+      align: block.align,
+    })),
   };
 }
 
@@ -142,8 +149,9 @@ export function buildOverlayPlannerPrompt(args: PromptArgs): string {
     "- Preserve user-provided slide text exactly inside textBlocks when the prompt gives explicit slides.",
     "- Use textBlocks to represent the user's intended on-slide copy structure. If a slide has multiple distinct pieces of copy, keep them as separate editable text blocks instead of collapsing them into one.",
     "- User wording such as title, label, exercise name, caption, cue, note, CTA, and supporting copy describes on-slide text intent; model each distinct piece as editable slide text.",
-    "- Give each block sensible default geometry: x/y/width as percentages of the 9:16 slide, large readable font sizes, and mobile-safe placement.",
-    "- For TikTok-style overlay copy, default to white text, 16px black stroke, high font weight, centered alignment, and no background unless the user requests a sticker/card/background.",
+    "- For each textBlock, provide id, role, text, emphasis, optional align, and optional zone (top, center, bottom). Do not provide x/y/width/height/fontSize/fontWeight/stroke/color unless the user supplied exact geometry.",
+    "- Choose each block's zone so text sits over the negative space reserved in the generated background image.",
+    "- State that reserved negative space explicitly in the paired backgroundPrompt so the image leaves room for the text.",
     "",
     "Return exactly the requested JSON schema.",
   ].filter((line) => line !== undefined).join("\n");

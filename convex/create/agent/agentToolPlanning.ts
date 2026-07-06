@@ -42,8 +42,7 @@ function dependsOnAllPreviousCalls(toolCall: DependencyCandidate) {
     toolCall.toolName === "studio.render" ||
     toolCall.toolName === "artifact.save" ||
     toolCall.toolName === "artifact.export" ||
-    toolCall.toolName === "publishing.prepare" ||
-    toolCall.toolName === "workflow.createDraft"
+    toolCall.toolName === "publishing.prepare"
   ) {
     return true;
   }

@@ -226,6 +226,7 @@ export const create = mutation({
     const threadId = await ctx.db.insert("createThreads", {
       userId,
       workspaceId: workspace._id,
+      origin: "user",
       title: defaultThreadTitle(args.title),
       status: "idle",
       checkpointMode: args.checkpointMode ?? "debug",

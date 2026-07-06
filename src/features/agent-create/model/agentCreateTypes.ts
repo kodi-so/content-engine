@@ -140,4 +140,4 @@ export type AgentCreateFinalReviewAction =
   | "request_render"
   | "export"
   | "publish"
-  | "save_workflow";
+  | "turn_into_automation";

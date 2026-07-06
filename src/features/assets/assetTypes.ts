@@ -1,6 +1,6 @@
-import type { LocalReferenceFileKind } from "../../lib/workflow/workflowConfigFields";
+import type { LocalReferenceFileKind } from "../../lib/create/createConfigFields";
 
-export type AssetSource = "create" | "workflow_export" | "creative_asset";
+export type AssetSource = "create" | "creative_asset";
 
 export type SelectableLibraryAsset = {
   id: string;
@@ -31,11 +31,9 @@ export type AssetPreviewItem = {
 export const assetSourceLabels: Record<AssetSource, string> = {
   create: "Create",
   creative_asset: "Asset",
-  workflow_export: "Workflow",
 };
 
 export const assetSourceLongLabels: Record<AssetSource, string> = {
   create: "Create",
   creative_asset: "Library asset",
-  workflow_export: "Workflow export",
 };

@@ -9,9 +9,13 @@ import {
   falVideoFrameCountForDuration,
   normalizeFalVideoDurationForModel,
 } from "../../../src/lib/generation/videoDurationConstraints";
+import {
+  rosterModelByProviderModelId,
+  rosterOptionsForModel,
+  type RosterModel,
+} from "../../../src/lib/generation/modelRoster";
 
-export const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
-export const DEFAULT_FAL_IMAGE_RESOLUTION = "2K";
+export const DEFAULT_FAL_IMAGE_MODEL = "fal-ai/nano-banana-2";
 export const DEFAULT_FAL_VIDEO_MODEL = "fal-ai/ltx-video";
 export const DEFAULT_FAL_AUDIO_MODEL = "fal-ai/xai/tts/v1";
 export const DEFAULT_FAL_LIPSYNC_MODEL = "fal-ai/seedance-2.0/reference-to-video";
@@ -60,8 +64,12 @@ function falVideoAspectRatioPayload(
   };
 }
 
-function isFalGeminiImageModel(model: string): boolean {
-  return model === "fal-ai/gemini-3-pro-image-preview" ||
+function isFalEditableImageModel(model: string): boolean {
+  return model === "openai/gpt-image-2" ||
+    model === "openai/gpt-image-2/image-to-image" ||
+    model === "fal-ai/gpt-image-2" ||
+    model === "fal-ai/gpt-image-2/image-to-image" ||
+    model === "fal-ai/gemini-3-pro-image-preview" ||
     model === "fal-ai/gemini-3-pro-image-preview/edit" ||
     model === "fal-ai/gemini-3.1-flash-image-preview" ||
     model === "fal-ai/gemini-3.1-flash-image-preview/edit" ||
@@ -71,10 +79,29 @@ function isFalGeminiImageModel(model: string): boolean {
     model === "fal-ai/nano-banana-2/edit";
 }
 
+function isFalGptImage2Model(model: string): boolean {
+  return model === "openai/gpt-image-2" ||
+    model === "openai/gpt-image-2/image-to-image" ||
+    model === "fal-ai/gpt-image-2" ||
+    model === "fal-ai/gpt-image-2/image-to-image";
+}
+
 export function falImageModelForInput(model: string, input: GenerateImageInput): string {
   if (!input.referenceImages?.length) return model;
-  if (!isFalGeminiImageModel(model) || model.endsWith("/edit")) return model;
+  if (!isFalEditableImageModel(model) || model.endsWith("/edit") || model.endsWith("/image-to-image")) {
+    return model;
+  }
+  if (model === "openai/gpt-image-2" || model === "fal-ai/gpt-image-2") {
+    return "openai/gpt-image-2/image-to-image";
+  }
   return `${model}/edit`;
+}
+
+function gptImage2SizeForAspectRatio(aspectRatio: string | undefined) {
+  if (aspectRatio === "9:16") return "portrait_16_9";
+  if (aspectRatio === "4:5") return "portrait_4_3";
+  if (aspectRatio === "16:9") return "landscape_16_9";
+  return "square_hd";
 }
 
 function providerArgumentOverrides(
@@ -180,6 +207,35 @@ function addIfDefined(
   }
 }
 
+function rosterModelForFalPayload(model: string): RosterModel | undefined {
+  const candidates = [
+    model,
+    model.replace(/\/edit$/, ""),
+    model.replace(/\/image-to-image$/, ""),
+    model.replace(/^fal-ai\/gpt-image-2/, "openai/gpt-image-2"),
+  ];
+  for (const candidate of candidates) {
+    const rosterModel = rosterModelByProviderModelId(candidate);
+    if (rosterModel) return rosterModel;
+  }
+  return undefined;
+}
+
+function typedRosterOptionPayload(
+  model: string,
+  options: Record<string, string | boolean> | undefined
+): Record<string, unknown> {
+  const rosterModel = rosterModelForFalPayload(model);
+  if (!rosterModel) return {};
+  const rosterOptions = rosterOptionsForModel(rosterModel);
+  const payload: Record<string, unknown> = {};
+  for (const [key, option] of Object.entries(rosterOptions)) {
+    const value = options?.[key] ?? option.default;
+    addIfDefined(payload, option.payloadKey, value);
+  }
+  return payload;
+}
+
 function falNativeAudioPayload(
   model: string,
   input: GenerateVideoInput
@@ -205,15 +261,25 @@ export function falImagePayload(
   const argumentOverrides = providerArgumentOverrides(input.metadata);
   const referenceImageUrls = falReferenceImageUrls(input);
 
-  if (isFalGeminiImageModel(model)) {
+  if (isFalGptImage2Model(model)) {
+    return {
+      prompt: input.prompt,
+      image_size: gptImage2SizeForAspectRatio(input.aspectRatio),
+      ...typedRosterOptionPayload(model, input.options),
+      num_images: input.count ?? 1,
+      output_format: "png",
+      ...falImageReferencePayload(input),
+      ...argumentOverrides,
+    };
+  }
+
+  if (isFalEditableImageModel(model)) {
     return {
       prompt: input.prompt,
       num_images: input.count ?? 1,
       aspect_ratio: input.aspectRatio ?? "1:1",
       output_format: "png",
-      resolution:
-        process.env.CONTENT_ENGINE_IMAGE_RESOLUTION?.trim() ||
-        DEFAULT_FAL_IMAGE_RESOLUTION,
+      ...typedRosterOptionPayload(model, input.options),
       safety_tolerance: "4",
       limit_generations: true,
       ...(referenceImageUrls ? { image_urls: referenceImageUrls } : {}),
@@ -240,6 +306,7 @@ export function falVideoPayload(
     ...falVideoAspectRatioPayload(model, input),
     ...falVideoReferencePayload(model, input),
     ...falNativeAudioPayload(model, input),
+    ...typedRosterOptionPayload(model, input.options),
     ...argumentOverrides,
   };
   addIfDefined(

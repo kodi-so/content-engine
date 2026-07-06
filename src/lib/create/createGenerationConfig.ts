@@ -1,18 +1,13 @@
-import type { ConfigField } from "../workflow/workflowConfigFields";
+import type { ConfigField } from "./createConfigFields";
 import {
-  configFieldsForNode,
   localReferenceFilesFromConfig,
-} from "../workflow/workflowConfigFields";
-import type { WorkflowNodeType } from "../workflow/workflowGraph";
-import type {
-  ImageModelUiContract,
-  ProviderModelDoc,
-} from "../workflow/workflowModelCatalog";
+} from "./createConfigFields";
 import {
   defaultDurationForFalVideoModel,
   falVideoDurationConstraintForModel,
 } from "../generation/videoDurationConstraints";
 import type { CreateMode } from "./createModes";
+import type { RosterModel } from "../generation/modelRoster";
 
 export type CreateGenerationMode = Extract<CreateMode, "image" | "video" | "audio">;
 
@@ -21,17 +16,6 @@ export type CreateGenerationFieldGroups = {
   referenceFields: ConfigField[];
   coreFields: ConfigField[];
 };
-
-const createOnlyHiddenFieldKeys = new Set([
-  "audioFromInputNode",
-  "captionFromInputNode",
-  "imageFromInputNode",
-  "mediaFromInputNode",
-  "promptFromInputNode",
-  "requestFromInputNode",
-  "textFromInputNode",
-  "voiceFromInputNode",
-]);
 
 const promptFieldKeys = new Set(["prompt", "text"]);
 const referenceFieldKeys = new Set([
@@ -84,7 +68,6 @@ export function defaultCreateGenerationConfig(mode: CreateMode): Record<string, 
         localReferenceAudios: [],
       };
     case "slideshow":
-    case "workflow":
       return {};
   }
 }
@@ -99,37 +82,117 @@ export function createGenerationPromptValue(
 
 export function createGenerationFields(args: {
   config: Record<string, unknown>;
-  imageModelUiContract?: ImageModelUiContract | null;
-  nodeType: WorkflowNodeType;
-  selectedModel: ProviderModelDoc | null;
+  mode: CreateGenerationMode;
+  selectedModel: RosterModel | null;
 }): ConfigField[] {
-  return configFieldsForNode(
-    args.nodeType,
-    args.config,
-    args.selectedModel,
-    args.imageModelUiContract
-  )
-    .filter((field) => !createOnlyHiddenFieldKeys.has(field.key))
-    .map((field) => {
-      if (
-        args.nodeType === "image_generation" &&
-        field.key === "localReferenceImages" &&
-        args.imageModelUiContract?.images.required
-      ) {
-        return { ...field, required: true };
-      }
-
-      if (args.nodeType === "video_generation" && field.key === "durationSeconds") {
-        return createVideoDurationField(field, args.selectedModel);
-      }
-
-      return field;
-    });
+  switch (args.mode) {
+    case "image":
+      return [
+        {
+          key: "prompt",
+          label: "Prompt",
+          type: "textarea",
+          required: true,
+        },
+        {
+          key: "localReferenceImages",
+          label: "Reference images",
+          type: "json",
+          description: "Optional images to edit, blend, or use as style references.",
+        },
+        {
+          key: "aspectRatio",
+          label: "Aspect ratio",
+          type: "enum",
+          enumValues: ["9:16", "4:5", "1:1", "16:9"],
+          defaultValue: "4:5",
+        },
+        {
+          key: "count",
+          label: "Count",
+          type: "number",
+          defaultValue: 1,
+        },
+      ];
+    case "video":
+      return [
+        {
+          key: "prompt",
+          label: "Prompt",
+          type: "textarea",
+          required: true,
+        },
+        {
+          key: "localReferenceImages",
+          label: "Reference images",
+          type: "json",
+          description: "Optional source images or visual references.",
+        },
+        {
+          key: "localReferenceVideos",
+          label: "Reference videos",
+          type: "json",
+          description: "Optional motion references for supported models.",
+        },
+        {
+          key: "startEndFrameMode",
+          label: "Use start and end frames",
+          type: "boolean",
+          description: "Provide the first and last frame for models that support interpolation.",
+          defaultValue: false,
+        },
+        {
+          key: "localStartFrameImages",
+          label: "Start frame",
+          type: "json",
+        },
+        {
+          key: "localEndFrameImages",
+          label: "End frame",
+          type: "json",
+        },
+        {
+          key: "aspectRatio",
+          label: "Aspect ratio",
+          type: "enum",
+          enumValues: ["9:16", "4:5", "1:1", "16:9"],
+          defaultValue: "9:16",
+        },
+        createVideoDurationField({
+          key: "durationSeconds",
+          label: "Duration",
+          type: "number",
+          defaultValue: 5,
+        }, args.selectedModel),
+      ];
+    case "audio":
+      return [
+        {
+          key: "text",
+          label: "Text or sound prompt",
+          type: "textarea",
+          required: true,
+        },
+        {
+          key: "localReferenceAudios",
+          label: "Voice references",
+          type: "json",
+          description: "Optional audio references for voice cloning.",
+        },
+        {
+          key: "mode",
+          label: "Audio mode",
+          type: "enum",
+          enumValues: ["tts", "voice_clone", "sfx", "music"],
+          defaultValue: "tts",
+        },
+      ];
+  }
 }
 
 function createVideoDurationField(
   field: ConfigField,
-  selectedModel: ProviderModelDoc | null
+  selectedModel: RosterModel | null
 ): ConfigField {
   if (!selectedModel) {
     return {
@@ -139,11 +202,13 @@ function createVideoDurationField(
     };
   }
 
-  if (selectedModel.category !== "video" || selectedModel.modelId.startsWith("fal-ai/") === false) {
-    return field;
-  }
+  const modelId = selectedModel.imageToVideoModelId ??
+    selectedModel.textToVideoModelId ??
+    selectedModel.referenceToVideoModelId ??
+    selectedModel.falModelId;
+  if (!modelId?.startsWith("fal-ai/")) return field;
 
-  const constraint = falVideoDurationConstraintForModel(selectedModel.modelId);
+  const constraint = falVideoDurationConstraintForModel(modelId);
   if (!constraint) return field;
 
   if (constraint.kind === "enum") {
@@ -167,7 +232,7 @@ function createVideoDurationField(
   return {
     ...field,
     description: `This model maps duration to frame count at ${constraint.fps} fps.`,
-    defaultValue: field.defaultValue ?? defaultDurationForFalVideoModel(selectedModel.modelId),
+    defaultValue: field.defaultValue ?? defaultDurationForFalVideoModel(modelId),
   };
 }
 

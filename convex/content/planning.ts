@@ -12,6 +12,9 @@ import type {
   SlideshowTextBlock,
   TextBlockAlign,
   TextBlockBackgroundStyle,
+  TextBlockEmphasis,
+  TextBlockRole,
+  TextBlockZone,
   TextDensity,
   TextPlacement,
 } from "./types";
@@ -53,11 +56,8 @@ function requiredBoolean(value: unknown, label: string): boolean {
   return value;
 }
 
-function requiredNumber(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    failPlanning(`${label} must be a finite number`);
-  }
-  return value;
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -88,14 +88,35 @@ function requiredContrast(value: unknown, label: string): ContrastStrategy {
   failPlanning(`${label} must be none, shadow, gradient_scrim, or solid_scrim`);
 }
 
-function requiredTextAlign(value: unknown, label: string): TextBlockAlign {
-  if (value === "left" || value === "center" || value === "right") return value;
-  failPlanning(`${label} must be left, center, or right`);
+function optionalTextRole(value: unknown, fallback: TextBlockRole): TextBlockRole {
+  if (
+    value === "eyebrow" ||
+    value === "headline" ||
+    value === "body" ||
+    value === "bullet_list" ||
+    value === "cta"
+  ) return value;
+  return fallback;
 }
 
-function requiredBackgroundStyle(value: unknown, label: string): TextBlockBackgroundStyle {
+function optionalTextEmphasis(value: unknown, fallback: TextBlockEmphasis): TextBlockEmphasis {
+  if (value === "primary" || value === "secondary" || value === "muted") return value;
+  return fallback;
+}
+
+function optionalTextZone(value: unknown): TextBlockZone | undefined {
+  if (value === "top" || value === "center" || value === "bottom") return value;
+  return undefined;
+}
+
+function optionalTextAlign(value: unknown): TextBlockAlign | undefined {
+  if (value === "left" || value === "center" || value === "right") return value;
+  return undefined;
+}
+
+function optionalBackgroundStyle(value: unknown): TextBlockBackgroundStyle | undefined {
   if (value === "none" || value === "solid") return value;
-  failPlanning(`${label} must be none or solid`);
+  return undefined;
 }
 
 function requiredAspectRatio(value: unknown): SlideshowPlan["aspectRatio"] {
@@ -153,38 +174,42 @@ function roleForPurpose(purpose: string, index: number, total: number): Slidesho
   return "insight";
 }
 
-function normalizeHexColor(value: unknown, label: string, fallback: string): string {
-  const color = requiredString(value, label);
-  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : fallback;
+function optionalHexColor(value: unknown, fallback: string): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : fallback;
 }
 
 function normalizeTextBlock(value: unknown, slideIndex: number, blockIndex: number): SlideshowTextBlock {
   const data = requiredObject(value, `slides[${slideIndex}].textBlocks[${blockIndex}]`);
-  const role = blockIndex === 0 ? "headline" : "body";
-  const fontWeight = requiredNumber(data.fontWeight, `slides[${slideIndex}].textBlocks[${blockIndex}].fontWeight`);
-  const backgroundStyle = requiredBackgroundStyle(data.backgroundStyle, `slides[${slideIndex}].textBlocks[${blockIndex}].backgroundStyle`);
+  const role = optionalTextRole(data.role, blockIndex === 0 ? "headline" : "body");
+  const emphasis = optionalTextEmphasis(data.emphasis, blockIndex === 0 ? "primary" : "secondary");
+  const fontWeight = optionalNumber(data.fontWeight);
+  const backgroundStyle = optionalBackgroundStyle(data.backgroundStyle);
 
   return {
     id: clampText(requiredString(data.id, `slides[${slideIndex}].textBlocks[${blockIndex}].id`), 48),
     role,
     text: clampText(requiredString(data.text, `slides[${slideIndex}].textBlocks[${blockIndex}].text`), 180),
     items: [],
-    emphasis: blockIndex === 0 ? "primary" : "secondary",
-    x: clampNumber(requiredNumber(data.x, `slides[${slideIndex}].textBlocks[${blockIndex}].x`), 0, 88),
-    y: clampNumber(requiredNumber(data.y, `slides[${slideIndex}].textBlocks[${blockIndex}].y`), 0, 92),
-    width: clampNumber(requiredNumber(data.width, `slides[${slideIndex}].textBlocks[${blockIndex}].width`), 12, 96),
-    height: clampNumber(requiredNumber(data.height, `slides[${slideIndex}].textBlocks[${blockIndex}].height`), 4, 96),
-    align: requiredTextAlign(data.align, `slides[${slideIndex}].textBlocks[${blockIndex}].align`),
-    fontSize: clampNumber(requiredNumber(data.fontSize, `slides[${slideIndex}].textBlocks[${blockIndex}].fontSize`), 28, 128),
-    fontWeight: [400, 500, 600, 700, 800, 900].includes(fontWeight) ? fontWeight : 800,
-    color: normalizeHexColor(data.color, `slides[${slideIndex}].textBlocks[${blockIndex}].color`, "#FFFFFF"),
-    strokeColor: normalizeHexColor(data.strokeColor, `slides[${slideIndex}].textBlocks[${blockIndex}].strokeColor`, "#000000"),
-    strokeWidth: clampNumber(requiredNumber(data.strokeWidth, `slides[${slideIndex}].textBlocks[${blockIndex}].strokeWidth`), 0, 48),
+    emphasis,
+    zone: optionalTextZone(data.zone),
+    x: optionalNumber(data.x) === undefined ? undefined : clampNumber(optionalNumber(data.x)!, 0, 88),
+    y: optionalNumber(data.y) === undefined ? undefined : clampNumber(optionalNumber(data.y)!, 0, 92),
+    width: optionalNumber(data.width) === undefined ? undefined : clampNumber(optionalNumber(data.width)!, 12, 96),
+    height: optionalNumber(data.height) === undefined ? undefined : clampNumber(optionalNumber(data.height)!, 4, 96),
+    align: optionalTextAlign(data.align),
+    fontSize: optionalNumber(data.fontSize) === undefined ? undefined : clampNumber(optionalNumber(data.fontSize)!, 28, 128),
+    fontWeight: fontWeight !== undefined && [400, 500, 600, 700, 800, 900].includes(fontWeight) ? fontWeight : undefined,
+    color: optionalHexColor(data.color, "#FFFFFF"),
+    strokeColor: optionalHexColor(data.strokeColor, "#000000"),
+    strokeWidth: optionalNumber(data.strokeWidth) === undefined ? undefined : clampNumber(optionalNumber(data.strokeWidth)!, 0, 48),
     backgroundStyle,
     backgroundColor: backgroundStyle === "none"
       ? "#000000"
-      : normalizeHexColor(data.backgroundColor, `slides[${slideIndex}].textBlocks[${blockIndex}].backgroundColor`, "#FFFFFF"),
-    backgroundOpacity: backgroundStyle === "none" ? 0 : 1,
+      : optionalHexColor(data.backgroundColor, "#FFFFFF"),
+    backgroundOpacity: backgroundStyle === "none"
+      ? 0
+      : optionalNumber(data.backgroundOpacity),
   };
 }
 

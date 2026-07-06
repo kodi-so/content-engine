@@ -104,9 +104,7 @@ export function LibraryOutputCard({
   const metadata = [
     output.source === "create"
       ? "Create"
-      : output.source === "creative_asset"
-        ? "Reusable asset"
-        : "Workflow export",
+      : "Reusable asset",
     output.provider,
     output.model,
   ].filter(Boolean);

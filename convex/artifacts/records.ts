@@ -35,7 +35,7 @@ export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationRunId: v.optional(v.id("automationRuns")),
     includeDebug: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -53,14 +53,14 @@ export const list = query({
       return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
     }
 
-    if (args.workflowRunId) {
-      const run = await ctx.db.get(args.workflowRunId);
+    if (args.automationRunId) {
+      const run = await ctx.db.get(args.automationRunId);
       if (!run || !(await hasRecordAccess(ctx, run, userId))) return [];
 
       const artifacts = await ctx.db
         .query("artifacts")
-        .withIndex("by_workflow_run", (q) =>
-          q.eq("workflowRunId", args.workflowRunId!)
+        .withIndex("by_automation_run", (q) =>
+          q.eq("automationRunId", args.automationRunId!)
         )
         .collect();
       return artifacts.filter((artifact) => sameOwnershipScope(artifact, run));
@@ -129,8 +129,8 @@ export const getRegenerationContext = internalQuery({
         ctx.db.get(parentArtifactId)
       )
     );
-    const workflow = artifact.workflowId
-      ? await ctx.db.get(artifact.workflowId)
+    const automation = artifact.automationId
+      ? await ctx.db.get(artifact.automationId)
       : null;
 
     return {
@@ -139,7 +139,7 @@ export const getRegenerationContext = internalQuery({
         (parentArtifact): parentArtifact is Doc<"artifacts"> =>
           Boolean(parentArtifact && sameOwnershipScope(parentArtifact, artifact))
       ),
-      workflow,
+      automation,
     };
   },
 });
@@ -148,8 +148,8 @@ export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
     type: artifactTypeValidator,
     title: v.optional(v.string()),
@@ -164,19 +164,19 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
-    const linkedRun = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
-    const linkedWorkflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
+    const linkedRun = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
+    const linkedAutomation = args.automationId ? await ctx.db.get(args.automationId) : null;
     const workspace = args.workspaceId ||
       linkedRequest?.workspaceId ||
       linkedRun?.workspaceId ||
-      linkedWorkflow?.workspaceId
+      linkedAutomation?.workspaceId
       ? await resolveWritableWorkspace(
         ctx,
         userId,
         args.workspaceId ??
           linkedRequest?.workspaceId ??
           linkedRun?.workspaceId ??
-          linkedWorkflow?.workspaceId
+          linkedAutomation?.workspaceId
       )
       : defaultWorkspace;
 
@@ -197,8 +197,8 @@ export const createFromRunner = internalMutation({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
     type: artifactTypeValidator,
     title: v.optional(v.string()),
@@ -212,13 +212,13 @@ export const createFromRunner = internalMutation({
   },
   handler: async (ctx, args) => {
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
-    const linkedRun = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
-    const linkedWorkflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
+    const linkedRun = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
+    const linkedAutomation = args.automationId ? await ctx.db.get(args.automationId) : null;
     const workspaceId =
       args.workspaceId ??
       linkedRequest?.workspaceId ??
       linkedRun?.workspaceId ??
-      linkedWorkflow?.workspaceId;
+      linkedAutomation?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("artifacts", {
       ...args,
@@ -364,11 +364,11 @@ export const remove = mutation({
       throw new Error("Artifact not found");
     }
 
-    if (artifact.workflowRunId) {
+    if (artifact.automationRunId) {
       const plans = await ctx.db
         .query("distributionPlans")
-        .withIndex("by_workflow_run", (q) =>
-          q.eq("workflowRunId", artifact.workflowRunId!)
+        .withIndex("by_automation_run", (q) =>
+          q.eq("automationRunId", artifact.automationRunId!)
         )
         .collect();
 

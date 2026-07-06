@@ -39,12 +39,18 @@ import {
   validatePublicAnalysisUrl,
 } from "../../../../convex/create/execution/sourceAnalysisExecution";
 import { normalizeFalVideoDurationForModel } from "../../../../convex/providers/modelProviders/fal";
-import { falVideoPayload } from "../../../../convex/providers/fal/payloads";
+import {
+  falImageModelForInput,
+  falImagePayload,
+  falVideoPayload,
+} from "../../../../convex/providers/fal/payloads";
 import {
   ROSTER_MODELS,
   defaultRosterModelForMode,
   modelCardsForPlanner,
   rosterModelById,
+  rosterModelPricingDescription,
+  rosterModelPricingLabel,
   rosterModelIds,
   rosterModelsForMode,
   type RosterModelMode,
@@ -130,7 +136,22 @@ for (const mode of ["image", "video", "audio", "lipsync"] as RosterModelMode[]) 
   );
   assert.ok(defaultRosterModelForMode(mode), `${mode} should resolve a default roster model`);
 }
+assert.deepEqual(
+  rosterModelsForMode("image").map((model) => model.label),
+  ["NanoBanana 2", "NanoBanana Pro", "OpenAI GPT Image 2"]
+);
+assert.equal(rosterModelById("gemini-3-1-flash-image")?.id, "nano-banana-2");
+assert.equal(rosterModelById("gemini-3-pro-image")?.id, "nano-banana-pro");
 assert.ok(modelCardsForPlanner().some((card) => card.id === "kling-v3-pro" && card.allowedDurations));
+assert.equal(rosterModelPricingLabel(rosterModelById("sora-2")!), "$0.10/s");
+assert.match(
+  rosterModelPricingDescription(rosterModelById("nano-banana-2")!),
+  /from \$0\.08\/image/
+);
+assert.equal(
+  modelCardsForPlanner().find((card) => card.id === "veo-3-1")?.pricing?.label,
+  "from $0.20/s, $0.40/s audio"
+);
 assert.deepEqual(rosterModelIds(rosterModelById("sora-2")!), [
   "fal-ai/sora-2/text-to-video",
   "fal-ai/sora-2/image-to-video",
@@ -492,6 +513,45 @@ assert.equal(
     referenceImageCount: 0,
   }),
   "fal-ai/nano-banana-pro"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "image",
+    model: "gemini-3-pro-image",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "fal-ai/nano-banana-pro"
+);
+assert.equal(
+  modelForMediaGenerationInput({
+    mode: "image",
+    model: "openai gpt image 2",
+    provider: "fal",
+    referenceImageCount: 0,
+  }),
+  "openai/gpt-image-2"
+);
+assert.equal(
+  falImageModelForInput("openai/gpt-image-2", {
+    prompt: "Edit the image.",
+    referenceImages: [{ mimeType: "image/png", url: "https://example.com/image.png" }],
+  }),
+  "openai/gpt-image-2/image-to-image"
+);
+assert.deepEqual(
+  falImagePayload("openai/gpt-image-2", {
+    aspectRatio: "16:9",
+    count: 1,
+    prompt: "Create a launch poster.",
+  }),
+  {
+    prompt: "Create a launch poster.",
+    image_size: "landscape_16_9",
+    quality: "high",
+    num_images: 1,
+    output_format: "png",
+  }
 );
 assert.equal(
   modelForMediaGenerationInput({

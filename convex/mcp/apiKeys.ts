@@ -8,10 +8,6 @@ import { requireBetaAccess } from "../auth/users";
 const KEY_PREFIX = "ce_mcp_";
 const DEFAULT_SCOPES = [
   "resources:read",
-  "workflows:read",
-  "workflows:write",
-  "runs:read",
-  "runs:write",
   "artifacts:read",
   "publishing:plan",
 ];

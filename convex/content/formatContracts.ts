@@ -108,15 +108,15 @@ export function buildStructuredGenerationPrompt(args: {
   visualStyle?: string;
   offer?: string;
   constraints?: string[];
-  workflowName: string;
-  workflowDescription?: string;
+  automationName: string;
+  automationDescription?: string;
   stepName: string;
 }): string {
   if (args.format === "slideshow") {
     return [
       `Create a short-form slideshow spec for ${args.brandName}.`,
-      `Workflow: ${args.workflowName}`,
-      args.workflowDescription ? `Workflow goal: ${args.workflowDescription}` : undefined,
+      `Automation: ${args.automationName}`,
+      args.automationDescription ? `Automation goal: ${args.automationDescription}` : undefined,
       args.audience ? `Audience: ${args.audience}` : undefined,
       args.voice ? `Voice: ${args.voice}` : undefined,
       args.visualStyle ? `Visual style: ${args.visualStyle}` : undefined,
@@ -132,8 +132,8 @@ export function buildStructuredGenerationPrompt(args: {
 
   return [
     `Create a structured ${args.format} content spec for ${args.brandName}.`,
-    `Workflow: ${args.workflowName}`,
-    args.workflowDescription ? `Workflow goal: ${args.workflowDescription}` : undefined,
+    `Automation: ${args.automationName}`,
+    args.automationDescription ? `Automation goal: ${args.automationDescription}` : undefined,
     args.audience ? `Audience: ${args.audience}` : undefined,
     args.voice ? `Voice: ${args.voice}` : undefined,
     args.visualStyle ? `Visual style: ${args.visualStyle}` : undefined,

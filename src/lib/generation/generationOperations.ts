@@ -1,5 +1,15 @@
-import type { ProviderModelDoc } from "../workflow/workflowModelCatalog";
-import type { WorkflowNodeType, WorkflowProviderName } from "../workflow/workflowGraph";
+import type { CreateNodeType } from "../create/createModes";
+import type { GenerationProviderName } from "../providers/providerNames";
+
+export type GenerationModelLike = {
+  capabilities?: unknown;
+  modelId: string;
+};
+
+export type GenerationNodeType =
+  | CreateNodeType
+  | "ai_video_editor"
+  | "lipsync";
 
 export type GenerationOperationId =
   | "image_text_to_image"
@@ -20,7 +30,7 @@ export type GenerationOperation = {
   id: GenerationOperationId;
   label: string;
   description: string;
-  nodeTypes: WorkflowNodeType[];
+  nodeTypes: GenerationNodeType[];
   recommendedModelIds?: string[];
 };
 
@@ -171,7 +181,7 @@ const operations: GenerationOperation[] = [
 const operationById = new Map(operations.map((operation) => [operation.id, operation]));
 
 export function generationOperationsForNodeType(
-  nodeType?: WorkflowNodeType
+  nodeType?: GenerationNodeType
 ): GenerationOperation[] {
   if (!nodeType) return [];
   return operations.filter((operation) => operation.nodeTypes.includes(nodeType));
@@ -186,13 +196,13 @@ export function generationOperationById(
 }
 
 export function defaultGenerationOperationForNodeType(
-  nodeType?: WorkflowNodeType
+  nodeType?: GenerationNodeType
 ): GenerationOperation | undefined {
   return generationOperationsForNodeType(nodeType)[0];
 }
 
 export function generationOperationForConfig(
-  nodeType: WorkflowNodeType | undefined,
+  nodeType: GenerationNodeType | undefined,
   config: Record<string, unknown> | undefined
 ): GenerationOperation | undefined {
   const configured = generationOperationById(config?.generationOperation);
@@ -217,9 +227,9 @@ export function isDuplicateProviderRoute(modelId: string) {
 }
 
 export function modelMatchesGenerationOperation(args: {
-  model: Pick<ProviderModelDoc, "modelId" | "capabilities"> | { modelId: string };
+  model: GenerationModelLike;
   operation?: GenerationOperation;
-  providerName?: WorkflowProviderName;
+  providerName?: GenerationProviderName;
 }): boolean {
   const operationId = args.operation?.id;
   if (!operationId) return true;

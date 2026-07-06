@@ -8,13 +8,13 @@ import {
   localReferenceFilesFromConfig,
   type ConfigField,
   type LocalReferenceFileKind,
-} from "../../lib/workflow/workflowConfigFields";
+} from "../../lib/create/createConfigFields";
 import {
   ReferenceAliasTextarea,
   type ReferenceMentionOption,
 } from "../references/ReferenceAliasTextarea";
 import type { RichMentionToken } from "../references/RichMentionTextarea";
-import { WorkflowSelect } from "../workflow/WorkflowSelect";
+import { CustomSelect } from "../CustomSelect";
 
 export type CreateLocalFileFieldMeta = {
   accept: string;
@@ -143,7 +143,7 @@ export function CreateGenerationConfigField({
           {field.label}
           {field.required ? " *" : ""}
         </span>
-        <WorkflowSelect
+        <CustomSelect
           disabled={field.disabled}
           onChange={(nextValue) => onConfigChange(field.key, nextValue)}
           options={[

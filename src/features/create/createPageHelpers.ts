@@ -1,13 +1,11 @@
 import type { ReferenceMentionOption } from "../../components/references/ReferenceAliasTextarea";
 import type { CreateLocalFileFieldMeta } from "../../components/create/CreateGenerationConfigField";
-import type { CreateMode } from "../../lib/create/createModes";
-import { localReferenceFilesFromConfig, type LocalReferenceFileKind } from "../../lib/workflow/workflowConfigFields";
-import type { ImageModelUiContract } from "../../lib/workflow/workflowModelCatalog";
-import type { WorkflowNodeType } from "../../lib/workflow/workflowGraph";
+import type { CreateMode, CreateNodeType } from "../../lib/create/createModes";
+import { localReferenceFilesFromConfig, type LocalReferenceFileKind } from "../../lib/create/createConfigFields";
 
 export function draftName(prompt: string) {
   const cleanPrompt = prompt.trim().replace(/\s+/g, " ");
-  if (!cleanPrompt) return "Untitled workflow";
+  if (!cleanPrompt) return "Untitled creation";
   return cleanPrompt.length > 54 ? `${cleanPrompt.slice(0, 54)}...` : cleanPrompt;
 }
 
@@ -93,26 +91,19 @@ export function mediaPreviewTitle(kind: CreateMode) {
       return "Generating audio";
     case "slideshow":
       return "Queueing slideshow";
-    case "workflow":
-      return "Creating workflow";
   }
 }
 
 export function createLocalFileFieldMeta(args: {
-  createNodeType: WorkflowNodeType;
+  createNodeType: CreateNodeType;
   fieldKey: string;
-  selectedImageModelUiContract: ImageModelUiContract | null;
 }): CreateLocalFileFieldMeta | null {
   if (args.fieldKey === "localReferenceImages") {
     return {
       accept: "image/*",
       kind: "image",
-      multiple: args.createNodeType === "image_generation"
-        ? args.selectedImageModelUiContract?.images.multiple !== false
-        : true,
-      maxCount: args.createNodeType === "image_generation"
-        ? args.selectedImageModelUiContract?.images.maxCount
-        : undefined,
+      multiple: true,
+      maxCount: args.createNodeType === "image_generation" ? 4 : undefined,
     };
   }
 

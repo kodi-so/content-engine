@@ -15,7 +15,7 @@ import {
   type AssetPreviewItem,
   type SelectableLibraryAsset,
 } from "../../features/assets/assetTypes";
-import type { LocalReferenceFileKind } from "../../lib/workflow/workflowConfigFields";
+import type { LocalReferenceFileKind } from "../../lib/create/createConfigFields";
 import { LoadingSignal } from "../ui";
 export type { SelectableLibraryAsset } from "../../features/assets/assetTypes";
 

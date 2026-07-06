@@ -218,6 +218,6 @@ export function shouldAttachToolArtifactsToChat(toolName: string) {
     toolName === "slideshow.render" ||
     toolName === "artifact.export" ||
     toolName === "publishing.prepare" ||
-    toolName === "workflow.createDraft"
+    toolName.startsWith("automation.")
   );
 }

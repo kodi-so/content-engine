@@ -82,8 +82,8 @@ export const getPublishContext = internalQuery({
 export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     artifactIds: v.array(v.id("artifacts")),
     socialAccountIds: v.array(v.id("socialAccounts")),
     provider: publishingProviderValidator,
@@ -141,8 +141,8 @@ export const createFromRunner = internalMutation({
   args: {
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     artifactIds: v.array(v.id("artifacts")),
     socialAccountIds: v.array(v.id("socialAccounts")),
     provider: publishingProviderValidator,
@@ -153,12 +153,12 @@ export const createFromRunner = internalMutation({
     providerPayload: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const run = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
-    const workflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
+    const run = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
+    const automation = args.automationId ? await ctx.db.get(args.automationId) : null;
     const workspaceId =
       args.workspaceId ??
       run?.workspaceId ??
-      workflow?.workspaceId;
+      automation?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("distributionPlans", {
       ...args,
@@ -319,22 +319,6 @@ export const publish = action({
         providerPayload: result.providerPayload,
       });
 
-      if (context.plan.workflowRunId && context.plan.workflowId) {
-        await ctx.runMutation(internal.workflows.runs.recordEvent, {
-          userId: identity.subject,
-          workflowRunId: context.plan.workflowRunId,
-          workflowId: context.plan.workflowId,
-          type: args.mode === "now" ? "publish_completed" : "publish_requested",
-          message:
-            args.mode === "draft"
-              ? "Distribution plan sent as a provider draft."
-              : args.mode === "schedule"
-              ? "Distribution plan scheduled through provider."
-              : "Distribution plan published through provider.",
-          data: result,
-        });
-      }
-
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Publishing failed";
@@ -344,16 +328,6 @@ export const publish = action({
         status: "failed",
         errorMessage: message,
       });
-
-      if (context.plan.workflowRunId && context.plan.workflowId) {
-        await ctx.runMutation(internal.workflows.runs.recordEvent, {
-          userId: identity.subject,
-          workflowRunId: context.plan.workflowRunId,
-          workflowId: context.plan.workflowId,
-          type: "error",
-          message,
-        });
-      }
 
       throw error;
     }
@@ -422,8 +396,8 @@ export const syncMetrics = action({
     for (const metric of result.metrics) {
       await ctx.runMutation(internal.publishing.metrics.recordFromProvider, {
         userId: identity.subject,
-        workflowId: context.plan.workflowId,
-        workflowRunId: context.plan.workflowRunId,
+        automationId: context.plan.automationId,
+        automationRunId: context.plan.automationRunId,
         distributionPlanId: context.plan._id,
         socialAccountId: fallbackAccount._id,
         platform: fallbackAccount.platform,

@@ -21,8 +21,8 @@ export function sumCost(current: number, metadata?: ModelInvocationMetadata) {
   return current + (metadata?.costUsd ?? 0);
 }
 
-const DEFAULT_OVERLAY_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
-const DEFAULT_FULL_GRAPHIC_IMAGE_MODEL = "fal-ai/gemini-3-pro-image-preview";
+const DEFAULT_OVERLAY_IMAGE_MODEL = "fal-ai/nano-banana-2";
+const DEFAULT_FULL_GRAPHIC_IMAGE_MODEL = "fal-ai/nano-banana-pro";
 
 export function imageModelForRenderingMode(renderingMode: SlideshowPlan["renderingMode"]): string {
   if (renderingMode === "full_graphic_generation") {

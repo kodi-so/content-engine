@@ -81,7 +81,6 @@ import {
   slideshowPromptReviewRequestId,
   studioRenderRequestIdFromToolOutput,
 } from "./execution/toolExecutionShared";
-import { saveThreadAsWorkflowDraft } from "./agent/agentWorkflowDraftActions";
 import { stopCreateThread } from "./agent/agentStopActions";
 
 export {
@@ -1015,16 +1014,5 @@ export const exportThreadOutputs = mutation({
     const thread = await requireThreadAccess(ctx, args.threadId, userId);
 
     return await prepareArtifactExportForThread(ctx, thread, args.artifactIds);
-  },
-});
-
-export const saveAsWorkflowDraft = mutation({
-  args: {
-    threadId: v.id("createThreads"),
-    name: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { userId } = await ensureCurrentUser(ctx);
-    return await saveThreadAsWorkflowDraft(ctx, { ...args, userId });
   },
 });

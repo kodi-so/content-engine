@@ -6,7 +6,6 @@ import {
   selectCreateAgentStudioVisualArtifacts,
 } from "../studio/studioComposition";
 import { createStudioRenderRequest } from "../studioRenderRequests";
-import { createWorkflowDraftFromThread } from "../workflowExport";
 import { appendAgentMessage } from "./toolExecutionShared";
 import {
   contentRequestIdsForThreadToolOutputs,
@@ -15,37 +14,6 @@ import {
 
 const STUDIO_RENDER_NOT_CONFIGURED_MESSAGE =
   "Automatic Studio rendering is not configured yet. Set STUDIO_RENDER_WORKER_URL and STUDIO_RENDER_WORKER_API_KEY so Create can render the final video in chat.";
-
-export async function createWorkflowDraftForToolCall(
-  ctx: MutationCtx,
-  thread: Doc<"createThreads">,
-  toolCall: Doc<"createToolCalls">
-) {
-  const input = isRecord(toolCall.input) ? toolCall.input : {};
-  const name = typeof input.name === "string" ? input.name.trim() : undefined;
-  const result = await createWorkflowDraftFromThread(ctx, thread, { name });
-  const now = Date.now();
-
-  await ctx.db.patch(toolCall._id, {
-    status: "succeeded",
-    output: {
-      workflowId: result.workflowId,
-      convertedToolCount: result.convertedToolCount,
-      unsupportedToolNames: result.unsupportedToolNames,
-    },
-    completedAt: now,
-    updatedAt: now,
-  });
-
-  await appendAgentMessage(ctx, thread, {
-    content: result.unsupportedToolNames.length
-      ? `Saved this conversation as a workflow draft. Some Studio steps were preserved as comments because they are not repeatable workflow nodes yet: ${result.unsupportedToolNames.join(", ")}.`
-      : "Saved this conversation as a workflow draft.",
-    kind: "tool_result",
-  });
-
-  return result;
-}
 
 export async function createStudioProjectForToolCall(
   ctx: MutationCtx,

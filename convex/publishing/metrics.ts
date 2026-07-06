@@ -32,8 +32,8 @@ export const list = query({
 
 export const record = mutation({
   args: {
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     distributionPlanId: v.optional(v.id("distributionPlans")),
     socialAccountId: v.id("socialAccounts"),
     platform: platformValidator,
@@ -74,8 +74,8 @@ export const record = mutation({
 export const recordFromProvider = internalMutation({
   args: {
     userId: v.string(),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     distributionPlanId: v.optional(v.id("distributionPlans")),
     socialAccountId: v.id("socialAccounts"),
     platform: platformValidator,
@@ -89,14 +89,14 @@ export const recordFromProvider = internalMutation({
       throw new Error("Social account not found");
     }
     const plan = args.distributionPlanId ? await ctx.db.get(args.distributionPlanId) : null;
-    const run = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
-    const workflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
+    const run = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
+    const automation = args.automationId ? await ctx.db.get(args.automationId) : null;
     if (!account.workspaceId && account.userId !== args.userId) {
       throw new Error("Social account not found");
     }
     if (account.workspaceId) {
       const expectedWorkspaceId =
-        plan?.workspaceId ?? run?.workspaceId ?? workflow?.workspaceId;
+        plan?.workspaceId ?? run?.workspaceId ?? automation?.workspaceId;
       if (expectedWorkspaceId && account.workspaceId !== expectedWorkspaceId) {
         throw new Error("Social account does not belong to this workspace");
       }
@@ -105,7 +105,7 @@ export const recordFromProvider = internalMutation({
       account.workspaceId ??
       plan?.workspaceId ??
       run?.workspaceId ??
-      workflow?.workspaceId;
+      automation?.workspaceId;
 
     const now = Date.now();
     return await ctx.db.insert("postMetrics", {

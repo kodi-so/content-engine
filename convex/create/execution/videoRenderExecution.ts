@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { dataWithArtifactCaption } from "../../content/artifactCaptions";
 import { storeGeneratedAsset } from "../../content/assets/assetStorage";
 import { getModelProvider } from "../../providers";
-import { waitForGeneratedVideo } from "../../workflows/runtime/generationWaiters";
+import { waitForGeneratedVideo } from "../../content/requestExecution/generationWaiters";
 import { referenceFromArtifact, resolveToolReferences } from "../references/referenceResolution";
 import {
   analysisContextForThreadToolOutputs,

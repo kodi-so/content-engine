@@ -4,27 +4,11 @@ import { fileToDataUrl } from "../../lib/browser/dataUrl";
 import { assignReferenceAliases } from "../../lib/references/referenceAliases";
 import {
   localReferenceFilesFromConfig,
+  type LocalReferenceFile,
   type LocalReferenceFileKind,
-} from "../../lib/workflow/workflowConfigFields";
-import type { ImageModelUiContract } from "../../lib/workflow/workflowModelCatalog";
-import type { WorkflowNodeType } from "../../lib/workflow/workflowGraph";
+} from "../../lib/create/createConfigFields";
+import type { CreateNodeType } from "../../lib/create/createModes";
 import { createLocalFileFieldMeta } from "./createPageHelpers";
-
-type LocalReferenceFile = {
-  alias: string;
-  file?: File;
-  id: string;
-  isDraft?: boolean;
-  kind: string;
-  mimeType?: string;
-  previewUrl?: string;
-  source?: string;
-  sourceId?: string;
-  storageId?: string;
-  storageUrl: string;
-  temporary?: boolean;
-  title: string;
-};
 
 type UploadReference = (args: {
   base64Data: string;
@@ -58,9 +42,8 @@ function revokeDraftReference(file: { source?: string; storageUrl?: string; prev
 }
 
 export function useCreateReferenceFiles(args: {
-  createNodeType: WorkflowNodeType;
+  createNodeType: CreateNodeType;
   generationConfig: Record<string, unknown>;
-  selectedImageModelUiContract: ImageModelUiContract | null;
   setGenerationConfig: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
   setIsUploadingReference: (isUploading: boolean) => void;
   setStatus: (status: string) => void;
@@ -71,9 +54,8 @@ export function useCreateReferenceFiles(args: {
       createLocalFileFieldMeta({
         createNodeType: args.createNodeType,
         fieldKey,
-        selectedImageModelUiContract: args.selectedImageModelUiContract,
       }),
-    [args.createNodeType, args.selectedImageModelUiContract]
+    [args.createNodeType]
   );
 
   const handleReferenceUpload = async (

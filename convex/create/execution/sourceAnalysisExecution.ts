@@ -177,64 +177,6 @@ async function analysisSourceFromCreativeAsset(
   };
 }
 
-async function analysisSourceFromWorkflowExportAsset(
-  ctx: MutationCtx,
-  thread: Doc<"createThreads">,
-  source: string
-): Promise<AnalysisSourceForToolCall> {
-  const { firstId, secondId } = libraryAssetParts(source);
-  if (!firstId) throw new Error("Analyze Source could not find that workflow export.");
-
-  if (secondId) {
-    const artifactId = ctx.db.normalizeId("artifacts", secondId);
-    if (artifactId) {
-      const artifact = await ctx.db.get(artifactId);
-      if (artifact?.storageUrl && recordBelongsToCreateThread(thread, artifact)) {
-        return await analysisSourceFromArtifact(ctx, thread, String(artifact._id), source);
-      }
-    }
-  }
-
-  const exportArtifactId = ctx.db.normalizeId("artifacts", firstId);
-  if (!exportArtifactId) throw new Error("Analyze Source could not find that workflow export.");
-  const exportArtifact = await ctx.db.get(exportArtifactId);
-  if (!exportArtifact || !recordBelongsToCreateThread(thread, exportArtifact)) {
-    throw new Error("Analyze Source could not access that workflow export.");
-  }
-  const data = isRecord(exportArtifact.data) ? exportArtifact.data : {};
-  const mediaItems = Array.isArray(data.mediaItems) ? data.mediaItems : [];
-  const itemIndex = secondId ? Number(secondId) : 0;
-  const selectedItem = mediaItems.find((item, index) => {
-    if (!isRecord(item)) return false;
-    const itemArtifactId = typeof item.artifactId === "string" ? item.artifactId : undefined;
-    return secondId
-      ? itemArtifactId === secondId || index === itemIndex
-      : index === 0;
-  });
-
-  if (!isRecord(selectedItem)) {
-    throw new Error("Analyze Source could not find media in that workflow export.");
-  }
-
-  const storageUrl = cleanOptionalString(selectedItem.storageUrl);
-  if (!storageUrl) throw new Error("Analyze Source needs workflow export media with a stored URL.");
-  const mimeType = cleanOptionalString(selectedItem.mimeType);
-  const title = cleanOptionalString(selectedItem.title) ?? exportArtifact.title ?? "Workflow export";
-
-  return {
-    artifactId: exportArtifact._id,
-    byteLength: byteLengthFromRecord(selectedItem),
-    fileName: cleanOptionalString(selectedItem.fileName) ?? title,
-    label: title,
-    libraryAssetId: source,
-    mimeType,
-    sourcePlatform: sourcePlatformForStoredMedia({ mimeType, storageUrl }),
-    sourceType: "upload",
-    sourceUrl: storageUrl,
-    storageUrl,
-  };
-}
-
 async function analysisSourceFromReferenceMention(
   ctx: MutationCtx,
   thread: Doc<"createThreads">,
@@ -295,10 +237,6 @@ async function analysisSourceFromLibraryAsset(
   if (parts.kind === "creative_asset" && parts.firstId) {
     return await analysisSourceFromCreativeAsset(ctx, thread, parts.firstId, source);
   }
-  if (parts.kind === "workflow_export") {
-    return await analysisSourceFromWorkflowExportAsset(ctx, thread, source);
-  }
-
   const artifactId = ctx.db.normalizeId("artifacts", source);
   if (artifactId) return await analysisSourceFromArtifact(ctx, thread, String(artifactId), source);
 

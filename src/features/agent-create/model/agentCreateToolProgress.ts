@@ -46,8 +46,8 @@ function defaultModelForProviderMode(
 ) {
   if (provider === "fal" && mode === "image") {
     return usesReferences
-      ? "fal-ai/gemini-3.1-flash-image-preview/edit"
-      : "fal-ai/gemini-3.1-flash-image-preview";
+      ? "fal-ai/nano-banana-2/edit"
+      : "fal-ai/nano-banana-2";
   }
   if (provider === "fal" && mode === "video") {
     return usesReferences

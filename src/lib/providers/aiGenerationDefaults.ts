@@ -1,19 +1,14 @@
 import type { CreateMode } from "../create/createModes";
-import type {
-  WorkflowNodeType,
-  WorkflowProviderName,
-} from "../workflow/workflowGraph";
 import { defaultRosterModelForMode } from "../generation/modelRoster";
+import type { GenerationProviderName } from "./providerNames";
 
 export type AiGenerationMode = "image" | "video" | "audio" | "lipsync" | "videoAnalysis";
-export type AiGenerationProvider = Extract<
-  WorkflowProviderName,
-  "bulkapis" | "gemini" | "fal"
->;
+export type AiGenerationProvider = GenerationProviderName;
 
 export type AiGenerationSettings = {
   imageProvider?: AiGenerationProvider;
   imageModel?: string;
+  imageResolution?: string;
   videoProvider?: AiGenerationProvider;
   videoModel?: string;
   audioProvider?: AiGenerationProvider;
@@ -62,7 +57,8 @@ export const AI_PROVIDER_OPTIONS_BY_MODE: Record<
 
 export const DEFAULT_AI_GENERATION_SETTINGS: Required<AiGenerationSettings> = {
   imageProvider: "fal",
-  imageModel: defaultRosterModelForMode("image")?.id ?? "gemini-3-1-flash-image",
+  imageModel: defaultRosterModelForMode("image")?.id ?? "nano-banana-2",
+  imageResolution: "2K",
   videoProvider: "fal",
   videoModel: defaultRosterModelForMode("video")?.id ?? "kling-v3-pro",
   audioProvider: "fal",
@@ -78,6 +74,7 @@ export function resolveAiGenerationSettings(
   return {
     imageProvider: settings?.imageProvider ?? DEFAULT_AI_GENERATION_SETTINGS.imageProvider,
     imageModel: settings?.imageModel ?? DEFAULT_AI_GENERATION_SETTINGS.imageModel,
+    imageResolution: settings?.imageResolution ?? DEFAULT_AI_GENERATION_SETTINGS.imageResolution,
     videoProvider: settings?.videoProvider ?? DEFAULT_AI_GENERATION_SETTINGS.videoProvider,
     videoModel: settings?.videoModel ?? DEFAULT_AI_GENERATION_SETTINGS.videoModel,
     audioProvider: settings?.audioProvider ?? DEFAULT_AI_GENERATION_SETTINGS.audioProvider,
@@ -112,22 +109,4 @@ export function generationDefaultForMode(
 export function generationModeForCreateMode(mode: CreateMode): AiGenerationMode | null {
   if (mode === "image" || mode === "video" || mode === "audio") return mode;
   return null;
-}
-
-export function generationModeForWorkflowNode(
-  nodeType: WorkflowNodeType
-): AiGenerationMode | null {
-  if (nodeType === "image_generation") return "image";
-  if (nodeType === "video_generation") return "video";
-  if (nodeType === "audio_generation") return "audio";
-  if (nodeType === "lipsync") return "lipsync";
-  return null;
-}
-
-export function generationDefaultForWorkflowNode(
-  settings: AiGenerationSettings | null | undefined,
-  nodeType: WorkflowNodeType
-): AiGenerationDefault | null {
-  const mode = generationModeForWorkflowNode(nodeType);
-  return mode ? generationDefaultForMode(settings, mode) : null;
 }

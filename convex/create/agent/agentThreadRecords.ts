@@ -86,6 +86,7 @@ export async function createThreadForTurn(
   const threadId = await ctx.db.insert("createThreads", {
     userId: args.userId,
     workspaceId: args.workspaceId,
+    origin: "user",
     title: normalizeOptionalText(args.title) ?? threadTitleFromMessage(args.initialMessage),
     status: "idle",
     checkpointMode: args.checkpointMode,

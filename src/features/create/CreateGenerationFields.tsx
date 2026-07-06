@@ -6,9 +6,17 @@ import type { SelectableLibraryAsset } from "../assets/assetTypes";
 import type { ReferenceMentionOption } from "../../components/references/ReferenceAliasTextarea";
 import type { RichMentionToken } from "../../components/references/RichMentionTextarea";
 import { TextArea } from "../../components/ui";
-import { WorkflowSelect, type WorkflowSelectOption } from "../../components/workflow/WorkflowSelect";
-import type { ConfigField, LocalReferenceFileKind } from "../../lib/workflow/workflowConfigFields";
+import type { ConfigField, LocalReferenceFileKind } from "../../lib/create/createConfigFields";
 import type { CustomSelectOption } from "../../components/CustomSelect";
+import {
+  CustomSelect,
+} from "../../components/CustomSelect";
+import {
+  normalizeRosterOptionValue,
+  rosterOptionsForModel,
+  type RosterModel,
+  type RosterModelOptionKey,
+} from "../../lib/generation/modelRoster";
 
 type FieldGroups = {
   coreFields: ConfigField[];
@@ -27,6 +35,7 @@ export function CreateGenerationFields({
   modePromptLabel,
   modePromptPlaceholder,
   modelCatalogLoading,
+  rosterModel,
   nonGenerationPrompt,
   onConfigChange,
   onGenerationOperationChange,
@@ -42,7 +51,7 @@ export function CreateGenerationFields({
   selectedModel,
   showGenerationFields,
 }: {
-  availableModels: WorkflowSelectOption[];
+  availableModels: CustomSelectOption[];
   config: Record<string, unknown>;
   generationFieldGroups: FieldGroups;
   generationOperationOptions: CustomSelectOption[];
@@ -52,6 +61,7 @@ export function CreateGenerationFields({
   modePromptLabel: string;
   modePromptPlaceholder: string;
   modelCatalogLoading: boolean;
+  rosterModel?: RosterModel | null;
   nonGenerationPrompt: string;
   onConfigChange: (key: string, value: unknown) => void;
   onGenerationOperationChange: (operationId: string) => void;
@@ -94,6 +104,52 @@ export function CreateGenerationFields({
     );
   }
 
+  const rosterOptions = rosterModel ? rosterOptionsForModel(rosterModel) : {};
+  const standardOptions = Object.entries(rosterOptions).filter(([, option]) => option.exposure === "standard");
+  const advancedOptions = Object.entries(rosterOptions).filter(([, option]) => option.exposure === "advanced");
+  const optionsValue = config.options && typeof config.options === "object" && !Array.isArray(config.options)
+    ? config.options as Record<string, unknown>
+    : {};
+  const changeModelOption = (key: string, value: string | boolean) => {
+    onConfigChange("options", {
+      ...optionsValue,
+      [key]: value,
+    });
+  };
+  const modelOptionControl = ([key, option]: [string, NonNullable<typeof rosterOptions[RosterModelOptionKey]>]) => {
+    const normalizedValue = normalizeRosterOptionValue(option, optionsValue[key]) ?? option.default;
+
+    if (option.kind === "boolean") {
+      return (
+        <label className="grid min-w-0 gap-[var(--space-2)] text-[0.86rem] font-[720] text-[var(--color-ink)]" key={key}>
+          <span className="inline-flex items-center gap-[var(--space-2)]">
+            <input
+              checked={Boolean(normalizedValue)}
+              className="h-4 w-4 accent-[var(--color-primary)]"
+              onChange={(event) => changeModelOption(key, event.target.checked)}
+              type="checkbox"
+            />
+            {option.label}
+          </span>
+          {option.costNote ? <small className="text-[0.72rem] leading-[1.35] text-[var(--color-ink-muted)]">{option.costNote}</small> : null}
+        </label>
+      );
+    }
+
+    return (
+      <div className="grid min-w-0 gap-[var(--space-2)]" key={key}>
+        <span className="text-[0.74rem] font-[780] text-[var(--color-ink-soft)]">{option.label}</span>
+        <CustomSelect
+          onChange={(value) => changeModelOption(key, value)}
+          options={option.values.map((value) => ({ value, label: value }))}
+          placeholder={option.label}
+          value={String(normalizedValue)}
+        />
+        {option.costNote ? <small className="text-[0.72rem] leading-[1.35] text-[var(--color-ink-muted)]">{option.costNote}</small> : null}
+      </div>
+    );
+  };
+
   return (
     <>
       {generationFieldGroups.promptFields.length ? (
@@ -122,7 +178,7 @@ export function CreateGenerationFields({
         {generationOperationOptions.length > 1 ? (
           <>
             <span className="text-[0.74rem] font-[780] text-[var(--color-ink-soft)]">Operation</span>
-            <WorkflowSelect
+            <CustomSelect
               onChange={onGenerationOperationChange}
               options={generationOperationOptions}
               placeholder="Select operation"
@@ -132,7 +188,7 @@ export function CreateGenerationFields({
           </>
         ) : null}
         <span className="text-[0.74rem] font-[780] text-[var(--color-ink-soft)]">Model</span>
-        <WorkflowSelect
+        <CustomSelect
           disabled={!availableModels.length}
           onChange={onSelectedModelChange}
           options={availableModels}
@@ -198,6 +254,29 @@ export function CreateGenerationFields({
               />
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {standardOptions.length || advancedOptions.length ? (
+        <div className="grid min-w-0 gap-[var(--space-3)]">
+          <div className="border-t border-[var(--color-border)] pt-[var(--space-4)]">
+            <h3 className="m-0 text-[0.9rem] font-[800] text-[var(--color-ink)]">Model options</h3>
+          </div>
+          {standardOptions.length ? (
+            <div className="grid min-w-0 gap-[var(--space-3)] md:grid-cols-2 xl:grid-cols-3">
+              {standardOptions.map((entry) => modelOptionControl(entry as [string, NonNullable<typeof rosterOptions[RosterModelOptionKey]>]))}
+            </div>
+          ) : null}
+          {advancedOptions.length ? (
+            <details className="grid min-w-0 gap-[var(--space-3)]">
+              <summary className="cursor-pointer text-[0.82rem] font-[780] text-[var(--color-ink)]">
+                Advanced
+              </summary>
+              <div className="mt-[var(--space-3)] grid min-w-0 gap-[var(--space-3)] md:grid-cols-2 xl:grid-cols-3">
+                {advancedOptions.map((entry) => modelOptionControl(entry as [string, NonNullable<typeof rosterOptions[RosterModelOptionKey]>]))}
+              </div>
+            </details>
+          ) : null}
         </div>
       ) : null}
     </>

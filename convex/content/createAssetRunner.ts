@@ -10,7 +10,7 @@ import {
   waitForGeneratedAudio,
   waitForGeneratedImages,
   waitForGeneratedVideo,
-} from "../workflows/runtime/generationWaiters";
+} from "./requestExecution/generationWaiters";
 import {
   promptWithProviderSafeReferenceAliases,
   promptWithReferenceManifest,
@@ -18,7 +18,7 @@ import {
 import {
   imageModelUiContractForRun,
   imageProviderInputFromModelSchema,
-} from "../workflows/runtime/providerInputs";
+} from "../providers/runtime/providerInputs";
 import { dataWithArtifactCaption } from "./artifactCaptions";
 import { storeGeneratedAsset } from "./assets/assetStorage";
 
@@ -43,6 +43,7 @@ export type CreateImageRunnerInput = CreateAssetRunnerScope & {
   model?: string;
   aspectRatio?: string;
   count?: number;
+  options?: Record<string, string | boolean>;
   providerInput?: unknown;
   referenceImages?: CreateReferenceAsset[];
 };
@@ -54,6 +55,7 @@ export type CreateVideoRunnerInput = CreateAssetRunnerScope & {
   aspectRatio?: string;
   durationSeconds?: number;
   nativeAudio?: boolean;
+  options?: Record<string, string | boolean>;
   providerInput?: unknown;
   referenceImages?: CreateReferenceAsset[];
   referenceVideos?: CreateReferenceAsset[];
@@ -189,6 +191,7 @@ export async function runCreateImageRequest(
     model: args.model?.trim() || undefined,
     aspectRatio: args.aspectRatio,
     count,
+    options: args.options,
     referenceImages: referenceImages.length ? referenceImages : undefined,
     metadata: {
       source: "create_page",
@@ -296,6 +299,7 @@ export async function runCreateVideoRequest(
     aspectRatio: args.aspectRatio,
     durationSeconds: args.durationSeconds,
     nativeAudio: args.nativeAudio,
+    options: args.options,
     referenceImages: referenceImages.length ? referenceImages : undefined,
     metadata: {
       source: "create_page",

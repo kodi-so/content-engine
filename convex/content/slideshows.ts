@@ -21,7 +21,7 @@ export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationRunId: v.optional(v.id("automationRuns")),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await requireBetaAccess(ctx));
@@ -54,8 +54,8 @@ export const list = query({
       );
     }
 
-    if (args.workflowRunId) {
-      const run = await ctx.db.get(args.workflowRunId);
+    if (args.automationRunId) {
+      const run = await ctx.db.get(args.automationRunId);
       if (!run) return [];
       if (run.workspaceId) {
         await requireWorkspaceMember(ctx, run.workspaceId, userId);
@@ -64,8 +64,8 @@ export const list = query({
       }
       const rows = await ctx.db
         .query("slideshows")
-        .withIndex("by_workflow_run", (q) =>
-          q.eq("workflowRunId", args.workflowRunId!)
+        .withIndex("by_automation_run", (q) =>
+          q.eq("automationRunId", args.automationRunId!)
         )
         .collect();
       return rows.filter((row) =>
@@ -123,21 +123,21 @@ export const createFromRunner = internalMutation({
     workspaceId: v.optional(v.id("workspaces")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    workflowId: v.optional(v.id("workflows")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    automationId: v.optional(v.id("automations")),
+    automationRunId: v.optional(v.id("automationRuns")),
     title: v.string(),
     status: v.optional(slideshowStatusValidator),
     spec: v.any(),
   },
   handler: async (ctx, args) => {
     const request = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
-    const run = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
-    const workflow = args.workflowId ? await ctx.db.get(args.workflowId) : null;
+    const run = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
+    const automation = args.automationId ? await ctx.db.get(args.automationId) : null;
     const workspaceId =
       args.workspaceId ??
       request?.workspaceId ??
       run?.workspaceId ??
-      workflow?.workspaceId;
+      automation?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("slideshows", {
       ...args,
@@ -268,8 +268,8 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
           userId,
           workspaceId: slideshow.workspaceId,
           contentRequestId: slideshow.contentRequestId,
-          workflowId: slideshow.workflowId,
-          workflowRunId: slideshow.workflowRunId,
+          automationId: slideshow.automationId,
+          automationRunId: slideshow.automationRunId,
           parentArtifactIds,
           type: "rendered_asset",
           title: `${slideshow.title} slide ${slide.index}`,
@@ -300,8 +300,8 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
     return await ctx.db.insert("distributionPlans", {
       userId,
       workspaceId: slideshow.workspaceId,
-      workflowId: slideshow.workflowId,
-      workflowRunId: slideshow.workflowRunId,
+      automationId: slideshow.automationId,
+      automationRunId: slideshow.automationRunId,
       artifactIds,
       socialAccountIds,
       provider: selectedProvider,

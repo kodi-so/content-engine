@@ -6,6 +6,9 @@ import {
   type AiGenerationProvider,
 } from "../../lib/providers/aiGenerationDefaults";
 import {
+  rosterModelPricingDescription,
+  rosterOptionsForModel,
+  rosterModelById,
   rosterModelsForMode,
   type RosterModelMode,
 } from "../../lib/generation/modelRoster";
@@ -34,7 +37,9 @@ export function AiProvidersSettingsSection({
   isWorkspaceAdmin,
   onChangeProvider,
   onChangeModel,
+  onChangeImageResolution,
   onSave,
+  imageResolution,
   modelsByMode,
   providersByMode,
 }: {
@@ -46,9 +51,24 @@ export function AiProvidersSettingsSection({
     provider: AiGenerationProvider
   ) => void;
   onChangeModel: (mode: RosterModelMode, modelId: string) => void;
+  onChangeImageResolution: (resolution: string) => void;
   onSave: (event: FormEvent) => void;
+  imageResolution: string;
   providersByMode: Record<AiGenerationMode, AiGenerationProvider>;
 }) {
+  const selectedImageModel = rosterModelById(modelsByMode.image);
+  const imageResolutionOption = selectedImageModel
+    ? rosterOptionsForModel(selectedImageModel).resolution
+    : undefined;
+  const imageResolutionOptions = imageResolutionOption?.kind === "enum"
+    ? imageResolutionOption.values.map((value) => ({ value, label: value }))
+    : [];
+  const selectedImageResolutionValue = imageResolutionOption?.kind === "enum"
+    ? imageResolutionOptions.some((option) => option.value === imageResolution)
+      ? imageResolution
+      : imageResolutionOption.default
+    : undefined;
+
   return (
     <section>
       <header className="mb-[var(--space-2)]">
@@ -85,12 +105,22 @@ export function AiProvidersSettingsSection({
                   options={rosterModelsForMode(mode as RosterModelMode).map((model) => ({
                     value: model.id,
                     label: model.label,
-                    description: model.strengths,
+                    description: rosterModelPricingDescription(model),
                   }))}
                   placeholder="Model"
                   rich
                   triggerClassName={providerSelectClass}
                   value={modelsByMode[mode as RosterModelMode]}
+                />
+              ) : null}
+              {mode === "image" && imageResolutionOptions.length ? (
+                <CustomSelect
+                  disabled={!isWorkspaceAdmin || providersByMode.image !== "fal"}
+                  onChange={onChangeImageResolution}
+                  options={imageResolutionOptions}
+                  placeholder="Resolution"
+                  triggerClassName={providerSelectClass}
+                  value={selectedImageResolutionValue}
                 />
               ) : null}
             </div>

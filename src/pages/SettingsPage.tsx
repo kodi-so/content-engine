@@ -29,6 +29,10 @@ import {
   type AiGenerationProvider,
 } from "../lib/providers/aiGenerationDefaults";
 import type { RosterModelMode } from "../lib/generation/modelRoster";
+import {
+  rosterModelById,
+  rosterOptionsForModel,
+} from "../lib/generation/modelRoster";
 
 export function SettingsPage() {
   const { openUserProfile } = useClerk();
@@ -55,6 +59,7 @@ export function SettingsPage() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [imageProvider, setImageProvider] = useState<AiGenerationProvider>("fal");
   const [imageModel, setImageModel] = useState("");
+  const [imageResolution, setImageResolution] = useState("2K");
   const [videoProvider, setVideoProvider] = useState<AiGenerationProvider>("fal");
   const [videoModel, setVideoModel] = useState("");
   const [audioProvider, setAudioProvider] = useState<AiGenerationProvider>("fal");
@@ -107,6 +112,7 @@ export function SettingsPage() {
     const settings = resolveAiGenerationSettings(activeWorkspace?.aiGenerationSettings);
     setImageProvider(settings.imageProvider);
     setImageModel(settings.imageModel);
+    setImageResolution(settings.imageResolution);
     setVideoProvider(settings.videoProvider);
     setVideoModel(settings.videoModel);
     setAudioProvider(settings.audioProvider);
@@ -163,6 +169,15 @@ export function SettingsPage() {
   const changeGenerationModel = (mode: RosterModelMode, modelId: string) => {
     if (mode === "image") {
       setImageModel(modelId);
+      const resolutionOption = rosterModelById(modelId)
+        ? rosterOptionsForModel(rosterModelById(modelId)!).resolution
+        : undefined;
+      if (
+        resolutionOption?.kind === "enum" &&
+        !resolutionOption.values.some((value) => value === imageResolution)
+      ) {
+        setImageResolution(resolutionOption.default);
+      }
       return;
     }
     if (mode === "video") {
@@ -188,6 +203,7 @@ export function SettingsPage() {
         aiGenerationSettings: {
           imageProvider,
           imageModel,
+          imageResolution,
           videoProvider,
           videoModel,
           audioProvider,
@@ -325,6 +341,8 @@ export function SettingsPage() {
                 providersByMode={providersByMode}
                 onChangeProvider={changeGenerationProvider}
                 onChangeModel={changeGenerationModel}
+                imageResolution={imageResolution}
+                onChangeImageResolution={setImageResolution}
                 onSave={saveAiGenerationSettings}
               />
         ) : null}

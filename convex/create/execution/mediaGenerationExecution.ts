@@ -23,14 +23,17 @@ import {
 import {
   defaultRosterModelForMode,
   falModelIdForRosterModel,
+  normalizeRosterOptionValue,
   resolveRosterModelAlias,
   rosterModelByProviderModelId,
+  rosterOptionsForModel,
+  type RosterModelOptionKey,
   type RosterModel,
 } from "../../../src/lib/generation/modelRoster";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
 
-const DEFAULT_CREATE_FAL_IMAGE_MODEL = "fal-ai/gemini-3.1-flash-image-preview";
+const DEFAULT_CREATE_FAL_IMAGE_MODEL = "fal-ai/nano-banana-2";
 
 function providerForMediaMode(
   workspace: Doc<"workspaces"> | null,
@@ -45,8 +48,11 @@ function providerForMediaMode(
 
 function modelForMediaMode(
   workspace: Doc<"workspaces"> | null,
-  mode: MediaGenerationMode
+  mode: MediaGenerationMode,
+  automationDefaults?: Record<string, unknown>
 ) {
+  if (mode === "image" && typeof automationDefaults?.imageModel === "string") return automationDefaults.imageModel;
+  if (mode === "video" && typeof automationDefaults?.videoModel === "string") return automationDefaults.videoModel;
   const settings = workspace?.aiGenerationSettings;
   if (mode === "image") return settings?.imageModel;
   if (mode === "video") return settings?.videoModel;
@@ -55,10 +61,19 @@ function modelForMediaMode(
 }
 
 function isEditableFalImageModel(model: string) {
-  return model === "fal-ai/gemini-3-pro-image-preview" ||
+  return model === "openai/gpt-image-2" ||
+    model === "fal-ai/gpt-image-2" ||
+    model === "fal-ai/gemini-3-pro-image-preview" ||
     model === "fal-ai/gemini-3.1-flash-image-preview" ||
     model === "fal-ai/nano-banana-pro" ||
     model === "fal-ai/nano-banana-2";
+}
+
+function falImageEditModel(model: string) {
+  if (model === "openai/gpt-image-2" || model === "fal-ai/gpt-image-2") {
+    return "openai/gpt-image-2/image-to-image";
+  }
+  return `${model}/edit`;
 }
 
 function effectiveQueuedModelForToolOutput(args: {
@@ -70,7 +85,7 @@ function effectiveQueuedModelForToolOutput(args: {
   if (args.provider !== "fal" || args.mode !== "image") return args.model;
 
   const model = args.model?.trim() || DEFAULT_CREATE_FAL_IMAGE_MODEL;
-  if (args.referenceCount > 0 && isEditableFalImageModel(model)) return `${model}/edit`;
+  if (args.referenceCount > 0 && isEditableFalImageModel(model)) return falImageEditModel(model);
   return model;
 }
 
@@ -101,6 +116,74 @@ function defaultCreateVideoModel(args: {
 
 function rosterModelForInput(value: string | undefined): RosterModel | undefined {
   return resolveRosterModelAlias(value) ?? rosterModelByProviderModelId(value);
+}
+
+function optionInputRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function automationGenerationDefaults(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">
+): Promise<Record<string, unknown>> {
+  const automationRunId = (thread as Doc<"createThreads"> & { automationRunId?: unknown }).automationRunId;
+  if (!automationRunId || typeof automationRunId !== "string") return {};
+  const run = await ctx.db.get(automationRunId as never);
+  const automationId = run && typeof run === "object" && "automationId" in run
+    ? (run as { automationId?: unknown }).automationId
+    : undefined;
+  if (!automationId || typeof automationId !== "string") return {};
+  const automation = await ctx.db.get(automationId as never);
+  if (!automation || typeof automation !== "object" || !("generationDefaults" in automation)) {
+    return {};
+  }
+  const defaults = (automation as { generationDefaults?: unknown }).generationDefaults;
+  return optionInputRecord(defaults);
+}
+
+function resolveGenerationOptions(args: {
+  automationDefaults: Record<string, unknown>;
+  explicitOptions: Record<string, unknown>;
+  mode: MediaGenerationMode;
+  model?: string;
+  workspace: Doc<"workspaces"> | null;
+}): Record<string, string | boolean> | undefined {
+  const rosterModel = rosterModelForInput(args.model);
+  if (!rosterModel || rosterModel.mode !== args.mode) return undefined;
+  const rosterOptions = rosterOptionsForModel(rosterModel);
+  const resolved: Record<string, string | boolean> = {};
+
+  for (const [key, option] of Object.entries(rosterOptions) as Array<[
+    RosterModelOptionKey,
+    NonNullable<ReturnType<typeof rosterOptionsForModel>[RosterModelOptionKey]>
+  ]>) {
+    const explicit = normalizeRosterOptionValue(option, args.explicitOptions[key]);
+    if (explicit !== undefined) {
+      resolved[key] = explicit;
+      continue;
+    }
+
+    const automationDefault = normalizeRosterOptionValue(
+      option,
+      key === "resolution" ? args.automationDefaults.imageResolution : args.automationDefaults[key]
+    );
+    if (automationDefault !== undefined) {
+      resolved[key] = automationDefault;
+      continue;
+    }
+
+    const workspaceDefault = normalizeRosterOptionValue(
+      option,
+      key === "resolution" && args.mode === "image"
+        ? args.workspace?.aiGenerationSettings?.imageResolution
+        : undefined
+    );
+    resolved[key] = workspaceDefault ?? option.default;
+  }
+
+  return Object.keys(resolved).length ? resolved : undefined;
 }
 
 export function modelForMediaGenerationInput(args: {
@@ -170,9 +253,12 @@ export async function createGenerationRequestForToolCall(
   );
 
   const workspace = thread.workspaceId ? await ctx.db.get(thread.workspaceId) : null;
+  const automationDefaults = await automationGenerationDefaults(ctx, thread);
   const provider = modelProviderFromInput(input.provider) ?? providerForMediaMode(workspace, mode);
-  let model = cleanOptionalStringFromRecord(input, "model") ?? modelForMediaMode(workspace, mode);
-  const aspectRatio = cleanOptionalStringFromRecord(input, "aspectRatio");
+  let model = cleanOptionalStringFromRecord(input, "model") ??
+    modelForMediaMode(workspace, mode, automationDefaults);
+  const aspectRatio = cleanOptionalStringFromRecord(input, "aspectRatio") ??
+    (typeof automationDefaults.aspectRatio === "string" ? automationDefaults.aspectRatio : undefined);
   const requestedDurationSeconds = finitePositiveNumber(input.durationSeconds);
   const audioMode = cleanOptionalStringFromRecord(input, "mode");
   const count = mode === "image"
@@ -326,6 +412,13 @@ export async function createGenerationRequestForToolCall(
     rosterModelByProviderModelId(model)?.nativeAudio === true
     ? true
     : undefined;
+  const options = resolveGenerationOptions({
+    automationDefaults,
+    explicitOptions: optionInputRecord(input.options),
+    mode,
+    model,
+    workspace,
+  });
   const effectiveModel = effectiveQueuedModelForToolOutput({
     mode,
     model,
@@ -351,6 +444,7 @@ export async function createGenerationRequestForToolCall(
       count,
       durationSeconds: mode === "video" ? durationSeconds : undefined,
       nativeAudio,
+      options,
       resolution: mode === "lipsync" ? cleanOptionalStringFromRecord(input, "resolution") : undefined,
       audioMode: mode === "audio" ? audioMode : undefined,
       referenceImages:
@@ -379,6 +473,7 @@ export async function createGenerationRequestForToolCall(
       durationSeconds: mode === "video" ? durationSeconds : undefined,
       requestedDurationSeconds: mode === "video" ? requestedDurationSeconds : undefined,
       nativeAudio,
+      options,
       resolution: mode === "lipsync" ? cleanOptionalStringFromRecord(input, "resolution") : undefined,
       audioMode: mode === "audio" ? audioMode : undefined,
       status: "queued",
