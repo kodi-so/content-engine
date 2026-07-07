@@ -4,7 +4,9 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { ensureCurrentUser, requireCurrentUserId } from "../auth/users";
 import { aiGenerationSettingsValidator } from "../validators";
 import {
+  defaultRosterModelForMode,
   rosterModelById,
+  rosterOptionsForModel,
   type RosterModelMode,
 } from "../../src/lib/generation/modelRoster";
 
@@ -36,12 +38,36 @@ function normalizeRosterModelId(value: string | undefined, mode: RosterModelMode
   return model.id;
 }
 
+function normalizeImageResolution(
+  value: string | undefined,
+  imageModelId: string | undefined
+) {
+  const resolution = value?.trim();
+  if (!resolution) return undefined;
+
+  const imageModel = imageModelId
+    ? rosterModelById(imageModelId)
+    : defaultRosterModelForMode("image");
+  const resolutionOption = imageModel ? rosterOptionsForModel(imageModel).resolution : undefined;
+  if (
+    resolutionOption?.kind === "enum" &&
+    !resolutionOption.values.some((option) => option === resolution)
+  ) {
+    throw new Error("Unknown image resolution default.");
+  }
+
+  return resolution;
+}
+
 function normalizeAiGenerationSettings(
   settings: AiGenerationSettings
 ): AiGenerationSettings {
+  const imageModel = normalizeRosterModelId(settings.imageModel, "image");
+
   return {
     imageProvider: settings.imageProvider,
-    imageModel: normalizeRosterModelId(settings.imageModel, "image"),
+    imageModel,
+    imageResolution: normalizeImageResolution(settings.imageResolution, imageModel),
     videoProvider: settings.videoProvider,
     videoModel: normalizeRosterModelId(settings.videoModel, "video"),
     audioProvider: settings.audioProvider,

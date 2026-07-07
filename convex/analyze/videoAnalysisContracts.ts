@@ -95,7 +95,7 @@ export function buildAnalysisPrompt(job: VideoAnalysisJob) {
     "If details are not visible or audible, use an empty string or empty array instead of guessing.",
     "For transcript text, preserve meaningful wording but remove filler only when it improves readability.",
     "For scene timestamps, use approximate mm:ss timestamps.",
-    "Also return referenceBrief as the concise reusable understanding of the source for both the Analyze screen and Agent mode. It should be compact, source-grounded, and useful for later questions or original content creation.",
+    "Also return referenceBrief as the concise reusable understanding of the source for agent mode. It should be compact, source-grounded, and useful for later questions or original content creation.",
     "Every reuseBrief field must be grounded in the observed source. Preserve the source's actual category, transformation, setting, subjects, timing, text, and audio cues unless the user explicitly asks for a different domain.",
     "Do not invent unrelated example concepts. If a reusable generation prompt would require details not present in the source, return an empty string for that field.",
     job.customPrompt ? `User focus: ${job.customPrompt}` : "",

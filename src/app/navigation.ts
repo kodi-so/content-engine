@@ -1,6 +1,5 @@
 import {
   GalleryHorizontalEnd,
-  ScanSearch,
   Link2,
   Repeat,
   Settings,
@@ -13,7 +12,6 @@ import {
 export const navItems = [
   { to: "/create", label: "Agent", icon: Sparkles },
   { to: "/tools", label: "Create", icon: SlidersHorizontal },
-  { to: "/analyze", label: "Analyze", icon: ScanSearch },
   { to: "/accounts", label: "Accounts", icon: Link2 },
   { to: "/automations", label: "Automations", icon: Repeat },
   { to: "/library", label: "Library", icon: GalleryHorizontalEnd },

@@ -23,11 +23,11 @@ Still needed:
 
 Use a small Railway-hosted Python resolver service for social media URL ingestion.
 
-Content Engine should keep Convex as the analysis orchestrator and source of truth, but move platform-specific media acquisition out of Convex. The resolver's job is to turn a TikTok, Instagram, or Facebook post URL into actual downloadable media metadata or bytes, then let the existing Analyze pipeline upload that media to Gemini.
+Content Engine should keep Convex as the analysis orchestrator and source of truth, but move platform-specific media acquisition out of Convex. The resolver's job is to turn a TikTok, Instagram, or Facebook post URL into actual downloadable media metadata or bytes, then let the existing agent source-analysis pipeline upload that media to Gemini.
 
 ## Why This Exists
 
-The Analyze screen currently wants to support pasted social URLs, but direct Gemini URL analysis only works reliably for YouTube. TikTok, Instagram, and Facebook usually require a download/resolve step first.
+Agent source analysis supports pasted social URLs, but direct Gemini URL analysis only works reliably for YouTube. TikTok, Instagram, and Facebook usually require a download/resolve step first.
 
 The Codex `video-analyzer` MCP proved this is possible for the test TikTok URL:
 
@@ -224,7 +224,7 @@ project and the CLI was not authenticated during implementation. To deploy:
 
 Must pass before calling this complete:
 
-- The known TikTok test URL resolves and analyzes from the Analyze screen.
+- The known TikTok test URL resolves and analyzes through the agent source-analysis tool.
 - A bad/private URL is rejected before any fetch.
 - A too-large media response fails with a clear message.
 - YouTube URL analysis still works.

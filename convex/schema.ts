@@ -180,7 +180,6 @@ export default defineSchema({
     transcript: v.optional(v.string()),
     result: v.optional(v.any()),
     errorMessage: v.optional(v.string()),
-    savedAt: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -189,21 +188,6 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_status", ["workspaceId", "status"]),
-
-  videoAnalysisQuestions: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    jobId: v.id("videoAnalysisJobs"),
-    question: v.string(),
-    answer: v.optional(v.string()),
-    status: videoAnalysisStatusValidator,
-    errorMessage: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    completedAt: v.optional(v.number()),
-  })
-    .index("by_job", ["jobId"])
-    .index("by_workspace", ["workspaceId"]),
 
   mcpApiKeys: defineTable({
     userId: v.string(),

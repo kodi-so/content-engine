@@ -9,8 +9,8 @@ The main app navigation is:
 
 - Create: one-off content generation for images, videos, audio, lipsync, video
   rendering, and slideshow/carousel style outputs.
-- Analyze: reference source analysis from upload, YouTube URL, direct media URL,
-  and future social URL resolver support.
+- Agent: conversational creation and source analysis through tools, including
+  reference uploads, URLs, social resolver inputs, and generated media context.
 - Accounts: social/publishing account records.
 - Workflows: canvas-native automation graphs.
 - Library: saved assets, artifacts, slideshow outputs, and publishing actions.
@@ -26,8 +26,7 @@ Core Convex tables own these responsibilities:
 - `providerConnections`: publishing provider account/workspace links.
 - `providerModels`: cached provider model catalog snapshots and schema metadata.
 - `contentRequests`: one-off Create jobs and their generation status.
-- `videoAnalysisJobs` and `videoAnalysisQuestions`: Analyze jobs, source
-  metadata, results, and follow-up Q&A.
+- `videoAnalysisJobs`: agent source-analysis jobs, source metadata, and results.
 - `workflows`: canvas graph definitions and workflow metadata.
 - `workflowRuns`, node states, and run events: execution state and debug history.
 - `artifacts`: immutable generated outputs, provenance, storage URLs, and parent

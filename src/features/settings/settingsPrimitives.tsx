@@ -57,7 +57,7 @@ export const generationModeNotes: Record<AiGenerationMode, string> = {
   video: "Sets the default provider and model for Create video generation.",
   audio: "Sets the default provider and model for Create audio generation.",
   lipsync: "Sets the default provider and model for Create lip sync generation.",
-  videoAnalysis: "Sets which multimodal provider the Analyze tab uses for transcripts, scene reads, audio notes, and inspiration briefs.",
+  videoAnalysis: "Sets which multimodal provider the agent uses for source analysis, transcripts, scene reads, audio notes, and inspiration briefs.",
 };
 
 export function formatSettingsDate(timestamp?: number) {

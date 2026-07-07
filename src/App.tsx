@@ -13,7 +13,6 @@ import { Sidebar } from "./components/AppShell";
 import { LoadingScreen, PrivateBetaScreen, SignInScreen } from "./components/ui";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { AccountsPage } from "./pages/AccountsPage";
-import { AnalyzePage } from "./pages/AnalyzePage";
 import { AutomationsPage } from "./pages/AutomationsPage";
 import { CreatePage } from "./pages/CreatePage";
 import { CreateToolsPage } from "./pages/CreateToolsPage";
@@ -87,7 +86,6 @@ function AppContent() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/create" element={<CreatePage />} />
             <Route path="/tools" element={<CreateToolsPage />} />
-            <Route path="/analyze" element={<AnalyzePage />} />
             <Route path="/studio" element={<VideoComposerPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/automations" element={<AutomationsPage />} />
