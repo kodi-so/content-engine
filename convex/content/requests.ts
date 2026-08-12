@@ -106,11 +106,6 @@ function resolveRequestOptions(args: {
   return Object.keys(resolved).length ? resolved : args.options;
 }
 
-function storageIdFromUrl(url: string): Id<"_storage"> | null {
-  const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
-  return match?.[1] ? match[1] as Id<"_storage"> : null;
-}
-
 function temporaryReferenceStorageIds(request: Doc<"contentRequests">) {
   const generation = request.generation as CreateGenerationPayload | undefined;
   const references = [
@@ -122,9 +117,7 @@ function temporaryReferenceStorageIds(request: Doc<"contentRequests">) {
 
   for (const reference of references) {
     if (reference.temporary !== true) continue;
-    const storageId = reference.storageId
-      ? reference.storageId as Id<"_storage">
-      : storageIdFromUrl(reference.url);
+    const storageId = reference.storageId as Id<"_storage"> | undefined;
     if (storageId) storageIds.add(storageId);
   }
 

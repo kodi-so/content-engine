@@ -26,7 +26,7 @@ export type AnalysisSourceForToolCall = {
   label: string;
   libraryAssetId?: string;
   mimeType?: string;
-  sourcePlatform: Doc<"videoAnalysisJobs">["sourcePlatform"];
+  sourcePlatform: Doc<"contentAnalyses">["sourcePlatform"];
   sourceType: "url" | "upload";
   sourceUrl?: string;
   storageUrl?: string;
@@ -83,7 +83,7 @@ export function analysisSourceFromUploadedReferenceMention(
 function sourcePlatformForStoredMedia(args: {
   mimeType?: string;
   storageUrl: string;
-}): Doc<"videoAnalysisJobs">["sourcePlatform"] {
+}): Doc<"contentAnalyses">["sourcePlatform"] {
   if (
     args.mimeType?.startsWith("image/") ||
     args.mimeType?.startsWith("video/") ||
@@ -306,9 +306,13 @@ export async function createAnalysisJobForToolCall(
   const analysisSource = await resolveAnalysisSourceForToolCall(ctx, thread, sourceType, source);
 
   const now = Date.now();
-  const jobId = await ctx.db.insert("videoAnalysisJobs", {
+  const jobId = await ctx.db.insert("contentAnalyses", {
     userId: thread.userId,
     workspaceId: thread.workspaceId,
+    purpose: "standalone",
+    mediaType: "video",
+    sourceArtifactIds: [],
+    analysisVersion: "v1",
     sourceType: analysisSource.sourceType,
     sourcePlatform: analysisSource.sourcePlatform,
     sourceUrl: analysisSource.sourceUrl,

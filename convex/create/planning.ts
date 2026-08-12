@@ -1,3 +1,4 @@
+import type { Id } from "../_generated/dataModel";
 import type { RequestedRenderingMode } from "../content/planningPrompts";
 import { listCreateToolsForPlanner } from "./tools";
 import type { CreateToolName, CreateToolPlannerDescriptor } from "./tools";
@@ -11,6 +12,7 @@ export type CreateReferenceMention = {
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
   mimeType?: string;
+  storageId?: Id<"_storage">;
   storageUrl?: string;
   instruction?: string;
 };

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { requireSocialAccountAccess } from "../accounts/accountAccess";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import {
   requireWorkspaceMember,
@@ -78,11 +79,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function storageIdFromUrl(url: string): Id<"_storage"> | null {
-  const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
-  return match?.[1] ? match[1] as Id<"_storage"> : null;
-}
-
 async function deleteThreadUploadedReferences(
   ctx: MutationCtx,
   messages: Doc<"createMessages">[]
@@ -92,10 +88,7 @@ async function deleteThreadUploadedReferences(
   for (const message of messages) {
     for (const reference of message.referenceMentions ?? []) {
       if (reference.entityType !== "uploaded_reference") continue;
-      const storageUrl = reference.storageUrl;
-      if (!storageUrl) continue;
-      const storageId = storageIdFromUrl(storageUrl);
-      if (storageId) storageIds.add(storageId);
+      if (reference.storageId) storageIds.add(reference.storageId);
     }
   }
 
@@ -174,7 +167,7 @@ export const list = query({
             .order("desc")
             .collect();
 
-      return threads;
+      return threads.filter((thread) => thread.origin === "user");
     }
 
     const threads = args.status
@@ -191,7 +184,7 @@ export const list = query({
           .order("desc")
           .collect();
 
-    return threads;
+    return threads.filter((thread) => thread.origin === "user");
   },
 });
 
@@ -212,6 +205,7 @@ export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     title: v.optional(v.string()),
+    socialAccountId: v.optional(v.id("socialAccounts")),
     checkpointMode: v.optional(createCheckpointModeValidator),
     initialMessage: v.optional(v.string()),
     referenceMentions: v.optional(v.array(createReferenceMentionValidator)),
@@ -221,12 +215,19 @@ export const create = mutation({
     const workspace = args.workspaceId
       ? await resolveWritableWorkspace(ctx, userId, args.workspaceId)
       : defaultWorkspace;
+    if (args.socialAccountId) {
+      const account = await requireSocialAccountAccess(ctx, args.socialAccountId, userId);
+      if (account.workspaceId && account.workspaceId !== workspace._id) {
+        throw new Error("Social account does not belong to this workspace");
+      }
+    }
     const now = Date.now();
 
     const threadId = await ctx.db.insert("createThreads", {
       userId,
       workspaceId: workspace._id,
       origin: "user",
+      socialAccountId: args.socialAccountId,
       title: defaultThreadTitle(args.title),
       status: "idle",
       checkpointMode: args.checkpointMode ?? "debug",

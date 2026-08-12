@@ -1,4 +1,5 @@
 import type { ReferenceBrief } from "../../analyze/referenceBriefModel";
+import type { Id } from "../../../../convex/_generated/dataModel";
 
 export type AgentCreateCheckpointMode = "debug" | "auto";
 
@@ -59,6 +60,7 @@ export type AgentCreateSelectedMention = {
   mimeType?: string;
   previewUrl?: string;
   sourceLabel?: string;
+  storageId?: Id<"_storage">;
   storageUrl?: string;
   thumbnailUrl?: string;
 };
@@ -139,5 +141,4 @@ export type AgentCreateFinalReviewAction =
   | "open_studio"
   | "request_render"
   | "export"
-  | "publish"
-  | "turn_into_automation";
+  | "publish";

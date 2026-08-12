@@ -42,7 +42,7 @@ export const PUBLISHING_PROVIDER_ROUTES: PublishingProviderRoute[] = [
     status: "manual",
     platforms: ["tiktok", "instagram", "youtube", "x", "linkedin"],
     notes:
-      "Creates a local/manual publishing record. Use for export-only automations and dry operational testing.",
+      "Creates a local/manual account post record for export-only and dry operational testing.",
   },
 ];
 

@@ -4,7 +4,7 @@ import { isRecord } from "../references/referenceResolution";
 import {
   analysisJobIdFromToolOutput,
   contentRequestIdFromToolOutput,
-  distributionPlanIdFromToolOutput,
+  accountPostIdFromToolOutput,
   outputId,
   studioRenderRequestIdFromToolOutput,
   videoProjectIdFromToolOutput,
@@ -67,11 +67,11 @@ export async function listThreadOutputsForThread(
       })
     ),
   ];
-  const distributionPlanIds = [
+  const accountPostIds = [
     ...new Set(
       toolCalls.flatMap((toolCall) => {
-        const distributionPlanId = distributionPlanIdFromToolOutput(toolCall.output);
-        return distributionPlanId ? [distributionPlanId] : [];
+        const accountPostId = accountPostIdFromToolOutput(toolCall.output);
+        return accountPostId ? [accountPostId] : [];
       })
     ),
   ];
@@ -139,14 +139,14 @@ export async function listThreadOutputsForThread(
     videoProjects.push(project);
   }
 
-  const distributionPlans = [];
-  for (const planId of distributionPlanIds) {
-    const plan = await ctx.db.get(planId);
-    if (!plan) continue;
-    if (thread.workspaceId ? plan.workspaceId !== thread.workspaceId : plan.userId !== thread.userId) {
+  const accountPosts = [];
+  for (const postId of accountPostIds) {
+    const post = await ctx.db.get(postId);
+    if (!post) continue;
+    if (thread.workspaceId ? post.workspaceId !== thread.workspaceId : post.userId !== thread.userId) {
       continue;
     }
-    distributionPlans.push(plan);
+    accountPosts.push(post);
   }
 
   const studioRenderRequestsByThread = await ctx.db
@@ -196,7 +196,7 @@ export async function listThreadOutputsForThread(
     analysisJobs,
     directArtifacts,
     videoProjects,
-    distributionPlans,
+    accountPosts,
     studioRenderRequests,
     referenceResults,
   };

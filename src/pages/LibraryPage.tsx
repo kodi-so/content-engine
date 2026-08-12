@@ -196,6 +196,7 @@ export function LibraryPage() {
         name: args.name,
         assetKind: assetKindFromFile(args.file),
         mediaType: mediaTypeFromFile(args.file),
+        storageId: stored.storageId,
         storageUrl: stored.storageUrl,
         mimeType: stored.mimeType,
       });

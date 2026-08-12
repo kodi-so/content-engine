@@ -30,10 +30,10 @@ function reviewResolution(
 
 function statusFromReviewResolution(
   resolution: "approved" | "needs_revision" | "pending"
-): "draft" | "needs_revision" | "waiting_for_approval" {
+): "draft" | "needs_revision" | "awaiting_approval" {
   if (resolution === "approved") return "draft";
   if (resolution === "needs_revision") return "needs_revision";
-  return "waiting_for_approval";
+  return "awaiting_approval";
 }
 
 function replacementSourceId(artifact: Doc<"artifacts">): string | undefined {
@@ -52,21 +52,21 @@ function replacementSourceId(artifact: Doc<"artifacts">): string | undefined {
     : undefined;
 }
 
-export async function replaceArtifactInPlan(
+export async function replaceArtifactInPost(
   ctx: MutationCtx,
   args: {
-    id: Id<"distributionPlans">;
+    id: Id<"accountPosts">;
     oldArtifactId: Id<"artifacts">;
     newArtifactId: Id<"artifacts">;
   },
   userId: string
 ) {
-  const plan = await ctx.db.get(args.id);
-  if (!plan || plan.userId !== userId) {
-    throw new Error("Distribution plan not found");
+  const post = await ctx.db.get(args.id);
+  if (!post || post.userId !== userId) {
+    throw new Error("Account post not found");
   }
-  if (!plan.artifactIds.some((artifactId) => artifactId === args.oldArtifactId)) {
-    throw new Error("Original artifact is not in this distribution plan");
+  if (!post.artifactIds.some((artifactId) => artifactId === args.oldArtifactId)) {
+    throw new Error("Original artifact is not in this account post");
   }
 
   const oldArtifact = await ctx.db.get(args.oldArtifactId);
@@ -77,11 +77,11 @@ export async function replaceArtifactInPlan(
   if (!newArtifact || newArtifact.userId !== userId) {
     throw new Error("Replacement artifact not found");
   }
-  if (oldArtifact.automationRunId !== plan.automationRunId) {
-    throw new Error("Original artifact does not belong to this plan's automation run");
+  if (oldArtifact.accountPostId !== post._id) {
+    throw new Error("Original artifact does not belong to this account post");
   }
-  if (newArtifact.automationRunId !== plan.automationRunId) {
-    throw new Error("Replacement artifact must belong to the same automation run");
+  if (newArtifact.socialAccountId && newArtifact.socialAccountId !== post.socialAccountId) {
+    throw new Error("Replacement artifact must belong to the same social account");
   }
 
   const parentIds = new Set((newArtifact.parentArtifactIds ?? []).map(String));
@@ -90,7 +90,7 @@ export async function replaceArtifactInPlan(
     throw new Error("Replacement artifact is not linked to the original artifact");
   }
 
-  const artifactIds = plan.artifactIds.map((artifactId) =>
+  const artifactIds = post.artifactIds.map((artifactId) =>
     artifactId === args.oldArtifactId ? args.newArtifactId : artifactId
   );
   const planArtifacts = await Promise.all(
@@ -99,15 +99,15 @@ export async function replaceArtifactInPlan(
   const nextStatus = statusFromReviewResolution(reviewResolution(planArtifacts));
   const now = Date.now();
 
-  await ctx.db.patch(plan._id, {
+  await ctx.db.patch(post._id, {
     artifactIds,
     status: nextStatus,
     errorMessage: undefined,
     providerPayload: {
-      ...(plan.providerPayload &&
-      typeof plan.providerPayload === "object" &&
-      !Array.isArray(plan.providerPayload)
-        ? (plan.providerPayload as Record<string, unknown>)
+      ...(post.providerPayload &&
+      typeof post.providerPayload === "object" &&
+      !Array.isArray(post.providerPayload)
+        ? (post.providerPayload as Record<string, unknown>)
         : {}),
       replacement: {
         oldArtifactId: args.oldArtifactId,

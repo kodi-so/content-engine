@@ -4,9 +4,9 @@ import { internal } from "../_generated/api";
 const crons = cronJobs();
 
 crons.interval(
-  "run due scheduled automations",
+  "run due account autopilots",
   { minutes: 5 },
-  internal.automations.scheduling.runDueAutomations
+  internal.accounts.autopilotScheduling.runDueAccountAutopilots
 );
 
 export default crons;

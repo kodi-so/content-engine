@@ -56,6 +56,7 @@ import {
   type RosterModelMode,
 } from "../../../../src/lib/generation/modelRoster";
 import { shouldRenderAgentCreateMessage } from "../../../../src/features/agent-create/model/agentCreateSurfaceModel";
+import { nextAutopilotRunAt } from "../../../../convex/accounts/accountCadence";
 
 function userMessage(
   content: string,
@@ -109,6 +110,19 @@ const validChatDecision = normalizeAgentDecision(JSON.stringify({
 }));
 assert.equal(validChatDecision.kind, "chat");
 assert.equal(validChatDecision.response, "Happy to help.");
+
+const cadenceAccount = {
+  autopilotStatus: "active",
+  autopilot: {
+    timezone: "UTC",
+    cadence: { kind: "daily", times: [{ hour: 9, minute: 15 }] },
+    publishingMode: "require_approval",
+  },
+} as Doc<"socialAccounts">;
+assert.equal(
+  nextAutopilotRunAt(cadenceAccount, Date.UTC(2026, 0, 1, 8, 30)),
+  Date.UTC(2026, 0, 1, 9, 15)
+);
 
 const rosterIds = new Set<string>();
 const rosterAliases = new Set<string>();
@@ -230,6 +244,26 @@ assert.deepEqual(
   }),
   []
 );
+
+const accountToolNames = [
+  "account.list",
+  "account.get",
+  "account.playbook.update",
+  "account.autopilot.update",
+  "account.autopilot.setStatus",
+  "account.runNow",
+  "account.posts.list",
+  "account.reference.add",
+  "account.reference.remove",
+  "account.post.approve",
+  "account.post.reject",
+  "account.post.publish",
+];
+for (const toolName of accountToolNames) {
+  assert.equal(toolDescriptorMap().get(toolName)?.category, "account", `${toolName} should be Agent-accessible`);
+}
+assert.equal(toolDescriptorMap().has("automation.create"), false);
+assert.equal(toolDescriptorMap().has("automation.list"), false);
 
 assert.equal(
   artifactCaptionFromPrompt("one two three four five", "Slide 2"),

@@ -8,6 +8,7 @@ import { analysisJobIdFromToolOutput } from "../references/sourceAnalysisContext
 import {
   appendAgentMessage,
   contentRequestIdFromToolOutput,
+  markAccountRunFailedForThread,
   studioRenderRequestIdFromToolOutput,
 } from "./toolExecutionShared";
 
@@ -102,6 +103,7 @@ export async function reconcileAsyncToolFailures(
       errorMessage,
       updatedAt: now,
     });
+    await markAccountRunFailedForThread(ctx, thread, errorMessage);
 
     return { failedToolCallId: toolCall._id, errorMessage };
   }

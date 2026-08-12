@@ -11,10 +11,10 @@ type McpResource = {
 
 const RESOURCES: McpResource[] = [
   {
-    uri: "content-engine://automation-guide",
-    name: "automation-guide",
-    title: "Automation Guide",
-    description: "Current guidance for creating prompt-driven publishing automations.",
+    uri: "content-engine://account-manager-guide",
+    name: "account-manager-guide",
+    title: "Account Manager Guide",
+    description: "Guidance for managing social accounts with memory, posts, and Autopilot.",
     mimeType: "text/markdown",
   },
   {
@@ -42,15 +42,16 @@ function jsonResource(resource: McpResource, value: unknown) {
   return textResource(resource, JSON.stringify(value, null, 2));
 }
 
-function automationGuide() {
+function accountManagerGuide() {
   return [
-    "# Content Engine Automations",
+    "# Content Engine Account Management",
     "",
-    "Automations are saved creative briefs with schedule, approval, budget, platform, and generation defaults.",
+    "Each social account is the durable unit managed by the Agent.",
     "",
-    "- Create automations from the Create agent using automation.create.",
-    "- New automations start inactive until the user enables them.",
-    "- Scheduled runs create normal Create threads with automation context attached.",
+    "- Account playbooks store durable human-authored direction.",
+    "- Manual and scheduled posts share one account-owned history.",
+    "- Autopilot wakes the account Agent on a schedule; it is not a named content recipe.",
+    "- Account-scoped Agent threads receive the playbook, insights, and recent post context.",
     "- Generation should use roster model options instead of provider-specific UI concepts.",
   ].join("\n");
 }
@@ -82,8 +83,8 @@ export const readForMcp = internalQuery({
     if (!resource) throw new Error("Unknown MCP resource");
 
     switch (resource.uri) {
-      case "content-engine://automation-guide":
-        return textResource(resource, automationGuide());
+      case "content-engine://account-manager-guide":
+        return textResource(resource, accountManagerGuide());
       case "content-engine://create-model-options":
         return jsonResource(resource, createModelOptions());
       default:

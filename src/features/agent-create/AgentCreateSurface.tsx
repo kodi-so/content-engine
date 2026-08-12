@@ -1,5 +1,6 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
@@ -53,6 +54,9 @@ import { useAgentCreateMentionDrafts } from "./hooks/useAgentCreateMentionDrafts
 
 export function AgentCreateSurface() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const scopedAccountId = searchParams.get("accountId") as Id<"socialAccounts"> | null;
+  const requestedThreadId = searchParams.get("threadId") as Id<"createThreads"> | null;
   const workspaceArgs = useMemo(() => activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}, [activeWorkspaceId]);
   const threads = useQuery(api.create.threads.list, workspaceArgs);
   const selectableLibraryAssets = useQuery(api.library.assets.listSelectable, workspaceArgs);
@@ -68,7 +72,7 @@ export function AgentCreateSurface() {
   const submitAgentMessage = useMutation(api.create.agent.submit);
   const updateCheckpoint = useMutation(api.create.threads.updateCheckpoint);
 
-  const [activeThreadId, setActiveThreadId] = useState<Id<"createThreads"> | null>(null);
+  const [activeThreadId, setActiveThreadId] = useState<Id<"createThreads"> | null>(requestedThreadId);
   const [checkpointMode, setCheckpointMode] = useState<AgentCreateCheckpointMode>("debug");
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [confirmingDeleteThreadId, setConfirmingDeleteThreadId] = useState<Id<"createThreads"> | null>(null);
@@ -162,8 +166,14 @@ export function AgentCreateSurface() {
 
   useEffect(() => {
     if (activeThreadId || !threads?.length) return;
-    setActiveThreadId(threads[0]._id);
-  }, [activeThreadId, threads]);
+    const requested = requestedThreadId
+      ? threads.find((thread) => thread._id === requestedThreadId)
+      : undefined;
+    const accountThread = scopedAccountId
+      ? threads.find((thread) => thread.origin === "user" && thread.socialAccountId === scopedAccountId)
+      : undefined;
+    setActiveThreadId(requested?._id ?? accountThread?._id ?? (scopedAccountId ? null : threads[0]._id));
+  }, [activeThreadId, requestedThreadId, scopedAccountId, threads]);
 
   useEffect(() => {
     if (!activeThread) return;
@@ -409,6 +419,7 @@ export function AgentCreateSurface() {
       setStatusMessage("");
       const result = await submitAgentMessage({
         ...(activeThreadId ? { threadId: activeThreadId } : workspaceArgs),
+        ...(!activeThreadId && scopedAccountId ? { socialAccountId: scopedAccountId } : {}),
         checkpointMode,
         content,
         referenceMentions: submitMentions,
@@ -423,6 +434,10 @@ export function AgentCreateSurface() {
           : current
       );
       setActiveThreadId(result.threadId);
+      setSearchParams({
+        ...(scopedAccountId ? { accountId: String(scopedAccountId) } : {}),
+        threadId: String(result.threadId),
+      }, { replace: true });
     } catch (error) {
       setPendingAgentTurn((current) =>
         current?.localMessageId === localMessageId ? null : current
@@ -457,10 +472,15 @@ export function AgentCreateSurface() {
     setEditingThreadTitle("");
     const threadId = await createThread({
       ...workspaceArgs,
+      ...(scopedAccountId ? { socialAccountId: scopedAccountId } : {}),
       checkpointMode,
       title: "New Chat",
     });
     setActiveThreadId(threadId);
+    setSearchParams({
+      ...(scopedAccountId ? { accountId: String(scopedAccountId) } : {}),
+      threadId: String(threadId),
+    }, { replace: true });
   };
 
   const startRenamingThread = (threadId: Id<"createThreads">, title: string | undefined) => {
@@ -569,7 +589,14 @@ export function AgentCreateSurface() {
         onRenameThread={() => {
           void submitThreadRename();
         }}
-        onSelectThread={setActiveThreadId}
+        onSelectThread={(threadId) => {
+          setActiveThreadId(threadId);
+          const thread = threads?.find((candidate) => candidate._id === threadId);
+          setSearchParams({
+            ...(thread?.socialAccountId ? { accountId: String(thread.socialAccountId) } : {}),
+            threadId: String(threadId),
+          });
+        }}
         onStartDelete={startDeletingThread}
         onStartRename={startRenamingThread}
         onToggleOpen={setChatMenuOpen}
@@ -586,7 +613,9 @@ export function AgentCreateSurface() {
         <AgentCreateConversationBody
           activeThinkingStep={activeThinkingStep}
           activeThreadId={activeThreadId}
-          emptyLabel={`Start a new Create chat in ${activeWorkspace?.name ?? "this workspace"}.`}
+          emptyLabel={scopedAccountId
+            ? "Ask the Agent what this account should create next, update its direction, or make and publish a specific post."
+            : `Start a new Create chat in ${activeWorkspace?.name ?? "this workspace"}.`}
           hasQueuedTools={hasQueuedTools}
           hasUnreadyOutputs={hasUnreadyOutputs}
           isContinuing={isContinuing}

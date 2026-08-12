@@ -49,10 +49,10 @@ function providerForMediaMode(
 function modelForMediaMode(
   workspace: Doc<"workspaces"> | null,
   mode: MediaGenerationMode,
-  automationDefaults?: Record<string, unknown>
+  accountDefaults?: Record<string, unknown>
 ) {
-  if (mode === "image" && typeof automationDefaults?.imageModel === "string") return automationDefaults.imageModel;
-  if (mode === "video" && typeof automationDefaults?.videoModel === "string") return automationDefaults.videoModel;
+  if (mode === "image" && typeof accountDefaults?.imageModel === "string") return accountDefaults.imageModel;
+  if (mode === "video" && typeof accountDefaults?.videoModel === "string") return accountDefaults.videoModel;
   const settings = workspace?.aiGenerationSettings;
   if (mode === "image") return settings?.imageModel;
   if (mode === "video") return settings?.videoModel;
@@ -124,27 +124,17 @@ function optionInputRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-async function automationGenerationDefaults(
+async function accountGenerationDefaults(
   ctx: MutationCtx,
   thread: Doc<"createThreads">
 ): Promise<Record<string, unknown>> {
-  const automationRunId = (thread as Doc<"createThreads"> & { automationRunId?: unknown }).automationRunId;
-  if (!automationRunId || typeof automationRunId !== "string") return {};
-  const run = await ctx.db.get(automationRunId as never);
-  const automationId = run && typeof run === "object" && "automationId" in run
-    ? (run as { automationId?: unknown }).automationId
-    : undefined;
-  if (!automationId || typeof automationId !== "string") return {};
-  const automation = await ctx.db.get(automationId as never);
-  if (!automation || typeof automation !== "object" || !("generationDefaults" in automation)) {
-    return {};
-  }
-  const defaults = (automation as { generationDefaults?: unknown }).generationDefaults;
-  return optionInputRecord(defaults);
+  if (!thread.socialAccountId) return {};
+  const account = await ctx.db.get(thread.socialAccountId);
+  return optionInputRecord(account?.autopilot?.generationDefaults);
 }
 
 function resolveGenerationOptions(args: {
-  automationDefaults: Record<string, unknown>;
+  accountDefaults: Record<string, unknown>;
   explicitOptions: Record<string, unknown>;
   mode: MediaGenerationMode;
   model?: string;
@@ -165,12 +155,12 @@ function resolveGenerationOptions(args: {
       continue;
     }
 
-    const automationDefault = normalizeRosterOptionValue(
+    const accountDefault = normalizeRosterOptionValue(
       option,
-      key === "resolution" ? args.automationDefaults.imageResolution : args.automationDefaults[key]
+      key === "resolution" ? args.accountDefaults.imageResolution : args.accountDefaults[key]
     );
-    if (automationDefault !== undefined) {
-      resolved[key] = automationDefault;
+    if (accountDefault !== undefined) {
+      resolved[key] = accountDefault;
       continue;
     }
 
@@ -253,12 +243,12 @@ export async function createGenerationRequestForToolCall(
   );
 
   const workspace = thread.workspaceId ? await ctx.db.get(thread.workspaceId) : null;
-  const automationDefaults = await automationGenerationDefaults(ctx, thread);
+  const accountDefaults = await accountGenerationDefaults(ctx, thread);
   const provider = modelProviderFromInput(input.provider) ?? providerForMediaMode(workspace, mode);
   let model = cleanOptionalStringFromRecord(input, "model") ??
-    modelForMediaMode(workspace, mode, automationDefaults);
+    modelForMediaMode(workspace, mode, accountDefaults);
   const aspectRatio = cleanOptionalStringFromRecord(input, "aspectRatio") ??
-    (typeof automationDefaults.aspectRatio === "string" ? automationDefaults.aspectRatio : undefined);
+    (typeof accountDefaults.aspectRatio === "string" ? accountDefaults.aspectRatio : undefined);
   const requestedDurationSeconds = finitePositiveNumber(input.durationSeconds);
   const audioMode = cleanOptionalStringFromRecord(input, "mode");
   const count = mode === "image"
@@ -413,7 +403,7 @@ export async function createGenerationRequestForToolCall(
     ? true
     : undefined;
   const options = resolveGenerationOptions({
-    automationDefaults,
+    accountDefaults,
     explicitOptions: optionInputRecord(input.options),
     mode,
     model,

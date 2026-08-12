@@ -80,6 +80,7 @@ export async function createThreadForTurn(
     title?: string;
     userId: string;
     workspaceId?: Id<"workspaces">;
+    socialAccountId?: Id<"socialAccounts">;
   }
 ) {
   const now = Date.now();
@@ -87,6 +88,7 @@ export async function createThreadForTurn(
     userId: args.userId,
     workspaceId: args.workspaceId,
     origin: "user",
+    socialAccountId: args.socialAccountId,
     title: normalizeOptionalText(args.title) ?? threadTitleFromMessage(args.initialMessage),
     status: "idle",
     checkpointMode: args.checkpointMode,

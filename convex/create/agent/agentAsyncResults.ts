@@ -31,7 +31,7 @@ export function createThreadScopeMatchesRecord(
 
 export async function toolCallsForAsyncOutput(
   ctx: MutationCtx,
-  source: Doc<"contentRequests"> | Doc<"videoAnalysisJobs"> | Doc<"studioRenderRequests">,
+  source: Doc<"contentRequests"> | Doc<"contentAnalyses"> | Doc<"studioRenderRequests">,
   matchesOutput: (output: unknown) => boolean
 ) {
   const candidates = source.workspaceId

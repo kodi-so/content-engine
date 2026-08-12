@@ -8,6 +8,7 @@ type ReferenceMentionInput = {
   entityId: string;
   mediaType?: "image" | "video" | "audio" | "file";
   mimeType?: string;
+  storageId?: Id<"_storage">;
   storageUrl?: string;
   instruction?: string;
 };
