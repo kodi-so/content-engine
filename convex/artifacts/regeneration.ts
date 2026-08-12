@@ -79,8 +79,9 @@ export const regenerate = action({
           : {};
       const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
-        automationId: artifact.automationId,
-        automationRunId: artifact.automationRunId,
+        socialAccountId: artifact.socialAccountId,
+        accountPostId: artifact.accountPostId,
+        accountAgentRunId: artifact.accountAgentRunId,
         parentArtifactIds: [artifact._id],
         type: "image_prompt",
         title: `${artifact.title || "Image prompt"} revision`,
@@ -124,8 +125,9 @@ export const regenerate = action({
       const revisedPrompt = rewrite.text.trim() || sourcePrompt;
       const promptArtifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: identity.subject,
-        automationId: artifact.automationId,
-        automationRunId: artifact.automationRunId,
+        socialAccountId: artifact.socialAccountId,
+        accountPostId: artifact.accountPostId,
+        accountAgentRunId: artifact.accountAgentRunId,
         parentArtifactIds: [
           artifact._id,
           ...parentArtifacts.map((item: Doc<"artifacts">) => item._id),
@@ -171,8 +173,9 @@ export const regenerate = action({
         artifactIds.push(
           await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
-            automationId: artifact.automationId,
-            automationRunId: artifact.automationRunId,
+            socialAccountId: artifact.socialAccountId,
+            accountPostId: artifact.accountPostId,
+            accountAgentRunId: artifact.accountAgentRunId,
             parentArtifactIds: [artifact._id, promptArtifactId],
             type: "image",
             title: `${artifact.title || "Image"} revision ${index + 1}`,
@@ -194,8 +197,9 @@ export const regenerate = action({
         artifactIds.push(
           await ctx.runMutation(internal.artifacts.records.createFromRunner, {
             userId: identity.subject,
-            automationId: artifact.automationId,
-            automationRunId: artifact.automationRunId,
+            socialAccountId: artifact.socialAccountId,
+            accountPostId: artifact.accountPostId,
+            accountAgentRunId: artifact.accountAgentRunId,
             parentArtifactIds: [artifact._id, promptArtifactId],
             type: "image",
             title: `${artifact.title || "Image"} revision job`,

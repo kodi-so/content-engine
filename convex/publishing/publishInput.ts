@@ -4,8 +4,8 @@ import type { ActionCtx } from "../_generated/server";
 import { getPublishingProvider } from "../providers";
 import type { PublishContentInput, UploadedMedia } from "../providers/publishing";
 
-export type DistributionPublishContext = {
-  plan: Doc<"distributionPlans">;
+export type AccountPostPublishContext = {
+  post: Doc<"accountPosts">;
   artifacts: Doc<"artifacts">[];
   socialAccounts: Doc<"socialAccounts">[];
 };
@@ -138,9 +138,9 @@ export function compactMetrics(metrics: {
 
 export async function loadPublishInput(
   provider: ReturnType<typeof getPublishingProvider>,
-  context: DistributionPublishContext
+  context: AccountPostPublishContext
 ): Promise<PublishContentInput> {
-  const text = context.plan.caption ?? extractArtifactText(context.artifacts);
+  const text = context.post.caption ?? extractArtifactText(context.artifacts);
   const orderedArtifacts = [...context.artifacts].sort((first, second) => {
     const firstData = first.data && typeof first.data === "object" ? first.data as Record<string, unknown> : {};
     const secondData = second.data && typeof second.data === "object" ? second.data as Record<string, unknown> : {};
@@ -189,25 +189,25 @@ export async function loadPublishInput(
     })),
     text,
     media,
-    publishAt: context.plan.scheduledFor,
-    timezone: context.plan.timezone,
+    publishAt: context.post.scheduledFor,
+    timezone: context.post.timezone,
     metadata: {
-      ...(context.plan.providerPayload &&
-      typeof context.plan.providerPayload === "object" &&
-      !Array.isArray(context.plan.providerPayload)
-        ? context.plan.providerPayload as Record<string, unknown>
+      ...(context.post.providerPayload &&
+      typeof context.post.providerPayload === "object" &&
+      !Array.isArray(context.post.providerPayload)
+        ? context.post.providerPayload as Record<string, unknown>
         : {}),
-      distributionPlanId: context.plan._id,
+      accountPostId: context.post._id,
     },
   };
 }
 
-export async function getDistributionPlanContext(
+export async function getAccountPostContext(
   ctx: ActionCtx,
-  id: Id<"distributionPlans">,
+  id: Id<"accountPosts">,
   userId: string
-): Promise<DistributionPublishContext | null> {
-  return await ctx.runQuery(internal.publishing.distributionPlans.getPublishContext, {
+): Promise<AccountPostPublishContext | null> {
+  return await ctx.runQuery(internal.publishing.accountPosts.getPublishContext, {
     id,
     userId,
   });

@@ -79,41 +79,33 @@ export async function reconcileApprovalForArtifact(
   ctx: MutationCtx,
   artifact: Doc<"artifacts">
 ) {
-  if (!artifact.automationRunId) return;
+  if (!artifact.accountPostId) return;
+  const post = await ctx.db.get(artifact.accountPostId);
+  if (!post || !post.artifactIds.some((artifactId) => artifactId === artifact._id)) return;
 
-  const plans = await ctx.db
-    .query("distributionPlans")
-    .withIndex("by_automation_run", (q) =>
-      q.eq("automationRunId", artifact.automationRunId!)
-    )
-    .collect();
-  const relatedPlans = plans.filter((plan) =>
-    plan.artifactIds.some((artifactId) => artifactId === artifact._id)
-  );
-
-  for (const plan of relatedPlans) {
+  for (const relatedPost of [post]) {
     if (
-      plan.status !== "waiting_for_approval" &&
-      plan.status !== "needs_revision" &&
-      plan.status !== "draft"
+      relatedPost.status !== "awaiting_approval" &&
+      relatedPost.status !== "needs_revision" &&
+      relatedPost.status !== "draft"
     ) {
       continue;
     }
 
-    const planArtifacts = await Promise.all(
-      plan.artifactIds.map((artifactId) => ctx.db.get(artifactId))
+    const postArtifacts = await Promise.all(
+      relatedPost.artifactIds.map((artifactId) => ctx.db.get(artifactId))
     );
-    const resolution = reviewResolution(planArtifacts);
+    const resolution = reviewResolution(postArtifacts);
     const nextStatus =
       resolution === "approved"
         ? "draft"
         : resolution === "needs_revision"
           ? "needs_revision"
-          : "waiting_for_approval";
+          : "awaiting_approval";
 
-    const statusChanged = plan.status !== nextStatus;
+    const statusChanged = relatedPost.status !== nextStatus;
     if (statusChanged) {
-      await ctx.db.patch(plan._id, {
+      await ctx.db.patch(relatedPost._id, {
         status: nextStatus,
         updatedAt: Date.now(),
       });

@@ -35,7 +35,7 @@ export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     includeDebug: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -53,14 +53,14 @@ export const list = query({
       return artifacts.filter((artifact) => args.includeDebug || isLibraryArtifact(artifact));
     }
 
-    if (args.automationRunId) {
-      const run = await ctx.db.get(args.automationRunId);
+    if (args.accountAgentRunId) {
+      const run = await ctx.db.get(args.accountAgentRunId);
       if (!run || !(await hasRecordAccess(ctx, run, userId))) return [];
 
       const artifacts = await ctx.db
         .query("artifacts")
-        .withIndex("by_automation_run", (q) =>
-          q.eq("automationRunId", args.automationRunId!)
+        .withIndex("by_account_agent_run", (q) =>
+          q.eq("accountAgentRunId", args.accountAgentRunId!)
         )
         .collect();
       return artifacts.filter((artifact) => sameOwnershipScope(artifact, run));
@@ -129,8 +129,8 @@ export const getRegenerationContext = internalQuery({
         ctx.db.get(parentArtifactId)
       )
     );
-    const automation = artifact.automationId
-      ? await ctx.db.get(artifact.automationId)
+    const accountPost = artifact.accountPostId
+      ? await ctx.db.get(artifact.accountPostId)
       : null;
 
     return {
@@ -139,7 +139,7 @@ export const getRegenerationContext = internalQuery({
         (parentArtifact): parentArtifact is Doc<"artifacts"> =>
           Boolean(parentArtifact && sameOwnershipScope(parentArtifact, artifact))
       ),
-      automation,
+      accountPost,
     };
   },
 });
@@ -148,8 +148,9 @@ export const create = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
     type: artifactTypeValidator,
     title: v.optional(v.string()),
@@ -164,19 +165,19 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
-    const linkedRun = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
-    const linkedAutomation = args.automationId ? await ctx.db.get(args.automationId) : null;
+    const linkedRun = args.accountAgentRunId ? await ctx.db.get(args.accountAgentRunId) : null;
+    const linkedPost = args.accountPostId ? await ctx.db.get(args.accountPostId) : null;
     const workspace = args.workspaceId ||
       linkedRequest?.workspaceId ||
       linkedRun?.workspaceId ||
-      linkedAutomation?.workspaceId
+      linkedPost?.workspaceId
       ? await resolveWritableWorkspace(
         ctx,
         userId,
         args.workspaceId ??
           linkedRequest?.workspaceId ??
           linkedRun?.workspaceId ??
-          linkedAutomation?.workspaceId
+          linkedPost?.workspaceId
       )
       : defaultWorkspace;
 
@@ -197,8 +198,9 @@ export const createFromRunner = internalMutation({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
     type: artifactTypeValidator,
     title: v.optional(v.string()),
@@ -212,13 +214,13 @@ export const createFromRunner = internalMutation({
   },
   handler: async (ctx, args) => {
     const linkedRequest = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
-    const linkedRun = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
-    const linkedAutomation = args.automationId ? await ctx.db.get(args.automationId) : null;
+    const linkedRun = args.accountAgentRunId ? await ctx.db.get(args.accountAgentRunId) : null;
+    const linkedPost = args.accountPostId ? await ctx.db.get(args.accountPostId) : null;
     const workspaceId =
       args.workspaceId ??
       linkedRequest?.workspaceId ??
       linkedRun?.workspaceId ??
-      linkedAutomation?.workspaceId;
+      linkedPost?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("artifacts", {
       ...args,
@@ -364,27 +366,16 @@ export const remove = mutation({
       throw new Error("Artifact not found");
     }
 
-    if (artifact.automationRunId) {
-      const plans = await ctx.db
-        .query("distributionPlans")
-        .withIndex("by_automation_run", (q) =>
-          q.eq("automationRunId", artifact.automationRunId!)
-        )
-        .collect();
-
-      for (const plan of plans) {
-        if (!sameOwnershipScope(plan, artifact)) continue;
-        if (!plan.artifactIds.some((artifactId) => artifactId === args.id)) {
-          continue;
-        }
-
-        const artifactIds = plan.artifactIds.filter(
+    if (artifact.accountPostId) {
+      const post = await ctx.db.get(artifact.accountPostId);
+      if (post && sameOwnershipScope(post, artifact)) {
+        const artifactIds = post.artifactIds.filter(
           (artifactId) => artifactId !== args.id
         );
         if (artifactIds.length === 0) {
-          await ctx.db.delete(plan._id);
+          await ctx.db.delete(post._id);
         } else {
-          await ctx.db.patch(plan._id, {
+          await ctx.db.patch(post._id, {
             artifactIds,
             updatedAt: Date.now(),
           });

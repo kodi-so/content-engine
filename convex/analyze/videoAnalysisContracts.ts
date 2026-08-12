@@ -1,6 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 
-export type VideoAnalysisJob = Doc<"videoAnalysisJobs">;
+export type VideoAnalysisJob = Doc<"contentAnalyses">;
 export type VideoAnalysisResult = {
   title?: string;
   summary?: string;

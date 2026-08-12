@@ -1,4 +1,5 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type { RichMentionToken } from "../../../components/references/RichMentionTextarea";
 import { fileToDataUrl } from "../../../lib/browser/dataUrl";
 import type { AgentCreateSelectedMention } from "../model/agentCreateTypes";
@@ -11,7 +12,7 @@ import {
 
 type UploadedReference = {
   mimeType?: string;
-  storageId: string;
+  storageId: Id<"_storage">;
   storageUrl: string;
 };
 
@@ -128,6 +129,7 @@ export function useAgentCreateMentionDrafts({
           draftPreviewUrl: undefined,
           mimeType: uploaded.mimeType,
           previewUrl: uploaded.storageUrl,
+          storageId: uploaded.storageId,
           storageUrl: uploaded.storageUrl,
           thumbnailUrl: mention.mediaType === "image" ? uploaded.storageUrl : undefined,
         };

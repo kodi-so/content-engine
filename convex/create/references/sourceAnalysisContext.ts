@@ -2,9 +2,9 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { isRecord } from "./referenceResolution";
 
-export function analysisJobIdFromToolOutput(output: unknown): Id<"videoAnalysisJobs"> | null {
+export function analysisJobIdFromToolOutput(output: unknown): Id<"contentAnalyses"> | null {
   if (!isRecord(output) || typeof output.analysisJobId !== "string") return null;
-  return output.analysisJobId as Id<"videoAnalysisJobs">;
+  return output.analysisJobId as Id<"contentAnalyses">;
 }
 
 function stringValue(value: unknown) {

@@ -1,12 +1,14 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
+import { recordCreatedPostMemory } from "../../accounts/accountMemory";
 import {
   artifactMediaKind,
   artifactMimeType,
 } from "../references/referenceResolution";
 import {
   appendAgentMessage,
+  accountRunCostForThread,
   contentRequestIdFromToolOutput,
 } from "./toolExecutionShared";
 
@@ -164,11 +166,15 @@ export async function saveReadyOutputsForThread(
   };
 }
 
-export async function prepareDistributionDraftForThread(
+export async function prepareAccountPostForThread(
   ctx: MutationCtx,
   thread: Doc<"createThreads">,
   targetArtifactIds?: Id<"artifacts">[],
-  options: { recordToolCall?: boolean } = {}
+  options: {
+    recordToolCall?: boolean;
+    socialAccountId?: Id<"socialAccounts">;
+    instructions?: string;
+  } = {}
 ) {
   const artifactIds = await readyArtifactIdsForThread(ctx, thread, targetArtifactIds);
   if (!artifactIds.length) {
@@ -176,55 +182,80 @@ export async function prepareDistributionDraftForThread(
       content: "There are no ready media artifacts to prepare for publishing yet.",
       kind: "status",
     });
-    return { distributionPlanId: null, artifactCount: 0 };
+    return { accountPostId: null, artifactCount: 0 };
   }
 
-  // Automation-origin threads bind the plan to the run: the plan targets the
-  // automation's accounts and the run advances to awaiting_approval or straight
-  // to publishing depending on the automation's approval mode.
-  const automationRun = thread.automationRunId ? await ctx.db.get(thread.automationRunId) : null;
-  const automation = automationRun ? await ctx.db.get(automationRun.automationId) : null;
+  const socialAccountId = options.socialAccountId ?? thread.socialAccountId;
+  if (!socialAccountId) {
+    await appendAgentMessage(ctx, thread, {
+      content: "Choose a social account before preparing this post.",
+      kind: "status",
+    });
+    return { accountPostId: null, artifactCount: 0 };
+  }
+  const account = await ctx.db.get(socialAccountId);
+  if (!account || (thread.workspaceId
+    ? account.workspaceId !== thread.workspaceId
+    : account.userId !== thread.userId)) {
+    throw new Error("Social account not found");
+  }
+  const accountRun = thread.accountAgentRunId
+    ? await ctx.db.get(thread.accountAgentRunId)
+    : null;
 
   const now = Date.now();
-  const distributionPlanId = await ctx.db.insert("distributionPlans", {
+  const requiresApproval = accountRun && account.autopilot?.publishingMode !== "auto_publish";
+  const accountPostId = await ctx.db.insert("accountPosts", {
     userId: thread.userId,
     workspaceId: thread.workspaceId,
-    automationId: automation?._id,
-    automationRunId: automationRun?._id,
+    socialAccountId: account._id,
+    origin: accountRun ? "agent_scheduled" : "agent_requested",
+    createThreadId: thread._id,
+    accountAgentRunId: accountRun?._id,
     artifactIds,
-    socialAccountIds: automation?.socialAccountIds ?? [],
-    provider: automation ? "post_bridge" : "manual",
-    status: "draft",
-    caption: automation && automationRun
-      ? automationRun.topic
-      : "Prepared from Create Agent. Add accounts, caption, and schedule before publishing.",
+    provider: account.provider,
+    status: requiresApproval ? "awaiting_approval" : "draft",
+    caption: options.instructions?.trim() || accountRun?.decisionSummary || "Prepared by the Agent.",
     providerPayload: {
-      source: automation ? "automation_run" : "create_agent",
+      source: accountRun ? "account_autopilot" : "create_agent",
       createThreadId: thread._id,
-      note: automation
-        ? `Distribution plan created by automation "${automation.name}".`
-        : "Manual draft distribution plan created from Create Agent final review.",
+      note: `Post prepared for @${account.username}.`,
     },
     createdAt: now,
     updatedAt: now,
   });
 
-  if (automation && automationRun) {
-    if (automation.approvalMode === "auto_publish") {
-      await ctx.db.patch(automationRun._id, {
-        distributionPlanId,
-        status: "publishing",
-      });
-      await ctx.scheduler.runAfter(0, internal.publishing.distributionPlans.publishInternal, {
-        id: distributionPlanId,
+  for (const artifactId of artifactIds) {
+    await ctx.db.patch(artifactId, {
+      socialAccountId: account._id,
+      accountPostId,
+      ...(accountRun ? { accountAgentRunId: accountRun._id } : {}),
+      updatedAt: now,
+    });
+  }
+  await recordCreatedPostMemory(ctx, {
+    accountPostId,
+    artifactIds,
+    caption: options.instructions?.trim() || accountRun?.decisionSummary || "Prepared by the Agent.",
+    socialAccountId: account._id,
+    userId: thread.userId,
+    workspaceId: thread.workspaceId,
+  });
+
+  if (accountRun) {
+    const costUsd = await accountRunCostForThread(ctx, thread, accountRun.costUsd ?? 0);
+    await ctx.db.patch(accountRun._id, {
+      accountPostId,
+      status: "completed",
+      costUsd,
+      completedAt: now,
+      updatedAt: now,
+    });
+    if (account.autopilot?.publishingMode === "auto_publish") {
+      await ctx.scheduler.runAfter(0, internal.publishing.accountPosts.publishInternal, {
+        id: accountPostId,
         mode: "now",
         userId: thread.userId,
-        automationRunId: automationRun._id,
-      });
-    } else {
-      await ctx.db.patch(automationRun._id, {
-        distributionPlanId,
-        status: "awaiting_approval",
       });
     }
   }
@@ -237,15 +268,16 @@ export async function prepareDistributionDraftForThread(
       toolName: "publishing.prepare",
       dependsOnToolCallIds: [],
       status: "succeeded",
-      label: "Prepared publishing draft",
+      label: "Prepared account post",
       input: {
         artifactIds,
-        provider: "manual",
+        socialAccountId: account._id,
+        provider: account.provider,
       },
       output: {
-        distributionPlanId,
+        accountPostId,
         artifactIds,
-        status: "draft",
+        status: requiresApproval ? "awaiting_approval" : "draft",
       },
       startedAt: now,
       completedAt: now,
@@ -255,11 +287,13 @@ export async function prepareDistributionDraftForThread(
   }
 
   await appendAgentMessage(ctx, thread, {
-    content: `Prepared a draft distribution plan with ${artifactIds.length} media artifact${artifactIds.length === 1 ? "" : "s"}. Add accounts and scheduling before publishing.`,
+    content: requiresApproval
+      ? `Prepared a post for @${account.username} with ${artifactIds.length} media artifact${artifactIds.length === 1 ? "" : "s"}. It is waiting for approval.`
+      : `Prepared a post for @${account.username} with ${artifactIds.length} media artifact${artifactIds.length === 1 ? "" : "s"}.`,
     kind: "tool_result",
   });
 
-  return { distributionPlanId, artifactCount: artifactIds.length };
+  return { accountPostId, artifactCount: artifactIds.length };
 }
 
 export async function prepareArtifactExportForThread(

@@ -49,7 +49,7 @@ type ThreadOutputs = {
     title?: string;
     type: string;
   }>;
-  distributionPlans?: Array<{
+  accountPosts?: Array<{
     _id: string;
     artifactIds: string[];
     status: string;
@@ -337,13 +337,13 @@ export function buildAgentCreateOutputArtifacts(threadOutputs?: ThreadOutputs): 
     });
   }
 
-  for (const plan of threadOutputs?.distributionPlans ?? []) {
+  for (const post of threadOutputs?.accountPosts ?? []) {
     artifacts.push({
-      id: `distribution:${plan._id}`,
+      id: `account-post:${post._id}`,
       kind: "document",
-      status: plan.status === "failed" ? "failed" : "ready",
-      title: "Publishing draft",
-      description: `${statusLabel(plan.status)} - ${plan.artifactIds.length} media item${plan.artifactIds.length === 1 ? "" : "s"}`,
+      status: post.status === "failed" ? "failed" : "ready",
+      title: "Account post",
+      description: `${statusLabel(post.status)} - ${post.artifactIds.length} media item${post.artifactIds.length === 1 ? "" : "s"}`,
     });
   }
 

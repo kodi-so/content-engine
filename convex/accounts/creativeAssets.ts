@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { action, internalQuery, mutation, query } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { ensureCurrentUser, requireBetaAccess } from "../auth/users";
 import { storeGeneratedAsset } from "../content/assets/assetStorage";
@@ -19,11 +18,6 @@ const audioExtensions = new Set(["mp3", "wav", "m4a", "aac", "ogg", "flac"]);
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
   return identity.subject;
-}
-
-function storageIdFromUrl(url: string): Id<"_storage"> | undefined {
-  const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
-  return match?.[1] as Id<"_storage"> | undefined;
 }
 
 function inferMediaType(args: { storageUrl: string; mimeType?: string }):
@@ -106,6 +100,7 @@ export const generatePreview = action({
 
     const stored = await storeGeneratedAsset(ctx, asset);
     return {
+      storageId: stored.storageId,
       storageUrl: stored.storageUrl,
       prompt,
       provider: result.metadata.provider,
@@ -151,6 +146,7 @@ export const create = mutation({
     name: v.string(),
     assetKind: v.optional(creativeAssetKindValidator),
     mediaType: v.optional(creativeAssetMediaTypeValidator),
+    storageId: v.id("_storage"),
     storageUrl: v.string(),
     description: v.optional(v.string()),
     instruction: v.optional(v.string()),
@@ -179,6 +175,7 @@ export const create = mutation({
         storageUrl,
         mimeType: args.mimeType,
       }),
+      storageId: args.storageId,
       storageUrl,
       description: args.description?.trim() || undefined,
       usageNotes: args.usageNotes?.trim() || undefined,
@@ -243,10 +240,9 @@ export const remove = mutation({
       throw new Error("Reference asset not found");
     }
 
-    const storageId = storageIdFromUrl(asset.storageUrl);
-    if (storageId) {
+    if (asset.storageId) {
       try {
-        await ctx.storage.delete(storageId);
+        await ctx.storage.delete(asset.storageId);
       } catch {
         // The database row is the source of truth; storage cleanup is best-effort.
       }

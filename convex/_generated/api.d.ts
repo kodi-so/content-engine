@@ -8,7 +8,12 @@
  * @module
  */
 
+import type * as accounts_accountAccess from "../accounts/accountAccess.js";
+import type * as accounts_accountCadence from "../accounts/accountCadence.js";
+import type * as accounts_accountMemory from "../accounts/accountMemory.js";
+import type * as accounts_autopilotScheduling from "../accounts/autopilotScheduling.js";
 import type * as accounts_creativeAssets from "../accounts/creativeAssets.js";
+import type * as accounts_managedAccounts from "../accounts/managedAccounts.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as analyze_mediaResolver from "../analyze/mediaResolver.js";
 import type * as analyze_videoAnalysis from "../analyze/videoAnalysis.js";
@@ -20,8 +25,6 @@ import type * as artifacts_records from "../artifacts/records.js";
 import type * as artifacts_regeneration from "../artifacts/regeneration.js";
 import type * as auth_actionAccess from "../auth/actionAccess.js";
 import type * as auth_users from "../auth/users.js";
-import type * as automations_automations from "../automations/automations.js";
-import type * as automations_scheduling from "../automations/scheduling.js";
 import type * as content_artifactCaptions from "../content/artifactCaptions.js";
 import type * as content_assets_assetStorage from "../content/assets/assetStorage.js";
 import type * as content_createAssetRunner from "../content/createAssetRunner.js";
@@ -51,8 +54,8 @@ import type * as create_agent_agentThreadOutputs from "../create/agent/agentThre
 import type * as create_agent_agentThreadRecords from "../create/agent/agentThreadRecords.js";
 import type * as create_agent_agentToolPlanning from "../create/agent/agentToolPlanning.js";
 import type * as create_agent_agentTurnContextBuilder from "../create/agent/agentTurnContextBuilder.js";
+import type * as create_execution_accountManagementToolExecution from "../create/execution/accountManagementToolExecution.js";
 import type * as create_execution_asyncToolReconciliation from "../create/execution/asyncToolReconciliation.js";
-import type * as create_execution_automationToolExecution from "../create/execution/automationToolExecution.js";
 import type * as create_execution_mediaGenerationExecution from "../create/execution/mediaGenerationExecution.js";
 import type * as create_execution_sourceAnalysisExecution from "../create/execution/sourceAnalysisExecution.js";
 import type * as create_execution_studioToolExecution from "../create/execution/studioToolExecution.js";
@@ -111,9 +114,9 @@ import type * as providers_publishing from "../providers/publishing.js";
 import type * as providers_publishingProviders_postBridge from "../providers/publishingProviders/postBridge.js";
 import type * as providers_publishingProviders_postiz from "../providers/publishingProviders/postiz.js";
 import type * as providers_runtime_providerInputs from "../providers/runtime/providerInputs.js";
+import type * as publishing_accountPosts from "../publishing/accountPosts.js";
 import type * as publishing_approval from "../publishing/approval.js";
 import type * as publishing_composer from "../publishing/composer.js";
-import type * as publishing_distributionPlans from "../publishing/distributionPlans.js";
 import type * as publishing_metrics from "../publishing/metrics.js";
 import type * as publishing_publishInput from "../publishing/publishInput.js";
 import type * as storage_files from "../storage/files.js";
@@ -130,7 +133,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "accounts/accountAccess": typeof accounts_accountAccess;
+  "accounts/accountCadence": typeof accounts_accountCadence;
+  "accounts/accountMemory": typeof accounts_accountMemory;
+  "accounts/autopilotScheduling": typeof accounts_autopilotScheduling;
   "accounts/creativeAssets": typeof accounts_creativeAssets;
+  "accounts/managedAccounts": typeof accounts_managedAccounts;
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "analyze/mediaResolver": typeof analyze_mediaResolver;
   "analyze/videoAnalysis": typeof analyze_videoAnalysis;
@@ -142,8 +150,6 @@ declare const fullApi: ApiFromModules<{
   "artifacts/regeneration": typeof artifacts_regeneration;
   "auth/actionAccess": typeof auth_actionAccess;
   "auth/users": typeof auth_users;
-  "automations/automations": typeof automations_automations;
-  "automations/scheduling": typeof automations_scheduling;
   "content/artifactCaptions": typeof content_artifactCaptions;
   "content/assets/assetStorage": typeof content_assets_assetStorage;
   "content/createAssetRunner": typeof content_createAssetRunner;
@@ -173,8 +179,8 @@ declare const fullApi: ApiFromModules<{
   "create/agent/agentThreadRecords": typeof create_agent_agentThreadRecords;
   "create/agent/agentToolPlanning": typeof create_agent_agentToolPlanning;
   "create/agent/agentTurnContextBuilder": typeof create_agent_agentTurnContextBuilder;
+  "create/execution/accountManagementToolExecution": typeof create_execution_accountManagementToolExecution;
   "create/execution/asyncToolReconciliation": typeof create_execution_asyncToolReconciliation;
-  "create/execution/automationToolExecution": typeof create_execution_automationToolExecution;
   "create/execution/mediaGenerationExecution": typeof create_execution_mediaGenerationExecution;
   "create/execution/sourceAnalysisExecution": typeof create_execution_sourceAnalysisExecution;
   "create/execution/studioToolExecution": typeof create_execution_studioToolExecution;
@@ -233,9 +239,9 @@ declare const fullApi: ApiFromModules<{
   "providers/publishingProviders/postBridge": typeof providers_publishingProviders_postBridge;
   "providers/publishingProviders/postiz": typeof providers_publishingProviders_postiz;
   "providers/runtime/providerInputs": typeof providers_runtime_providerInputs;
+  "publishing/accountPosts": typeof publishing_accountPosts;
   "publishing/approval": typeof publishing_approval;
   "publishing/composer": typeof publishing_composer;
-  "publishing/distributionPlans": typeof publishing_distributionPlans;
   "publishing/metrics": typeof publishing_metrics;
   "publishing/publishInput": typeof publishing_publishInput;
   "storage/files": typeof storage_files;

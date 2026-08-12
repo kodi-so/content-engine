@@ -1,52 +1,9 @@
 // Convex File Storage utilities for handling images
-import { action, mutation } from "../_generated/server";
+import { action } from "../_generated/server";
 import { api } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
-import { requireCurrentUserId } from "../auth/users";
-
-/**
- * Extract storage ID from a Convex storage URL
- * URL format: https://<deployment>.convex.cloud/api/storage/<storageId>
- */
-function extractStorageIdFromUrl(url: string): Id<"_storage"> | null {
-  try {
-    const match = url.match(/\/api\/storage\/([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) {
-      return match[1] as Id<"_storage">;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Delete a file from Convex storage by its URL
- */
-export const deleteByUrl = mutation({
-  args: {
-    url: v.string(),
-  },
-  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
-    await requireCurrentUserId(ctx);
-    const storageId = extractStorageIdFromUrl(args.url);
-    if (!storageId) {
-      return { success: false, error: "Could not extract storage ID from URL" };
-    }
-
-    try {
-      await ctx.storage.delete(storageId);
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  },
-});
 
 /**
  * Upload a base64 image to Convex storage

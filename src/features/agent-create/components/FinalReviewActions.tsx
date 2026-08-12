@@ -4,7 +4,6 @@ import {
   Library,
   MessageSquareText,
   Radio,
-  Repeat,
   WandSparkles,
 } from "lucide-react";
 import { LoadingSignal } from "../../../components/ui";
@@ -21,7 +20,6 @@ export function FinalReviewActions({
   onRevise,
   onRevisionChange,
   onSave,
-  onTurnIntoAutomation,
   pendingAction,
   revisionValue = "",
 }: {
@@ -35,7 +33,6 @@ export function FinalReviewActions({
   onRevise?: (instructions: string) => void;
   onRevisionChange?: (value: string) => void;
   onSave?: () => void;
-  onTurnIntoAutomation?: () => void;
   pendingAction?: AgentCreateFinalReviewAction;
   revisionValue?: string;
 }) {
@@ -141,21 +138,6 @@ export function FinalReviewActions({
           >
             <Radio size={16} />
             Publish Later
-          </button>
-        ) : null}
-        {onTurnIntoAutomation ? (
-          <button
-            className="secondary-button"
-            disabled={disabled || isPending}
-            onClick={onTurnIntoAutomation}
-            type="button"
-          >
-            {pendingAction === "turn_into_automation" ? (
-              <LoadingSignal label="Starting" size="sm" />
-            ) : (
-              <Repeat size={16} />
-            )}
-            Turn into automation
           </button>
         ) : null}
       </div>

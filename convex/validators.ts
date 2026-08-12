@@ -235,30 +235,93 @@ export const createInferredOutputTypeValidator = v.union(
   v.literal("unknown")
 );
 
-export const automationScheduleValidator = v.object({
+export const accountPublishingModeValidator = v.union(
+  v.literal("require_approval"),
+  v.literal("auto_publish")
+);
+
+export const accountAutopilotStatusValidator = v.union(
+  v.literal("off"),
+  v.literal("active"),
+  v.literal("paused")
+);
+
+const accountPostingTimeValidator = v.object({
+  hour: v.number(),
+  minute: v.number(),
+});
+
+export const accountCadenceValidator = v.union(
+  v.object({
+    kind: v.literal("daily"),
+    times: v.array(accountPostingTimeValidator),
+  }),
+  v.object({
+    kind: v.literal("weekly"),
+    slots: v.array(
+      v.object({
+        dayOfWeek: v.number(),
+        hour: v.number(),
+        minute: v.number(),
+      })
+    ),
+  })
+);
+
+export const accountPlaybookValidator = v.object({
+  summary: v.string(),
+  audience: v.optional(v.string()),
+  goals: v.array(v.string()),
+  creativeDirection: v.optional(v.string()),
+  instructions: v.array(v.string()),
+  guardrails: v.array(v.string()),
+});
+
+export const accountAutopilotValidator = v.object({
   timezone: v.string(),
-  postingTimes: v.array(
+  cadence: accountCadenceValidator,
+  publishingMode: accountPublishingModeValidator,
+  generationDefaults: v.optional(
     v.object({
-      dayOfWeek: v.number(),
-      hour: v.number(),
-      minute: v.number(),
+      imageResolution: v.optional(v.string()),
+      aspectRatio: v.optional(v.string()),
+      imageModel: v.optional(v.string()),
+      videoModel: v.optional(v.string()),
+    })
+  ),
+  budget: v.optional(
+    v.object({
+      maxUsdPerPost: v.optional(v.number()),
+      maxUsdPerMonth: v.optional(v.number()),
     })
   ),
 });
 
-export const automationApprovalModeValidator = v.union(
-  v.literal("auto_publish"),
-  v.literal("require_approval")
+export const accountAgentRunStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("completed"),
+  v.literal("failed"),
+  v.literal("skipped")
 );
 
-export const automationRunStatusValidator = v.union(
-  v.literal("picking_topic"),
-  v.literal("generating"),
+export const accountPostStatusValidator = v.union(
+  v.literal("idea"),
+  v.literal("draft"),
   v.literal("awaiting_approval"),
+  v.literal("needs_revision"),
+  v.literal("scheduled"),
   v.literal("publishing"),
   v.literal("published"),
   v.literal("failed"),
-  v.literal("skipped")
+  v.literal("canceled")
+);
+
+export const accountPostOriginValidator = v.union(
+  v.literal("imported"),
+  v.literal("manual"),
+  v.literal("agent_requested"),
+  v.literal("agent_scheduled")
 );
 
 export const studioRenderRequestStatusValidator = v.union(
@@ -283,6 +346,7 @@ export const createReferenceMentionValidator = v.object({
   entityId: v.string(),
   mediaType: v.optional(creativeAssetMediaTypeValidator),
   mimeType: v.optional(v.string()),
+  storageId: v.optional(v.id("_storage")),
   storageUrl: v.optional(v.string()),
   instruction: v.optional(v.string()),
 });
@@ -323,31 +387,6 @@ export const slideshowStatusValidator = v.union(
   v.literal("saved"),
   v.literal("discarded")
 );
-
-export const distributionStatusValidator = v.union(
-  v.literal("draft"),
-  v.literal("waiting_for_approval"),
-  v.literal("needs_revision"),
-  v.literal("scheduled"),
-  v.literal("publishing"),
-  v.literal("published"),
-  v.literal("failed"),
-  v.literal("canceled")
-);
-
-export const approvalPolicyValidator = v.object({
-  mode: v.union(
-    v.literal("always"),
-    v.literal("first_run_only"),
-    v.literal("never")
-  ),
-});
-
-export const publishingPolicyValidator = v.object({
-  provider: publishingProviderValidator,
-  autoPublish: v.boolean(),
-  defaultPlatforms: v.array(platformValidator),
-});
 
 export const metricsValidator = v.object({
   views: v.optional(v.number()),

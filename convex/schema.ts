@@ -2,11 +2,14 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   aiGenerationSettingsValidator,
+  accountAgentRunStatusValidator,
+  accountAutopilotStatusValidator,
+  accountAutopilotValidator,
+  accountPlaybookValidator,
+  accountPostOriginValidator,
+  accountPostStatusValidator,
   artifactLifecycleValidator,
   artifactTypeValidator,
-  automationApprovalModeValidator,
-  automationRunStatusValidator,
-  automationScheduleValidator,
   contentRequestStatusValidator,
   contentFormatValidator,
   createCheckpointModeValidator,
@@ -19,7 +22,6 @@ import {
   createToolCallStatusValidator,
   creativeAssetKindValidator,
   creativeAssetMediaTypeValidator,
-  distributionStatusValidator,
   metricsValidator,
   modelProviderValidator,
   platformValidator,
@@ -111,6 +113,7 @@ export default defineSchema({
     name: v.string(),
     assetKind: creativeAssetKindValidator,
     mediaType: creativeAssetMediaTypeValidator,
+    storageId: v.id("_storage"),
     storageUrl: v.string(),
     description: v.optional(v.string()),
     usageNotes: v.optional(v.string()),
@@ -159,9 +162,18 @@ export default defineSchema({
     .index("by_provider_category", ["provider", "category"])
     .index("by_provider_model", ["provider", "modelId"]),
 
-  videoAnalysisJobs: defineTable({
+  contentAnalyses: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    purpose: v.union(v.literal("standalone"), v.literal("account_memory")),
+    mediaType: v.union(
+      v.literal("video"),
+      v.literal("image"),
+      v.literal("slideshow")
+    ),
+    sourceArtifactIds: v.array(v.id("artifacts")),
+    analysisVersion: v.string(),
     sourceType: videoAnalysisSourceTypeValidator,
     sourcePlatform: videoAnalysisSourcePlatformValidator,
     sourceUrl: v.optional(v.string()),
@@ -187,7 +199,9 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_workspace_status", ["workspaceId", "status"]),
+    .index("by_workspace_status", ["workspaceId", "status"])
+    .index("by_account_post", ["accountPostId"])
+    .index("by_account_post_and_version", ["accountPostId", "analysisVersion"]),
 
   mcpApiKeys: defineTable({
     userId: v.string(),
@@ -218,6 +232,16 @@ export default defineSchema({
     status: socialAccountStatusValidator,
     capabilities: v.optional(v.array(v.string())),
     metadata: v.optional(v.any()),
+    playbook: v.optional(accountPlaybookValidator),
+    autopilotStatus: v.optional(accountAutopilotStatusValidator),
+    autopilot: v.optional(accountAutopilotValidator),
+    nextAutopilotRunAt: v.optional(v.number()),
+    lastAutopilotRunAt: v.optional(v.number()),
+    agentSummary: v.optional(v.string()),
+    agentSummaryUpdatedAt: v.optional(v.number()),
+    profileSyncedAt: v.optional(v.number()),
+    feedSyncedAt: v.optional(v.number()),
+    metricsSyncedAt: v.optional(v.number()),
     lastSyncedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -225,58 +249,110 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_user_provider", ["userId", "provider"])
-    .index("by_external_account", ["provider", "externalAccountId"]),
+    .index("by_external_account", ["provider", "externalAccountId"])
+    .index("by_autopilot_status_and_next_run", [
+      "autopilotStatus",
+      "nextAutopilotRunAt",
+    ]),
 
-  automations: defineTable({
+  accountAgentRuns: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    socialAccountIds: v.array(v.id("socialAccounts")),
-    name: v.string(),
-    brief: v.string(),
-    pillars: v.array(v.string()),
-    formatMix: v.optional(v.string()),
-    scheduleConfig: automationScheduleValidator,
-    approvalMode: automationApprovalModeValidator,
-    generationDefaults: v.optional(
-      v.object({
-        imageResolution: v.optional(v.string()),
-        aspectRatio: v.optional(v.string()),
-        imageModel: v.optional(v.string()),
-        videoModel: v.optional(v.string()),
-      })
-    ),
-    budget: v.optional(
-      v.object({
-        maxUsdPerRun: v.optional(v.number()),
-        maxUsdPerMonth: v.optional(v.number()),
-      })
-    ),
-    isActive: v.boolean(),
-    nextRunAt: v.optional(v.number()),
+    socialAccountId: v.id("socialAccounts"),
+    trigger: v.union(v.literal("scheduled"), v.literal("run_now")),
+    status: accountAgentRunStatusValidator,
+    scheduledFor: v.optional(v.number()),
+    createThreadId: v.optional(v.id("createThreads")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    decisionSummary: v.optional(v.string()),
+    costUsd: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_social_account_and_created_at", ["socialAccountId", "createdAt"])
+    .index("by_status", ["status"]),
+
+  accountPosts: defineTable({
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    socialAccountId: v.id("socialAccounts"),
+    origin: accountPostOriginValidator,
+    status: accountPostStatusValidator,
+    createThreadId: v.optional(v.id("createThreads")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
+    artifactIds: v.array(v.id("artifacts")),
+    provider: publishingProviderValidator,
+    scheduledFor: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    providerPayload: v.optional(v.any()),
+    externalPostIds: v.optional(v.array(v.string())),
+    latestMetrics: v.optional(metricsValidator),
+    metricsUpdatedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_active_next_run", ["isActive", "nextRunAt"]),
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_social_account_and_status", ["socialAccountId", "status"])
+    .index("by_social_account_and_published_at", ["socialAccountId", "publishedAt"])
+    .index("by_account_agent_run", ["accountAgentRunId"])
+    .index("by_status", ["status"]),
 
-  automationRuns: defineTable({
-    automationId: v.id("automations"),
+  accountReferences: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    createThreadId: v.optional(v.id("createThreads")),
-    topic: v.string(),
-    pillar: v.optional(v.string()),
-    status: automationRunStatusValidator,
-    distributionPlanId: v.optional(v.id("distributionPlans")),
-    costUsd: v.optional(v.number()),
-    errorMessage: v.optional(v.string()),
-    startedAt: v.number(),
-    completedAt: v.optional(v.number()),
+    socialAccountId: v.id("socialAccounts"),
+    creativeAssetId: v.id("creativeAssets"),
+    role: v.union(
+      v.literal("identity"),
+      v.literal("style"),
+      v.literal("voice"),
+      v.literal("logo"),
+      v.literal("negative_reference"),
+      v.literal("other")
+    ),
+    instruction: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   })
-    .index("by_automation", ["automationId"])
-    .index("by_automation_started", ["automationId", "startedAt"])
-    .index("by_status", ["status"]),
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_social_account_and_asset", ["socialAccountId", "creativeAssetId"])
+    .index("by_creative_asset", ["creativeAssetId"]),
+
+  accountInsights: defineTable({
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    socialAccountId: v.id("socialAccounts"),
+    kind: v.union(
+      v.literal("creative_pattern"),
+      v.literal("performance_pattern"),
+      v.literal("audience_signal"),
+      v.literal("preference")
+    ),
+    statement: v.string(),
+    confidence: v.optional(v.number()),
+    evidencePostIds: v.array(v.id("accountPosts")),
+    status: v.union(
+      v.literal("active"),
+      v.literal("dismissed"),
+      v.literal("superseded")
+    ),
+    sourceThreadId: v.optional(v.id("createThreads")),
+    sourceMessageId: v.optional(v.id("createMessages")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_social_account_and_status", ["socialAccountId", "status"]),
 
   contentRequests: defineTable({
     userId: v.string(),
@@ -319,8 +395,9 @@ export default defineSchema({
   createThreads: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    origin: v.optional(v.union(v.literal("user"), v.literal("automation"))),
-    automationRunId: v.optional(v.id("automationRuns")),
+    origin: v.optional(v.union(v.literal("user"), v.literal("account_schedule"))),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     title: v.optional(v.string()),
     status: createThreadStatusValidator,
     checkpointMode: createCheckpointModeValidator,
@@ -338,6 +415,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
+    .index("by_social_account", ["socialAccountId"])
     .index("by_user_status", ["userId", "status"])
     .index("by_workspace_status", ["workspaceId", "status"]),
 
@@ -402,8 +480,9 @@ export default defineSchema({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     parentArtifactIds: v.optional(v.array(v.id("artifacts"))),
     type: artifactTypeValidator,
     title: v.optional(v.string()),
@@ -420,7 +499,9 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_content_request", ["contentRequestId"])
-    .index("by_automation_run", ["automationRunId"])
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_account_post", ["accountPostId"])
+    .index("by_account_agent_run", ["accountAgentRunId"])
     .index("by_type", ["type"]),
 
   slideshows: defineTable({
@@ -428,8 +509,8 @@ export default defineSchema({
     workspaceId: v.optional(v.id("workspaces")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     title: v.string(),
     status: slideshowStatusValidator,
     spec: v.any(),
@@ -440,7 +521,9 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_content_request", ["contentRequestId"])
-    .index("by_automation_run", ["automationRunId"]),
+    .index("by_social_account", ["socialAccountId"])
+    .index("by_account_post", ["accountPostId"])
+    .index("by_account_agent_run", ["accountAgentRunId"]),
 
   videoProjects: defineTable({
     userId: v.string(),
@@ -479,37 +562,11 @@ export default defineSchema({
     .index("by_project", ["videoProjectId"])
     .index("by_status", ["status"]),
 
-  distributionPlans: defineTable({
-    userId: v.string(),
-    workspaceId: v.optional(v.id("workspaces")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
-    artifactIds: v.array(v.id("artifacts")),
-    socialAccountIds: v.array(v.id("socialAccounts")),
-    provider: publishingProviderValidator,
-    status: distributionStatusValidator,
-    scheduledFor: v.optional(v.number()),
-    timezone: v.optional(v.string()),
-    caption: v.optional(v.string()),
-    providerPayload: v.optional(v.any()),
-    externalPostIds: v.optional(v.array(v.string())),
-    errorMessage: v.optional(v.string()),
-    publishedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_workspace", ["workspaceId"])
-    .index("by_automation_run", ["automationRunId"])
-    .index("by_status", ["status"]),
-
   postMetrics: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
-    distributionPlanId: v.optional(v.id("distributionPlans")),
     socialAccountId: v.id("socialAccounts"),
+    accountPostId: v.id("accountPosts"),
     platform: platformValidator,
     externalPostId: v.string(),
     metrics: metricsValidator,
@@ -519,8 +576,8 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
-    .index("by_automation_run", ["automationRunId"])
-    .index("by_distribution_plan", ["distributionPlanId"])
+    .index("by_account_post", ["accountPostId"])
     .index("by_social_account", ["socialAccountId"])
+    .index("by_social_account_and_captured_at", ["socialAccountId", "capturedAt"])
     .index("by_external_post", ["platform", "externalPostId"]),
 });

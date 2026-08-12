@@ -4,6 +4,20 @@ import { v } from "convex/values";
 import { listReferencesForToolCall } from "./references/referenceDiscovery";
 import { updateMediaTextOverlaysForToolCall } from "./studio/mediaOverlayEditing";
 import { updateVideoProjectCaptionsForToolCall } from "./studio/captionEditing";
+import {
+  approveAccountPostForToolCall,
+  addAccountReferenceForToolCall,
+  getAccountForToolCall,
+  listAccountPostsForToolCall,
+  listAccountsForToolCall,
+  publishAccountPostForToolCall,
+  removeAccountReferenceForToolCall,
+  rejectAccountPostForToolCall,
+  runAccountNowForToolCall,
+  setAccountAutopilotForToolCall,
+  updateAccountAutopilotForToolCall,
+  updateAccountPlaybookForToolCall,
+} from "./execution/accountManagementToolExecution";
 import { createAnalysisJobForToolCall } from "./execution/sourceAnalysisExecution";
 import {
   createGenerationRequestForToolCall,
@@ -22,18 +36,15 @@ import {
   createStudioRenderRequestForToolCall,
 } from "./execution/studioToolExecution";
 import {
-  createAutomationForToolCall,
-  listAutomationsForToolCall,
-  updateAutomationForToolCall,
-} from "./execution/automationToolExecution";
-import {
   prepareArtifactExportForThread,
-  prepareDistributionDraftForThread,
+  prepareAccountPostForThread,
   saveReadyOutputsForThread,
 } from "./execution/toolOutputActions";
 import {
   appendAgentMessage,
+  accountRunCostForThread,
   errorMessageFromUnknown,
+  markAccountRunFailedForThread,
   modelProviderNameValidator,
 } from "./execution/toolExecutionShared";
 import { toolCallHasPendingAsyncOutput } from "./execution/toolCallReadiness";
@@ -41,7 +52,7 @@ import { hasPendingContentRequestsForThreadToolOutputs } from "./execution/threa
 
 export {
   prepareArtifactExportForThread,
-  prepareDistributionDraftForThread,
+  prepareAccountPostForThread,
   saveReadyOutputsForThread,
 } from "./execution/toolOutputActions";
 
@@ -137,6 +148,7 @@ export const failTextGeneration = internalMutation({
       errorMessage: args.errorMessage,
       updatedAt: now,
     });
+    await markAccountRunFailedForThread(ctx, thread, args.errorMessage);
   },
 });
 
@@ -227,6 +239,7 @@ export const failVideoRender = internalMutation({
       errorMessage: args.errorMessage,
       updatedAt: now,
     });
+    await markAccountRunFailedForThread(ctx, thread, args.errorMessage);
   },
 });
 
@@ -293,6 +306,29 @@ export async function executeRunnableQueuedTools(
     .order("asc")
     .collect();
 
+  if (thread.accountAgentRunId) {
+    const run = await ctx.db.get(thread.accountAgentRunId);
+    const account = run ? await ctx.db.get(run.socialAccountId) : null;
+    const maxUsdPerPost = account?.autopilot?.budget?.maxUsdPerPost;
+    if (run && maxUsdPerPost !== undefined) {
+      const currentCost = await accountRunCostForThread(ctx, thread, run.costUsd ?? 0);
+      if (currentCost >= maxUsdPerPost) {
+        const errorMessage = `The account Agent reached its $${maxUsdPerPost.toFixed(2)} per-post budget.`;
+        await markAccountRunFailedForThread(ctx, thread, errorMessage);
+        await ctx.db.patch(thread._id, {
+          status: "failed",
+          errorMessage,
+          updatedAt: Date.now(),
+        });
+        return {
+          executedCount: 0,
+          queuedCount: queuedToolCalls.length,
+          errorMessage,
+        };
+      }
+    }
+  }
+
   if (await createDebugReadyOutputCheckpointIfNeeded(ctx, thread)) {
     return { executedCount: 0, queuedCount: queuedToolCalls.length, checkpointCreated: true };
   }
@@ -317,7 +353,9 @@ export async function executeRunnableQueuedTools(
   }
   const availableSlots = Math.max(
     0,
-    maxParallelTools() - runningToolCallsBeforeStart.length - pendingAsyncOutputCount
+    (thread.accountAgentRunId ? 1 : maxParallelTools()) -
+      runningToolCallsBeforeStart.length -
+      pendingAsyncOutputCount
   );
   if (availableSlots === 0 && queuedToolCalls.length) skippedForDependencies = true;
   for (const toolCall of queuedToolCalls) {
@@ -421,15 +459,24 @@ export async function executeRunnableQueuedTools(
         continue;
       }
       if (toolCall.toolName === "publishing.prepare") {
-        const result = await prepareDistributionDraftForThread(ctx, thread, undefined, {
+        const input = toolCall.input && typeof toolCall.input === "object" && !Array.isArray(toolCall.input)
+          ? toolCall.input as Record<string, unknown>
+          : {};
+        const socialAccountId = typeof input.socialAccountId === "string"
+          ? input.socialAccountId as never
+          : undefined;
+        const instructions = typeof input.instructions === "string" ? input.instructions : undefined;
+        const result = await prepareAccountPostForThread(ctx, thread, undefined, {
           recordToolCall: false,
+          socialAccountId,
+          instructions,
         });
-        if (result.distributionPlanId) {
+        if (result.accountPostId) {
           const now = Date.now();
           await ctx.db.patch(toolCall._id, {
             status: "succeeded",
             output: {
-              distributionPlanId: result.distributionPlanId,
+              accountPostId: result.accountPostId,
               artifactCount: result.artifactCount,
               status: "draft",
             },
@@ -440,18 +487,63 @@ export async function executeRunnableQueuedTools(
         }
         continue;
       }
-      if (toolCall.toolName === "automation.create") {
-        await createAutomationForToolCall(ctx, thread, toolCall);
+      if (toolCall.toolName === "account.list") {
+        await listAccountsForToolCall(ctx, thread, toolCall);
         executedCount += 1;
         continue;
       }
-      if (toolCall.toolName === "automation.update") {
-        await updateAutomationForToolCall(ctx, thread, toolCall);
+      if (toolCall.toolName === "account.get") {
+        await getAccountForToolCall(ctx, thread, toolCall);
         executedCount += 1;
         continue;
       }
-      if (toolCall.toolName === "automation.list") {
-        await listAutomationsForToolCall(ctx, thread, toolCall);
+      if (toolCall.toolName === "account.playbook.update") {
+        await updateAccountPlaybookForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.autopilot.update") {
+        await updateAccountAutopilotForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.autopilot.setStatus") {
+        await setAccountAutopilotForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.runNow") {
+        await runAccountNowForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.posts.list") {
+        await listAccountPostsForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.reference.add") {
+        await addAccountReferenceForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.reference.remove") {
+        await removeAccountReferenceForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.post.approve") {
+        await approveAccountPostForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.post.publish") {
+        await publishAccountPostForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "account.post.reject") {
+        await rejectAccountPostForToolCall(ctx, thread, toolCall);
         executedCount += 1;
         continue;
       }
@@ -487,6 +579,7 @@ export async function executeRunnableQueuedTools(
         errorMessage,
         updatedAt: now,
       });
+      await markAccountRunFailedForThread(ctx, thread, errorMessage);
       return {
         executedCount,
         queuedCount: queuedToolCalls.length,

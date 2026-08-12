@@ -222,8 +222,8 @@ export function PostComposerModal({
   const { activeWorkspaceId } = useWorkspace();
   const workspaceArgs = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
   const accounts = useQuery(api.accounts.socialAccounts.list, workspaceArgs);
-  const createPlan = useMutation(api.publishing.composer.createPlanFromMedia);
-  const publishPlan = useAction(api.publishing.distributionPlans.publish);
+  const createPosts = useMutation(api.publishing.composer.createPostsFromMedia);
+  const publishPost = useAction(api.publishing.accountPosts.publish);
   const uploadMedia = useAction(api.storage.files.uploadBase64ImageWithMetadata);
 
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(
@@ -356,7 +356,7 @@ export function PostComposerModal({
       const items = await mediaItemsForPost();
 
       setStatus(mode === "draft" ? "Saving draft..." : "Creating post...");
-      const planId: Id<"distributionPlans"> = await createPlan({
+      const postIds: Id<"accountPosts">[] = await createPosts({
         ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
         socialAccountIds: selectedAccounts.map((account) => account._id),
         media: items,
@@ -372,13 +372,13 @@ export function PostComposerModal({
 
       if (mode !== "draft") {
         setStatus(mode === "schedule" ? "Scheduling post..." : "Publishing post...");
-        await publishPlan({ id: planId, mode });
+        await Promise.all(postIds.map((id) => publishPost({ id, mode })));
       }
 
       setStatus("");
       setCompleted(
         mode === "draft"
-          ? "Saved to drafts. Publish it anytime from your distribution plans."
+          ? "Saved to the selected account drafts."
           : mode === "schedule"
             ? "Post scheduled."
             : "Post sent. It may take a moment to appear on each platform."

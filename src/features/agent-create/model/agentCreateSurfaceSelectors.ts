@@ -179,9 +179,9 @@ export function artifactsByToolCallId(args: {
     const outputArtifact = outputArtifactId ? args.artifactById.get(outputArtifactId) : undefined;
     if (outputArtifact) artifacts.push(outputArtifact);
 
-    const distributionPlanId = outputId(toolCall.output, "distributionPlanId");
-    const distributionArtifact = distributionPlanId
-      ? args.artifactById.get(`distribution:${distributionPlanId}`)
+    const accountPostId = outputId(toolCall.output, "accountPostId");
+    const distributionArtifact = accountPostId
+      ? args.artifactById.get(`account-post:${accountPostId}`)
       : undefined;
     if (distributionArtifact) artifacts.push(distributionArtifact);
 

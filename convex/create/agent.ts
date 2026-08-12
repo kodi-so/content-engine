@@ -68,7 +68,7 @@ import { listThreadOutputsForThread } from "./agent/agentThreadOutputs";
 import {
   executeRunnableQueuedTools,
   prepareArtifactExportForThread,
-  prepareDistributionDraftForThread,
+  prepareAccountPostForThread,
   saveReadyOutputsForThread,
 } from "./toolExecution";
 import {
@@ -78,10 +78,12 @@ import {
 import {
   analysisJobIdFromToolOutput,
   contentRequestIdFromToolOutput,
+  markAccountRunFailedForThread,
   slideshowPromptReviewRequestId,
   studioRenderRequestIdFromToolOutput,
 } from "./execution/toolExecutionShared";
 import { stopCreateThread } from "./agent/agentStopActions";
+import { requireSocialAccountAccess } from "../accounts/accountAccess";
 
 export {
   AgentDecisionParseError,
@@ -164,7 +166,7 @@ async function artifactsForCompletedAsyncTool(
   ctx: MutationCtx,
   thread: Doc<"createThreads">,
   toolCall: Doc<"createToolCalls">,
-  readySource: Doc<"contentRequests"> | Doc<"videoAnalysisJobs"> | Doc<"studioRenderRequests">
+  readySource: Doc<"contentRequests"> | Doc<"contentAnalyses"> | Doc<"studioRenderRequests">
 ) {
   const artifactIds = new Set<string>((toolCall.artifactIds ?? []).map(String));
   const contentRequestId = contentRequestIdFromToolOutput(toolCall.output);
@@ -259,7 +261,7 @@ async function mediaArtifactsProducedSinceUserMessage(
 
 function shouldAppendAsyncCompletionToolResult(
   toolCall: Doc<"createToolCalls">,
-  readySource: Doc<"contentRequests"> | Doc<"videoAnalysisJobs"> | Doc<"studioRenderRequests">
+  readySource: Doc<"contentRequests"> | Doc<"contentAnalyses"> | Doc<"studioRenderRequests">
 ) {
   return contentRequestIdFromToolOutput(toolCall.output) === readySource._id ||
     studioRenderRequestIdFromToolOutput(toolCall.output) === readySource._id;
@@ -291,7 +293,7 @@ export const listThreadOutputs = query({
         analysisJobs: [],
         directArtifacts: [],
         videoProjects: [],
-        distributionPlans: [],
+        accountPosts: [],
         studioRenderRequests: [],
         referenceResults: [],
       };
@@ -385,6 +387,11 @@ export const applyAgentDecision = internalMutation({
         kind: "chat",
         ...(artifactIds.length ? { artifactIds } : {}),
       });
+      await markAccountRunFailedForThread(
+        ctx,
+        thread,
+        "The scheduled account Agent stopped without preparing a post."
+      );
       await ctx.db.patch(thread._id, {
         status: "idle",
         turnDecisionCount: nextDecisionCount,
@@ -400,6 +407,11 @@ export const applyAgentDecision = internalMutation({
         content: decision.response,
         kind: "clarification",
       });
+      await markAccountRunFailedForThread(
+        ctx,
+        thread,
+        `The scheduled account Agent needed clarification: ${decision.response}`
+      );
       await ctx.db.patch(thread._id, {
         status: "clarifying",
         lastInferredOutputType: "unknown",
@@ -424,6 +436,17 @@ export const applyAgentDecision = internalMutation({
       lastPlanSignature: thread.lastPlanSignature,
       planSignature,
     })) {
+      if (thread.accountAgentRunId) {
+        const errorMessage = "The scheduled account Agent repeated the same plan without completing a post.";
+        await markAccountRunFailedForThread(ctx, thread, errorMessage);
+        await ctx.db.patch(thread._id, {
+          status: "failed",
+          errorMessage,
+          turnDecisionCount: nextDecisionCount,
+          updatedAt: now,
+        });
+        return;
+      }
       await ctx.db.insert("createCheckpoints", {
         userId: thread.userId,
         workspaceId: thread.workspaceId,
@@ -512,8 +535,10 @@ export const failAgentDecision = internalMutation({
       content: `I am having trouble thinking through that request right now: ${args.errorMessage}`,
       kind: "chat",
     });
+    await markAccountRunFailedForThread(ctx, thread, args.errorMessage);
     await ctx.db.patch(thread._id, {
-      status: "idle",
+      status: thread.accountAgentRunId ? "failed" : "idle",
+      errorMessage: thread.accountAgentRunId ? args.errorMessage : undefined,
       updatedAt: Date.now(),
     });
   },
@@ -720,6 +745,7 @@ export const submit = mutation({
   args: {
     threadId: v.optional(v.id("createThreads")),
     workspaceId: v.optional(v.id("workspaces")),
+    socialAccountId: v.optional(v.id("socialAccounts")),
     checkpointMode: v.optional(createCheckpointModeValidator),
     content: v.string(),
     referenceMentions: v.optional(v.array(createReferenceMentionValidator)),
@@ -728,6 +754,10 @@ export const submit = mutation({
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
     const content = args.content.trim();
     if (!content) throw new Error("Message content is required");
+
+    if (args.socialAccountId) {
+      await requireSocialAccountAccess(ctx, args.socialAccountId, userId);
+    }
 
     const thread = args.threadId
       ? await requireThreadAccess(ctx, args.threadId, userId)
@@ -739,6 +769,7 @@ export const submit = mutation({
           checkpointMode: args.checkpointMode ?? "debug",
           initialMessage: content,
           referenceMentions: args.referenceMentions,
+          socialAccountId: args.socialAccountId,
           title: threadTitleFromMessage(content),
         });
     const checkpointMode = args.checkpointMode ?? thread.checkpointMode;
@@ -847,13 +878,13 @@ export const stopThread = mutation({
 export const continueAfterAsyncResult = internalMutation({
   args: {
     contentRequestId: v.optional(v.id("contentRequests")),
-    analysisJobId: v.optional(v.id("videoAnalysisJobs")),
+    analysisJobId: v.optional(v.id("contentAnalyses")),
     studioRenderRequestId: v.optional(v.id("studioRenderRequests")),
   },
   handler: async (ctx, args) => {
     const toolCalls: Doc<"createToolCalls">[] = [];
     const sourceRecords: Array<
-      Doc<"contentRequests"> | Doc<"videoAnalysisJobs"> | Doc<"studioRenderRequests">
+      Doc<"contentRequests"> | Doc<"contentAnalyses"> | Doc<"studioRenderRequests">
     > = [];
 
     if (args.contentRequestId) {
@@ -1032,12 +1063,17 @@ export const preparePublishDraft = mutation({
   args: {
     threadId: v.id("createThreads"),
     artifactIds: v.optional(v.array(v.id("artifacts"))),
+    socialAccountId: v.optional(v.id("socialAccounts")),
+    instructions: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId } = await ensureCurrentUser(ctx);
     const thread = await requireThreadAccess(ctx, args.threadId, userId);
 
-    return await prepareDistributionDraftForThread(ctx, thread, args.artifactIds);
+    return await prepareAccountPostForThread(ctx, thread, args.artifactIds, {
+      socialAccountId: args.socialAccountId,
+      instructions: args.instructions,
+    });
   },
 });
 

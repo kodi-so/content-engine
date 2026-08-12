@@ -70,6 +70,56 @@ function artifactType(artifact: Doc<"artifacts">) {
   return artifact.type;
 }
 
+async function accountContextForThread(
+  ctx: Pick<QueryCtx, "db">,
+  thread: Doc<"createThreads">
+) {
+  if (!thread.socialAccountId) return "Account scope: none. This is a workspace-level conversation.";
+  const account = await ctx.db.get(thread.socialAccountId);
+  if (!account) return "Account scope: the linked social account is unavailable.";
+  const posts = await ctx.db
+    .query("accountPosts")
+    .withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id))
+    .order("desc")
+    .take(20);
+  const insights = await ctx.db
+    .query("accountInsights")
+    .withIndex("by_social_account_and_status", (q) =>
+      q.eq("socialAccountId", account._id).eq("status", "active")
+    )
+    .take(30);
+  const postLines = [];
+  for (const post of posts) {
+    const analyses = await ctx.db
+      .query("contentAnalyses")
+      .withIndex("by_account_post", (q) => q.eq("accountPostId", post._id))
+      .order("desc")
+      .take(1);
+    const analysis = analyses[0];
+    const metrics = post.latestMetrics
+      ? ` | metrics ${JSON.stringify(post.latestMetrics)}`
+      : "";
+    postLines.push(
+      `- ${post.status} | ${post.caption || "No caption"}${analysis?.summary ? ` | ${analysis.summary}` : ""}${metrics}`
+    );
+  }
+  return [
+    `Account scope: @${account.username} on ${account.platform} (${account._id}).`,
+    `Account playbook: ${JSON.stringify(account.playbook ?? null)}`,
+    `Account Autopilot settings: ${JSON.stringify(account.autopilot ?? null)}`,
+    account.agentSummary
+      ? `Rolling account understanding: ${account.agentSummary}`
+      : "Rolling account understanding: none yet.",
+    insights.length
+      ? `Active account insights:\n${insights.map((insight) => `- ${insight.statement}`).join("\n")}`
+      : "Active account insights: none yet.",
+    postLines.length
+      ? `Recent account posts:\n${postLines.join("\n")}`
+      : "Recent account posts: none yet.",
+    "Treat manual and scheduled posts as one shared account history and choose ideas from the full account context.",
+  ].join("\n\n");
+}
+
 type TurnToolProgressEntry = {
   label: string;
   producedAudioIndexes?: number[];
@@ -323,12 +373,14 @@ export async function buildTurnContextSections(
         ...selectedModelLines,
       ].join("\n")
     : "User-selected models for this request: none.";
+  const accountContext = await accountContextForThread(ctx, args.thread);
 
   const contextBlock = [
     "Current request and plan:",
     `User request: ${args.userMessage.content}`,
     `Effective brief: ${args.effectiveBrief}`,
     selectedModelContext,
+    accountContext,
     currentTurnPlan ? `Current plan: ${currentTurnPlan.content}` : "Current plan: none yet.",
     "",
     turnToolProgress,

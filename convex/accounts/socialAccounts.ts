@@ -35,6 +35,7 @@ type SyncProviderAccountsResult = {
 
 export const list = query({
   args: { workspaceId: v.optional(v.id("workspaces")) },
+  returns: v.array(v.any()),
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
@@ -45,14 +46,14 @@ export const list = query({
         .query("socialAccounts")
         .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
         .order("desc")
-        .collect();
+        .take(200);
     }
 
     return await ctx.db
       .query("socialAccounts")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .order("desc")
-      .collect();
+      .take(200);
   },
 });
 
@@ -155,6 +156,15 @@ export const syncProviderAccounts = action({
     provider: publishingProviderValidator,
     workspaceId: v.optional(v.id("workspaces")),
   },
+  returns: v.object({
+    inserted: v.number(),
+    linked: v.number(),
+    provider: publishingProviderValidator,
+    skipped: v.number(),
+    synced: v.number(),
+    syncedAt: v.number(),
+    updated: v.number(),
+  }),
   handler: async (ctx, args): Promise<SyncProviderAccountsResult> => {
     const identity = await requireBetaAccessForAction(ctx);
 
@@ -228,6 +238,7 @@ export const upsertManual = mutation({
     capabilities: v.optional(v.array(v.string())),
     metadata: v.optional(v.any()),
   },
+  returns: v.id("socialAccounts"),
   handler: async (ctx, args) => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
@@ -267,6 +278,7 @@ export const upsertManual = mutation({
     return await ctx.db.insert("socialAccounts", {
       userId,
       ...accountFields,
+      autopilotStatus: "off",
       createdAt: now,
     });
   },
@@ -278,6 +290,7 @@ export const updateCredentials = mutation({
     email: v.string(),
     password: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
 
@@ -307,6 +320,7 @@ export const updateCredentials = mutation({
       },
       updatedAt: Date.now(),
     });
+    return null;
   },
 });
 
@@ -329,6 +343,12 @@ export const upsertSyncedAccounts = internalMutation({
       })
     ),
   },
+  returns: v.object({
+    disconnected: v.number(),
+    inserted: v.number(),
+    linked: v.number(),
+    updated: v.number(),
+  }),
   handler: async (ctx, args) => {
     const workspace = await resolveWritableWorkspace(
       ctx,
@@ -339,7 +359,7 @@ export const upsertSyncedAccounts = internalMutation({
     const allUserAccounts = await ctx.db
       .query("socialAccounts")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
+      .take(500);
     const workspaceAccounts = allUserAccounts.filter(
       (account) => account.workspaceId === workspace._id
     );
@@ -399,6 +419,7 @@ export const upsertSyncedAccounts = internalMutation({
         await ctx.db.insert("socialAccounts", {
           userId: args.userId,
           ...fields,
+          autopilotStatus: "off",
           createdAt: Date.now(),
         });
         inserted += 1;
@@ -426,6 +447,7 @@ export const upsertSyncedAccounts = internalMutation({
 
 export const remove = mutation({
   args: { id: v.id("socialAccounts") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const identity = await requireBetaAccess(ctx);
 
@@ -439,6 +461,51 @@ export const remove = mutation({
       throw new Error("Social account not found");
     }
 
+    const [posts, runs, references, insights, artifacts, slideshows, threads] = await Promise.all([
+      ctx.db.query("accountPosts").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+      ctx.db.query("accountAgentRuns").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+      ctx.db.query("accountReferences").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+      ctx.db.query("accountInsights").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+      ctx.db.query("artifacts").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+      ctx.db.query("slideshows").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+      ctx.db.query("createThreads").withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id)).take(500),
+    ]);
+    for (const post of posts) {
+      const [metrics, analyses] = await Promise.all([
+        ctx.db.query("postMetrics").withIndex("by_account_post", (q) => q.eq("accountPostId", post._id)).take(500),
+        ctx.db.query("contentAnalyses").withIndex("by_account_post", (q) => q.eq("accountPostId", post._id)).take(500),
+      ]);
+      for (const metric of metrics) await ctx.db.delete(metric._id);
+      for (const analysis of analyses) await ctx.db.delete(analysis._id);
+      await ctx.db.delete(post._id);
+    }
+    for (const run of runs) await ctx.db.delete(run._id);
+    for (const reference of references) await ctx.db.delete(reference._id);
+    for (const insight of insights) await ctx.db.delete(insight._id);
+    for (const artifact of artifacts) {
+      await ctx.db.patch(artifact._id, {
+        socialAccountId: undefined,
+        accountPostId: undefined,
+        accountAgentRunId: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    for (const slideshow of slideshows) {
+      await ctx.db.patch(slideshow._id, {
+        socialAccountId: undefined,
+        accountPostId: undefined,
+        accountAgentRunId: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    for (const thread of threads) {
+      await ctx.db.patch(thread._id, {
+        socialAccountId: undefined,
+        accountAgentRunId: undefined,
+        updatedAt: Date.now(),
+      });
+    }
     await ctx.db.delete(args.id);
+    return null;
   },
 });

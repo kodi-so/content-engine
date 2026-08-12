@@ -28,13 +28,13 @@ function sourceHostForLog(sourceUrl?: string) {
 }
 
 export const getForExecution = internalQuery({
-  args: { jobId: v.id("videoAnalysisJobs") },
+  args: { jobId: v.id("contentAnalyses") },
   handler: async (ctx, args) => await ctx.db.get(args.jobId),
 });
 
 export const patchJob = internalMutation({
   args: {
-    jobId: v.id("videoAnalysisJobs"),
+    jobId: v.id("contentAnalyses"),
     status: v.optional(videoAnalysisStatusValidator),
     title: v.optional(v.string()),
     summary: v.optional(v.string()),
@@ -64,7 +64,7 @@ export const patchJob = internalMutation({
 });
 
 export const executeJob = internalAction({
-  args: { jobId: v.id("videoAnalysisJobs") },
+  args: { jobId: v.id("contentAnalyses") },
   handler: async (ctx, args) => {
     const job = await ctx.runQuery(internal.analyze.videoAnalysis.getForExecution, {
       jobId: args.jobId,

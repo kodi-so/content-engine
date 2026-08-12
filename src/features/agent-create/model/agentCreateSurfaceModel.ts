@@ -105,6 +105,7 @@ export function backendReferenceMention(
     entityId: mention.entityId,
     ...(mention.mediaType ? { mediaType: mention.mediaType } : {}),
     ...(mention.mimeType ? { mimeType: mention.mimeType } : {}),
+    ...(mention.storageId ? { storageId: mention.storageId } : {}),
     ...(mention.storageUrl ? { storageUrl: mention.storageUrl } : {}),
     ...(mention.instruction ? { instruction: mention.instruction } : {}),
   };
@@ -218,6 +219,6 @@ export function shouldAttachToolArtifactsToChat(toolName: string) {
     toolName === "slideshow.render" ||
     toolName === "artifact.export" ||
     toolName === "publishing.prepare" ||
-    toolName.startsWith("automation.")
+    toolName.startsWith("account.")
   );
 }

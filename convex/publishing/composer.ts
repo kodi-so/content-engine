@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { recordCreatedPostMemory } from "../accounts/accountMemory";
 import { ensureCurrentUser } from "../auth/users";
 import { resolveWritableWorkspace } from "../workspaces/workspaces";
 import { publishingProviderValidator } from "../validators";
@@ -16,12 +17,12 @@ export const composerMediaItemValidator = v.object({
 });
 
 /**
- * Creates a draft distribution plan directly from media picked in the post
+ * Creates one account-owned draft per selected destination from media picked in the post
  * composer. Media can reference existing artifacts or plain storage URLs
  * (e.g. rendered slideshow slides); URL-only items get an artifact record so
- * the plan fits the artifact-based publish pipeline.
+ * each post fits the artifact-based publish pipeline.
  */
-export const createPlanFromMedia = mutation({
+export const createPostsFromMedia = mutation({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     provider: v.optional(publishingProviderValidator),
@@ -33,7 +34,8 @@ export const createPlanFromMedia = mutation({
     platformConfigurations: v.optional(v.any()),
     source: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<Id<"distributionPlans">> => {
+  returns: v.array(v.id("accountPosts")),
+  handler: async (ctx, args): Promise<Id<"accountPosts">[]> => {
     const { userId, defaultWorkspace } = await ensureCurrentUser(ctx);
 
     const workspace = args.workspaceId
@@ -59,9 +61,7 @@ export const createPlanFromMedia = mutation({
       }
     }
 
-    const now = Date.now();
-    const artifactIds: Id<"artifacts">[] = [];
-    for (const [index, item] of args.media.entries()) {
+    for (const item of args.media) {
       if (item.artifactId) {
         const artifact = await ctx.db.get(item.artifactId);
         if (
@@ -72,52 +72,77 @@ export const createPlanFromMedia = mutation({
         ) {
           throw new Error("Artifact not found");
         }
-        artifactIds.push(item.artifactId);
-        continue;
-      }
-
-      if (!item.storageUrl) {
+      } else if (!item.storageUrl) {
         throw new Error("Media items need an artifact or a storage URL");
       }
-      artifactIds.push(
-        await ctx.db.insert("artifacts", {
+    }
+
+    const now = Date.now();
+    const postIds: Id<"accountPosts">[] = [];
+    for (const socialAccountId of args.socialAccountIds) {
+      const artifactIds: Id<"artifacts">[] = [];
+      for (const [index, item] of args.media.entries()) {
+        const source = item.artifactId ? await ctx.db.get(item.artifactId) : null;
+        const sourceData = source?.data && typeof source.data === "object" && !Array.isArray(source.data)
+          ? source.data as Record<string, unknown>
+          : {};
+        artifactIds.push(await ctx.db.insert("artifacts", {
           userId,
           workspaceId: workspace._id,
-          type: item.kind === "video" ? "video" : "rendered_asset",
-          title: item.title ?? `Post media ${index + 1}`,
-          storageUrl: item.storageUrl,
+          socialAccountId,
+          parentArtifactIds: source ? [source._id] : undefined,
+          type: source?.type ?? (item.kind === "video" ? "video" : "rendered_asset"),
+          title: item.title ?? source?.title ?? `Post media ${index + 1}`,
+          storageUrl: item.storageUrl ?? source?.storageUrl,
           data: {
+            ...sourceData,
             format: "post_composer_media",
             slideIndex: index,
-            mimeType: item.mimeType,
+            mimeType: item.mimeType ?? sourceData.mimeType,
+            sourceArtifactId: source?._id,
           },
-          provider: "manual",
+          provider: source?.provider ?? "manual",
+          model: source?.model,
+          prompt: source?.prompt,
           lifecycle: "saved",
           reviewStatus: "approved",
           createdAt: now,
           updatedAt: now,
-        })
-      );
+        }));
+      }
+      const postId = await ctx.db.insert("accountPosts", {
+        userId,
+        workspaceId: workspace._id,
+        socialAccountId,
+        origin: "manual",
+        artifactIds,
+        provider: args.provider ?? DEFAULT_PUBLISHING_PROVIDER,
+        status: "draft",
+        scheduledFor: args.scheduledFor,
+        timezone: args.timezone,
+        caption: args.caption,
+        providerPayload: {
+          source: args.source ?? "post_composer",
+          ...(args.platformConfigurations
+            ? { platformConfigurations: args.platformConfigurations }
+            : {}),
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (const artifactId of artifactIds) {
+        await ctx.db.patch(artifactId, { accountPostId: postId, updatedAt: now });
+      }
+      await recordCreatedPostMemory(ctx, {
+        accountPostId: postId,
+        artifactIds,
+        caption: args.caption,
+        socialAccountId,
+        userId,
+        workspaceId: workspace._id,
+      });
+      postIds.push(postId);
     }
-
-    return await ctx.db.insert("distributionPlans", {
-      userId,
-      workspaceId: workspace._id,
-      artifactIds,
-      socialAccountIds: args.socialAccountIds,
-      provider: args.provider ?? DEFAULT_PUBLISHING_PROVIDER,
-      status: "draft",
-      scheduledFor: args.scheduledFor,
-      timezone: args.timezone,
-      caption: args.caption,
-      providerPayload: {
-        source: args.source ?? "post_composer",
-        ...(args.platformConfigurations
-          ? { platformConfigurations: args.platformConfigurations }
-          : {}),
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
+    return postIds;
   },
 });

@@ -6,6 +6,7 @@ import {
   query,
 } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { recordCreatedPostMemory } from "../accounts/accountMemory";
 import { requireBetaAccess } from "../auth/users";
 import { publishingProviderValidator, slideshowStatusValidator } from "../validators";
 import { requireWorkspaceMember } from "../workspaces/workspaces";
@@ -21,7 +22,7 @@ export const list = query({
   args: {
     workspaceId: v.optional(v.id("workspaces")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
   },
   handler: async (ctx, args) => {
     const userId = currentUserId(await requireBetaAccess(ctx));
@@ -54,8 +55,8 @@ export const list = query({
       );
     }
 
-    if (args.automationRunId) {
-      const run = await ctx.db.get(args.automationRunId);
+    if (args.accountAgentRunId) {
+      const run = await ctx.db.get(args.accountAgentRunId);
       if (!run) return [];
       if (run.workspaceId) {
         await requireWorkspaceMember(ctx, run.workspaceId, userId);
@@ -64,8 +65,8 @@ export const list = query({
       }
       const rows = await ctx.db
         .query("slideshows")
-        .withIndex("by_automation_run", (q) =>
-          q.eq("automationRunId", args.automationRunId!)
+        .withIndex("by_account_agent_run", (q) =>
+          q.eq("accountAgentRunId", args.accountAgentRunId!)
         )
         .collect();
       return rows.filter((row) =>
@@ -123,21 +124,21 @@ export const createFromRunner = internalMutation({
     workspaceId: v.optional(v.id("workspaces")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentRequestId: v.optional(v.id("contentRequests")),
-    automationId: v.optional(v.id("automations")),
-    automationRunId: v.optional(v.id("automationRuns")),
+    accountPostId: v.optional(v.id("accountPosts")),
+    accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     title: v.string(),
     status: v.optional(slideshowStatusValidator),
     spec: v.any(),
   },
   handler: async (ctx, args) => {
     const request = args.contentRequestId ? await ctx.db.get(args.contentRequestId) : null;
-    const run = args.automationRunId ? await ctx.db.get(args.automationRunId) : null;
-    const automation = args.automationId ? await ctx.db.get(args.automationId) : null;
+    const run = args.accountAgentRunId ? await ctx.db.get(args.accountAgentRunId) : null;
+    const post = args.accountPostId ? await ctx.db.get(args.accountPostId) : null;
     const workspaceId =
       args.workspaceId ??
       request?.workspaceId ??
       run?.workspaceId ??
-      automation?.workspaceId;
+      post?.workspaceId;
     const now = Date.now();
     return await ctx.db.insert("slideshows", {
       ...args,
@@ -193,7 +194,7 @@ export const remove = mutation({
   },
 });
 
-export const createDraftDistributionPlanFromRenderedSlides = mutation({
+export const createDraftAccountPostsFromRenderedSlides = mutation({
   args: {
     slideshowId: v.id("slideshows"),
     slides: v.array(
@@ -213,7 +214,8 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
     provider: v.optional(publishingProviderValidator),
     caption: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<Id<"distributionPlans">> => {
+  returns: v.array(v.id("accountPosts")),
+  handler: async (ctx, args): Promise<Id<"accountPosts">[]> => {
     const userId = currentUserId(await requireBetaAccess(ctx));
     const slideshow = await ctx.db.get(args.slideshowId);
     if (!slideshow) {
@@ -268,8 +270,9 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
           userId,
           workspaceId: slideshow.workspaceId,
           contentRequestId: slideshow.contentRequestId,
-          automationId: slideshow.automationId,
-          automationRunId: slideshow.automationRunId,
+          socialAccountId: slideshow.socialAccountId,
+          accountPostId: slideshow.accountPostId,
+          accountAgentRunId: slideshow.accountAgentRunId,
           parentArtifactIds,
           type: "rendered_asset",
           title: `${slideshow.title} slide ${slide.index}`,
@@ -297,22 +300,65 @@ export const createDraftDistributionPlanFromRenderedSlides = mutation({
 
     const selectedProvider = args.provider ?? DEFAULT_PUBLISHING_PROVIDER;
     const caption = args.caption?.trim() || slideshow.title;
-    return await ctx.db.insert("distributionPlans", {
-      userId,
-      workspaceId: slideshow.workspaceId,
-      automationId: slideshow.automationId,
-      automationRunId: slideshow.automationRunId,
-      artifactIds,
-      socialAccountIds,
-      provider: selectedProvider,
-      status: "draft",
-      caption,
-      providerPayload: {
-        source: "slideshow",
-        slideshowId: slideshow._id,
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
+    const postIds: Id<"accountPosts">[] = [];
+    for (const socialAccountId of socialAccountIds) {
+      const accountArtifactIds: Id<"artifacts">[] = [];
+      for (const artifactId of artifactIds) {
+        const source = await ctx.db.get(artifactId);
+        if (!source) continue;
+        const sourceData = source.data && typeof source.data === "object" && !Array.isArray(source.data)
+          ? source.data as Record<string, unknown>
+          : {};
+        accountArtifactIds.push(await ctx.db.insert("artifacts", {
+          userId,
+          workspaceId: slideshow.workspaceId,
+          contentRequestId: slideshow.contentRequestId,
+          socialAccountId,
+          accountAgentRunId: slideshow.accountAgentRunId,
+          parentArtifactIds: [source._id],
+          type: source.type,
+          title: source.title,
+          storageUrl: source.storageUrl,
+          data: { ...sourceData, sourceArtifactId: source._id },
+          provider: source.provider,
+          model: source.model,
+          prompt: source.prompt,
+          lifecycle: "saved",
+          reviewStatus: "approved",
+          createdAt: now,
+          updatedAt: now,
+        }));
+      }
+      const postId = await ctx.db.insert("accountPosts", {
+        userId,
+        workspaceId: slideshow.workspaceId,
+        socialAccountId,
+        origin: slideshow.accountAgentRunId ? "agent_scheduled" : "manual",
+        accountAgentRunId: slideshow.accountAgentRunId,
+        artifactIds: accountArtifactIds,
+        provider: selectedProvider,
+        status: "draft",
+        caption,
+        providerPayload: {
+          source: "slideshow",
+          slideshowId: slideshow._id,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (const artifactId of accountArtifactIds) {
+        await ctx.db.patch(artifactId, { accountPostId: postId, updatedAt: now });
+      }
+      await recordCreatedPostMemory(ctx, {
+        accountPostId: postId,
+        artifactIds: accountArtifactIds,
+        caption,
+        socialAccountId,
+        userId,
+        workspaceId: slideshow.workspaceId,
+      });
+      postIds.push(postId);
+    }
+    return postIds;
   },
 });

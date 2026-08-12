@@ -13,9 +13,9 @@ export function contentRequestIdFromToolOutput(output: unknown): Id<"contentRequ
   return output.contentRequestId as Id<"contentRequests">;
 }
 
-export function analysisJobIdFromToolOutput(output: unknown): Id<"videoAnalysisJobs"> | null {
+export function analysisJobIdFromToolOutput(output: unknown): Id<"contentAnalyses"> | null {
   if (!isRecord(output) || typeof output.analysisJobId !== "string") return null;
-  return output.analysisJobId as Id<"videoAnalysisJobs">;
+  return output.analysisJobId as Id<"contentAnalyses">;
 }
 
 export function videoProjectIdFromToolOutput(output: unknown): Id<"videoProjects"> | null {
@@ -23,9 +23,9 @@ export function videoProjectIdFromToolOutput(output: unknown): Id<"videoProjects
   return output.projectId as Id<"videoProjects">;
 }
 
-export function distributionPlanIdFromToolOutput(output: unknown): Id<"distributionPlans"> | null {
-  if (!isRecord(output) || typeof output.distributionPlanId !== "string") return null;
-  return output.distributionPlanId as Id<"distributionPlans">;
+export function accountPostIdFromToolOutput(output: unknown): Id<"accountPosts"> | null {
+  if (!isRecord(output) || typeof output.accountPostId !== "string") return null;
+  return output.accountPostId as Id<"accountPosts">;
 }
 
 export function studioRenderRequestIdFromToolOutput(output: unknown): Id<"studioRenderRequests"> | null {
@@ -70,6 +70,46 @@ export async function appendAgentMessage(
     artifactIds: args.artifactIds,
     createdAt: now,
   });
+}
+
+export async function markAccountRunFailedForThread(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  errorMessage: string
+) {
+  if (!thread.accountAgentRunId) return;
+  const run = await ctx.db.get(thread.accountAgentRunId);
+  if (!run || run.status === "completed" || run.status === "failed" || run.status === "skipped") return;
+  const now = Date.now();
+  const costUsd = await accountRunCostForThread(ctx, thread, run.costUsd ?? 0);
+  await ctx.db.patch(run._id, {
+    status: "failed",
+    errorMessage,
+    costUsd,
+    completedAt: now,
+    updatedAt: now,
+  });
+}
+
+export async function accountRunCostForThread(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  startingCost = 0
+) {
+  const toolCalls = await ctx.db
+    .query("createToolCalls")
+    .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
+    .take(200);
+  const requestIds = [
+    ...new Set(toolCalls.flatMap((toolCall) => {
+      const requestId = contentRequestIdFromToolOutput(toolCall.output);
+      return requestId ? [requestId] : [];
+    })),
+  ];
+  const requests = await Promise.all(requestIds.map((requestId) => ctx.db.get(requestId)));
+  return startingCost +
+    toolCalls.reduce((sum, toolCall) => sum + (toolCall.costUsd ?? 0), 0) +
+    requests.reduce((sum, request) => sum + (request?.costUsd ?? 0), 0);
 }
 
 export function recordBelongsToCreateThread(
