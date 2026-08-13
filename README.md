@@ -7,8 +7,9 @@ library, and publishing primitives.
 
 ## Product Surface
 
-- **Create**: one-off generation for images, videos, audio, lipsync, rendered
-  video, and slideshow/carousel outputs.
+- **Create**: agent-guided social profile discovery, trend research, source
+  analysis, and generation for images, videos, audio, lipsync, rendered video,
+  and slideshow/carousel outputs.
 - **Analyze**: uploads, YouTube URLs, direct media URLs, and resolver-backed
   TikTok/Instagram/Facebook analysis.
 - **Studio**: video composition and timeline editing.
@@ -69,6 +70,7 @@ npx convex env set FAL_API_KEY "..."
 npx convex env set FAL_ADMIN_API_KEY "..." # optional: exact fal billing reconciliation
 npx convex env set GEMINI_API_KEY "..."
 npx convex env set BULKAPIS_API_KEY "..."
+npx convex env set SCRAPE_CREATORS_API_KEY "..."
 npx convex env set POSTIZ_API_KEY "..."
 ```
 

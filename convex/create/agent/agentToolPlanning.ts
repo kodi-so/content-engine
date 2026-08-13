@@ -142,7 +142,12 @@ export function dependencyIndexesForPlannedToolCalls(
 ) {
   return toolCalls.map((toolCall, index) => {
     const previousCalls = toolCalls.slice(0, index);
-    if (toolCall.toolName === "analyze.source" || toolCall.toolName === "references.list") {
+    if (
+      toolCall.toolName === "social.discoverContent" ||
+      toolCall.toolName === "social.researchTrends" ||
+      toolCall.toolName === "analyze.source" ||
+      toolCall.toolName === "references.list"
+    ) {
       return [];
     }
     if (dependsOnAllPreviousCalls(toolCall)) {

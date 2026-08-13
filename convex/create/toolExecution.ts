@@ -19,6 +19,8 @@ import {
   updateAccountPlaybookForToolCall,
 } from "./execution/accountManagementToolExecution";
 import { createAnalysisJobForToolCall } from "./execution/sourceAnalysisExecution";
+import { createSocialDiscoveryForToolCall } from "./execution/socialDiscoveryExecution";
+import { createSocialTrendResearchForToolCall } from "./execution/socialTrendResearchExecution";
 import {
   createGenerationRequestForToolCall,
   createSlideshowRequestForToolCall,
@@ -57,6 +59,72 @@ export {
 } from "./execution/toolOutputActions";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
+
+export const completeSocialResearch = internalMutation({
+  args: {
+    agentContext: v.string(),
+    result: v.any(),
+    threadId: v.id("createThreads"),
+    toolCallId: v.id("createToolCalls"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    const toolCall = await ctx.db.get(args.toolCallId);
+    if (!thread || !toolCall || toolCall.createThreadId !== thread._id) return null;
+    if (toolCall.status === "canceled") return null;
+
+    const now = Date.now();
+    await ctx.db.patch(toolCall._id, {
+      status: "succeeded",
+      output: args.result,
+      errorMessage: undefined,
+      completedAt: now,
+      updatedAt: now,
+    });
+    await appendAgentMessage(ctx, thread, {
+      content: args.agentContext,
+      kind: "tool_result",
+    });
+
+    await executeRunnableQueuedTools(ctx, thread);
+    return null;
+  },
+});
+
+export const failSocialResearch = internalMutation({
+  args: {
+    errorMessage: v.string(),
+    threadId: v.id("createThreads"),
+    toolCallId: v.id("createToolCalls"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    const toolCall = await ctx.db.get(args.toolCallId);
+    if (!thread || !toolCall || toolCall.createThreadId !== thread._id) return null;
+    if (toolCall.status === "canceled") return null;
+
+    const now = Date.now();
+    await ctx.db.patch(toolCall._id, {
+      status: "failed",
+      errorMessage: args.errorMessage,
+      completedAt: now,
+      updatedAt: now,
+    });
+    await appendAgentMessage(ctx, thread, {
+      content: `${toolCall.label} failed: ${args.errorMessage}`,
+      kind: "status",
+    });
+    await ctx.db.patch(thread._id, {
+      status: "failed",
+      errorMessage: args.errorMessage,
+      updatedAt: now,
+    });
+    await markAccountRunFailedForThread(ctx, thread, args.errorMessage);
+    return null;
+  },
+});
 
 export const completeTextGeneration = internalMutation({
   args: {
@@ -366,6 +434,16 @@ export async function executeRunnableQueuedTools(
     }
     try {
       const mediaMode = mediaModeForToolName(toolCall.toolName);
+      if (toolCall.toolName === "social.discoverContent") {
+        await createSocialDiscoveryForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
+      if (toolCall.toolName === "social.researchTrends") {
+        await createSocialTrendResearchForToolCall(ctx, thread, toolCall);
+        executedCount += 1;
+        continue;
+      }
       if (toolCall.toolName === "analyze.source") {
         await createAnalysisJobForToolCall(ctx, thread, toolCall);
         executedCount += 1;

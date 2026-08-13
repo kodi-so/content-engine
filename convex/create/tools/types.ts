@@ -5,6 +5,7 @@ export type CreateToolName = `${string}.${string}`;
 
 export type CreateToolCategory =
   | "test"
+  | "discovery"
   | "analysis"
   | "references"
   | "media"
