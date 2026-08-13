@@ -1,109 +1,149 @@
-# MCP Integration
+# Content Engine MCP
 
-Content Engine exposes an MCP-compatible HTTP surface for external agents. The
-MCP server lives in `convex/mcp/http.ts` and wraps Convex resources and workflow
-tools with user-scoped API-key auth.
+Content Engine exposes the same durable command system to its native Agent and
+external MCP clients. The MCP layer does not reimplement creation or publishing:
+it discovers commands from `convex/create/tools/registry.ts`, enqueues them through
+`convex/create/commands/runtime.ts`, and executes them through the same runtime as
+the Content Engine Agent.
 
-## Auth Model
+This means a newly registered native Agent command is automatically eligible for
+MCP when its registry audience includes `mcp`.
 
-MCP access uses user-owned API keys created from Settings.
+## Endpoint
 
-- Plaintext keys are shown once.
-- Server stores a SHA-256 hash, key prefix, scopes, timestamps, and revocation
-  state in `mcpApiKeys`.
-- Clients send `Authorization: Bearer <key>`.
-- Requests resolve to one user id.
-- Every tool/resource read or mutation is scoped to that user.
-- Revoked keys cannot authenticate.
-- `lastUsedAt` is updated on authenticated calls.
+The Streamable HTTP endpoint is:
 
-Relevant files:
+```text
+https://<your-convex-site>/mcp
+```
 
-- `convex/mcp/apiKeys.ts`
-- `convex/mcp/apiKeyRecords.ts`
-- `convex/mcp/http.ts`
-- `src/features/settings/AgentAccessSettingsSection.tsx`
+The server implements MCP protocol version `2025-06-18`, including tool and
+resource listing, structured tool results, server instructions, batch JSON-RPC,
+and an MCP App resource.
 
-Optional CORS/origin controls use `CE_MCP_ALLOWED_ORIGINS` and `CONVEX_SITE_URL`.
+## Authentication
 
-## Resources
+Two authentication paths are supported.
 
-Read-only resources are implemented in `convex/mcp/resources.ts`. Resource URIs
-use the `content-engine://` scheme and are meant to be read through MCP, not
-fetched directly.
+### OAuth 2.1
 
-Static resources include:
+OAuth-capable clients only need the MCP endpoint. Content Engine publishes:
 
-- `content-engine://architecture/guide`
-- `content-engine://workflows/graph-schema`
-- `content-engine://workflows/node-catalog`
-- `content-engine://prompts/agent-recipes`
-- `content-engine://knowledge/prompting/ai-ugc`
-- `content-engine://knowledge/prompting/transformation`
-- `content-engine://knowledge/prompting/slideshow`
-- `content-engine://knowledge/prompting/video`
-- `content-engine://knowledge/node-selection`
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/oauth-authorization-server`
+- `/oauth/register` for dynamic client registration
+- `/oauth/authorize` for authorization code consent
+- `/oauth/token` for authorization code and refresh grants
 
-User-scoped resources include:
+Authorization uses PKCE with S256. The consent screen is authenticated by Clerk
+and binds the resulting access and refresh tokens to one Content Engine workspace.
+Access tokens expire after one hour; refresh tokens rotate and expire after 30
+days.
 
-- `content-engine://providers/model-catalog`
-- `content-engine://accounts/creative-assets`
+Set `CONTENT_ENGINE_APP_URL` on the Convex deployment to the public Content Engine
+web URL so `/oauth/authorize` can redirect to the consent page.
 
-Resources should never expose provider secrets, OAuth tokens, environment
-variables, or internal service credentials.
+### API keys
 
-## Tools
+Settings → Agent connections can create a workspace-bound key. Plaintext keys are
+shown once and only their SHA-256 hashes are stored. Send the key as:
 
-Workflow authoring tools are backed by `convex/mcp/workflows.ts`:
+```http
+Authorization: Bearer ce_mcp_...
+```
 
-- `workflows.list`
-- `workflows.get`
-- `workflows.validateGraph`
-- `workflows.createBlank`
-- `workflows.addNode`
-- `workflows.updateNode`
-- `workflows.deleteNode`
-- `workflows.connectNodes`
-- `workflows.disconnectEdge`
-- `workflows.replaceEdge`
-- `workflows.updateMetadata`
-- `workflows.updateGraph`
-- `workflows.runWorkflow`
+A local Codex configuration can use the key without creating a separate model API
+integration:
 
-Run and artifact tools are backed by `convex/mcp/runArtifacts.ts`:
+```toml
+[mcp_servers.content_engine]
+url = "https://<your-convex-site>/mcp"
+bearer_token_env_var = "CONTENT_ENGINE_MCP_TOKEN"
+```
 
-- `runs.list`
-- `runs.inspect`
-- `runs.inspectNodeOutput`
-- `artifacts.listRunArtifacts`
+The Codex or Claude subscription supplies the conversational agent experience.
+Provider calls initiated inside Content Engine—image generation, video generation,
+rendering, analysis, and publishing services—still use Content Engine's configured
+provider accounts and costs.
 
-Graph-writing tools validate before saving. Creating/editing workflow drafts
-must not trigger provider calls or artifact creation. `workflows.runWorkflow` is
-the command that starts execution.
+## Command model
 
-## Scope Mapping
+Every MCP creation tool accepts its normal registered JSON Schema plus an optional
+context:
 
-Current scope expectations:
+```json
+{
+  "prompt": "Create a vertical product demo",
+  "_context": {
+    "threadId": "existing Content Engine run id"
+  }
+}
+```
 
-| Capability | Required scopes |
+Omit `_context` to start a hidden MCP run. Reuse the returned `threadId` to chain
+commands that should see prior analysis or generated artifacts. MCP runs use
+`createThreads` and `createToolCalls`, but do not clutter the native Agent sidebar.
+
+Long-running commands return a current snapshot immediately. Two control tools are
+always available:
+
+- `command.status` returns current commands, outputs, artifacts, renders, errors,
+  costs, and Content Engine links.
+- `command.render` returns the same structured snapshot and attaches the embedded
+  Content Engine MCP App.
+
+The server's instructions tell the host agent to poll `command.status` for durable
+jobs and use `command.render` when a media result should be visible in the chat.
+The `content-engine://models` resource provides the same current model roster the
+native UI uses, while `references.list` provides searchable access to the user's
+Content Engine library.
+
+## Embedded MCP App
+
+`ui://content-engine/run/v1.html` is served as
+`text/html;profile=mcp-app`. It renders a calm media workspace with:
+
+- live run state and automatic polling;
+- image, video, and audio playback;
+- artifact switching;
+- structured fallback output for non-media commands;
+- direct media and Content Engine deep links.
+
+The app remains optional. Every command and status result is useful as text,
+standard media `resource_link` blocks, and `structuredContent` in clients that do
+not support MCP Apps.
+
+## Scopes
+
+| Scope | Access |
 | --- | --- |
-| Read workflows | `workflows:read` |
-| Create/edit workflows | `workflows:read`, `workflows:write` |
-| Start workflow runs | `workflows:read`, `runs:write` |
-| Inspect runs | `runs:read` |
-| Inspect artifacts | `runs:read`, `artifacts:read` |
-| Review/update artifacts | `artifacts:read`, `artifacts:write` |
-| Create distribution plans | `artifacts:read`, `publishing:plan` |
-| Publish/schedule | `artifacts:read`, `publishing:plan`, `publishing:publish` |
+| `resources:read` | Guides and embedded app resources |
+| `content:read` | Trends, analysis, references, runs, and generated output |
+| `content:write` | Generation, editing, Studio, rendering, saving, and export |
+| `accounts:read` | Connected account context and post queues |
+| `accounts:write` | Playbooks, Autopilot, references, and post decisions |
+| `publishing:plan` | Prepare publishing payloads without sending them |
+| `publishing:publish` | Publish to connected external accounts |
 
-## Recommended Agent Flow
+Tool scope and safety annotations are derived in `convex/mcp/scopes.ts`. Publishing
+tools are open-world, high-impact capabilities and require the dedicated publish
+scope.
 
-1. Read architecture, graph schema, and node catalog resources.
-2. Read relevant prompt knowledge resources for the requested content type.
-3. Read user-scoped creative asset and model catalog resources.
-4. Create or edit workflow graph nodes and edges.
-5. Validate the graph.
-6. Run only when the user explicitly wants execution.
-7. Inspect run output and artifacts before publishing or scheduling.
+## Deployment configuration
 
-MCP should stay a first-class integration surface, not a separate workflow model.
+- `CONTENT_ENGINE_APP_URL`: public Content Engine web app used by OAuth consent and
+  deep links.
+- `CE_MCP_ALLOWED_ORIGINS`: optional comma-separated browser origins allowed to call
+  the MCP endpoint.
+- `CONVEX_SITE_URL`: included as an allowed same-origin MCP caller when present.
+
+Relevant implementation files:
+
+- `convex/create/commands/runtime.ts`
+- `convex/create/tools/registry.ts`
+- `convex/mcp/commands.ts`
+- `convex/mcp/http.ts`
+- `convex/mcp/oauthHttp.ts`
+- `convex/mcp/oauthRecords.ts`
+- `convex/mcp/appResource.ts`
+- `src/pages/OAuthAuthorizePage.tsx`

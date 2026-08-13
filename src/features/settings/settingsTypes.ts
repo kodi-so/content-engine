@@ -15,3 +15,14 @@ export type McpApiKeySummary = {
   createdAt: number;
   updatedAt: number;
 };
+
+export type McpOauthConnectionSummary = {
+  id: string;
+  clientName: string;
+  workspaceId?: string;
+  scopes: string[];
+  lastUsedAt?: number;
+  createdAt: number;
+  expiresAt: number;
+  refreshExpiresAt: number;
+};

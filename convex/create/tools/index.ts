@@ -3,9 +3,11 @@ export {
   getCreateTool,
   listCreateTools,
   listCreateToolsForPlanner,
+  listCreateToolsForMcp,
 } from "./registry";
 export type {
   CreateToolArtifactBehavior,
+  CreateToolAudience,
   CreateToolAvailability,
   CreateToolCategory,
   CreateToolConfirmation,

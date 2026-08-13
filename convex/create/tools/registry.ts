@@ -132,6 +132,7 @@ function agentRuntimeTool(
     Partial<Pick<CreateToolDefinition, "confirmation" | "checkpoint">>
 ): CreateToolDefinition {
   return {
+    audiences: ["agent", "mcp"],
     availability: "available",
     executionMode: "agent_runtime",
     confirmation: definition.confirmation ?? {
@@ -1108,7 +1109,15 @@ export function listCreateTools(): CreateToolDefinition[] {
 }
 
 export function listCreateToolsForPlanner(): CreateToolPlannerDescriptor[] {
-  return toolDefinitions.map(({ handler: _handler, ...descriptor }) => descriptor);
+  return toolDefinitions
+    .filter((tool) => "audiences" in tool && tool.audiences?.includes("agent"))
+    .map(({ handler: _handler, ...descriptor }) => descriptor);
+}
+
+export function listCreateToolsForMcp(): CreateToolPlannerDescriptor[] {
+  return toolDefinitions
+    .filter((tool) => "audiences" in tool && tool.audiences?.includes("mcp"))
+    .map(({ handler: _handler, ...descriptor }) => descriptor);
 }
 
 export function getCreateTool(name: CreateToolName): CreateToolDefinition | undefined {

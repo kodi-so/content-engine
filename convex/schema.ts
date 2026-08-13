@@ -232,6 +232,69 @@ export default defineSchema({
     .index("by_workspace", ["workspaceId"])
     .index("by_key_hash", ["keyHash"]),
 
+  mcpOauthClients: defineTable({
+    clientId: v.string(),
+    clientName: v.optional(v.string()),
+    redirectUris: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_client_id", ["clientId"]),
+
+  mcpOauthAuthorizationRequests: defineTable({
+    clientId: v.string(),
+    redirectUri: v.string(),
+    state: v.optional(v.string()),
+    scopes: v.array(v.string()),
+    codeChallenge: v.string(),
+    resource: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("denied"),
+      v.literal("expired")
+    ),
+    userId: v.optional(v.string()),
+    workspaceId: v.optional(v.id("workspaces")),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_client", ["clientId"])
+    .index("by_status", ["status"]),
+
+  mcpOauthAuthorizationCodes: defineTable({
+    codeHash: v.string(),
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    clientId: v.string(),
+    redirectUri: v.string(),
+    scopes: v.array(v.string()),
+    codeChallenge: v.string(),
+    resource: v.string(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_code_hash", ["codeHash"]),
+
+  mcpOauthTokens: defineTable({
+    accessTokenHash: v.string(),
+    refreshTokenHash: v.string(),
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    clientId: v.string(),
+    scopes: v.array(v.string()),
+    resource: v.string(),
+    expiresAt: v.number(),
+    refreshExpiresAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    lastUsedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_access_token_hash", ["accessTokenHash"])
+    .index("by_refresh_token_hash", ["refreshTokenHash"])
+    .index("by_user", ["userId"]),
+
   socialAccounts: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
@@ -412,7 +475,11 @@ export default defineSchema({
   createThreads: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
-    origin: v.optional(v.union(v.literal("user"), v.literal("account_schedule"))),
+    origin: v.optional(v.union(
+      v.literal("user"),
+      v.literal("account_schedule"),
+      v.literal("mcp")
+    )),
     socialAccountId: v.optional(v.id("socialAccounts")),
     accountAgentRunId: v.optional(v.id("accountAgentRuns")),
     title: v.optional(v.string()),

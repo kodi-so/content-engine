@@ -21,6 +21,8 @@ export type CreateToolAvailability = "available" | "planned";
 
 export type CreateToolExecutionMode = "direct" | "agent_runtime" | "planned";
 
+export type CreateToolAudience = "agent" | "mcp" | "internal";
+
 export type CreateToolSchema =
   | {
       kind: "placeholder";
@@ -65,6 +67,8 @@ export type CreateToolPlannerDescriptor = {
   confirmation: CreateToolConfirmation;
   checkpoint: CreateToolCheckpoint;
   artifactBehavior: CreateToolArtifactBehavior;
+  /** Surfaces allowed to invoke this command. Omitted commands are internal-only. */
+  audiences?: CreateToolAudience[];
 };
 
 export type CreateToolExecutionContext = {

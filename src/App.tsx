@@ -17,6 +17,7 @@ import { CreatePage } from "./pages/CreatePage";
 import { CreateToolsPage } from "./pages/CreateToolsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { OAuthAuthorizePage } from "./pages/OAuthAuthorizePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SlideshowEditorPage } from "./pages/SlideshowEditorPage";
 import { VideoComposerPage } from "./pages/VideoComposerPage";
@@ -74,6 +75,14 @@ function AppContent() {
 
   if (location.pathname === "/") {
     return <Navigate to="/create" replace />;
+  }
+
+  if (location.pathname === "/oauth/authorize") {
+    return (
+      <WorkspaceProvider>
+        <OAuthAuthorizePage />
+      </WorkspaceProvider>
+    );
   }
 
   return (

@@ -8,39 +8,46 @@ import {
   formatSettingsDate,
   settingsInputClass,
 } from "./settingsPrimitives";
-import type { McpApiKeySummary } from "./settingsTypes";
+import type { McpApiKeySummary, McpOauthConnectionSummary } from "./settingsTypes";
 
 export function AgentAccessSettingsSection({
   apiKeys,
   generatedKey,
   keyName,
   mcpEndpoint,
+  oauthConnections,
   onChangeKeyName,
   onCopy,
   onCreateKey,
   onRevokeKey,
+  onRevokeOauthConnection,
 }: {
   apiKeys: McpApiKeySummary[] | undefined;
   generatedKey: string;
   keyName: string;
   mcpEndpoint: string;
+  oauthConnections: McpOauthConnectionSummary[] | undefined;
   onChangeKeyName: (value: string) => void;
   onCopy: (value: string) => void;
   onCreateKey: (event: FormEvent) => void;
   onRevokeKey: (id: Id<"mcpApiKeys">) => void;
+  onRevokeOauthConnection: (id: Id<"mcpOauthTokens">) => void;
 }) {
   return (
     <section>
       <header className="mb-[var(--space-2)]">
         <h2 className="text-[1.3rem] font-[820] leading-[1.2] text-[var(--color-ink)]">
-          Agent access
+          Agent connections
         </h2>
         <p className="mt-[0.35rem] max-w-[42rem] text-[0.92rem] leading-[1.55] text-[var(--color-muted)]">
-          Connect external agents and revoke keys you no longer use.
+          Use every Content Engine Agent command from Codex, Claude, ChatGPT, or another MCP client.
         </p>
       </header>
 
-      <SettingRow label="Endpoint" note="Use this URL when configuring an MCP client.">
+      <SettingRow
+        label="Connect with OAuth"
+        note="Add this Streamable HTTP URL to an OAuth-capable MCP client. Content Engine will open a secure workspace authorization screen."
+      >
         <div className="grid max-w-[44rem] gap-[var(--space-3)] sm:grid-cols-[minmax(0,1fr)_2.85rem]">
           <input className={settingsInputClass} readOnly value={mcpEndpoint} />
           <button
@@ -54,9 +61,53 @@ export function AgentAccessSettingsSection({
         </div>
       </SettingRow>
 
+      <SettingRow label="OAuth connections" note="Revoke agents that should no longer have workspace access.">
+        <div className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)]">
+          {oauthConnections === undefined ? (
+            <LoadingState
+              className="border-0 bg-transparent"
+              compact
+              detail="Checking active OAuth connections."
+              title="Loading connections"
+            />
+          ) : oauthConnections.length === 0 ? (
+            <div className="px-[var(--space-3)] py-[var(--space-4)] text-[0.9rem] text-[var(--color-muted)]">
+              No active OAuth connections.
+            </div>
+          ) : (
+            oauthConnections.map((connection) => (
+              <div
+                className="grid gap-[var(--space-3)] border-t border-[var(--color-border)] px-[var(--space-3)] py-[var(--space-3)] first:border-t-0 md:grid-cols-[minmax(0,1fr)_8rem_2.75rem] md:items-center"
+                key={connection.id}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[0.94rem] font-[720] text-[var(--color-ink)]">
+                    {connection.clientName}
+                  </div>
+                  <div className="truncate text-[0.8rem] text-[var(--color-muted)]">
+                    {connection.scopes.length} scopes / Connected {formatSettingsDate(connection.createdAt)}
+                  </div>
+                </div>
+                <span className="text-[0.83rem] font-[650] text-[var(--color-muted)]">
+                  {connection.lastUsedAt ? `Used ${formatSettingsDate(connection.lastUsedAt)}` : "Not used"}
+                </span>
+                <button
+                  aria-label={`Revoke ${connection.clientName}`}
+                  className="icon-button justify-self-start md:justify-self-end"
+                  type="button"
+                  onClick={() => onRevokeOauthConnection(connection.id as Id<"mcpOauthTokens">)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </SettingRow>
+
       <SettingRow
-        label="Create key"
-        note="New keys are shown once. Store the key before leaving this page."
+        label="Create API key"
+        note="For direct clients such as local Codex. Keys are bound to the active workspace, include every Agent capability, and are shown once."
       >
         <form
           className="grid max-w-[35rem] gap-[var(--space-3)] sm:grid-cols-[minmax(0,22rem)_11rem]"
@@ -95,6 +146,17 @@ export function AgentAccessSettingsSection({
         ) : null}
       </SettingRow>
 
+      <SettingRow
+        label="Embedded results"
+        note="Clients that support MCP Apps can display generated images, video, audio, run progress, and Content Engine deep links directly in the conversation."
+      >
+        <p className="max-w-[42rem] text-[0.9rem] leading-[1.6] text-[var(--color-ink)]">
+          Long-running media commands return a durable run immediately. The agent can inspect it with
+          {" "}<code className="text-[0.82rem]">command.status</code> or open the live media workspace with
+          {" "}<code className="text-[0.82rem]">command.render</code>.
+        </p>
+      </SettingRow>
+
       <SettingRow label="Keys" note="Revoke keys you no longer use.">
         <div className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)]">
           {apiKeys === undefined ? (
@@ -119,7 +181,7 @@ export function AgentAccessSettingsSection({
                     {key.name}
                   </div>
                   <div className="truncate text-[0.8rem] text-[var(--color-muted)]">
-                    {key.keyPrefix} / Created {formatSettingsDate(key.createdAt)}
+                    {key.keyPrefix} / {key.scopes.length} scopes / Created {formatSettingsDate(key.createdAt)}
                   </div>
                 </div>
                 <span className="text-[0.83rem] font-[650] text-[var(--color-muted)]">

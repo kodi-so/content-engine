@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
+import { ROSTER_MODELS } from "../../src/lib/generation/modelRoster";
 
 type McpResource = {
   description: string;
@@ -22,6 +23,13 @@ const RESOURCES: McpResource[] = [
     name: "create-model-options",
     title: "Create Model Options",
     description: "Model-option behavior for image and video generation.",
+    mimeType: "application/json",
+  },
+  {
+    uri: "content-engine://models",
+    name: "models",
+    title: "Content Engine Models",
+    description: "Current image, video, audio, and lipsync models available to Content Engine commands.",
     mimeType: "application/json",
   },
 ];
@@ -69,6 +77,23 @@ function createModelOptions() {
   };
 }
 
+function modelCatalog() {
+  return ROSTER_MODELS.map((model) => ({
+    id: model.id,
+    label: model.label,
+    mode: model.mode,
+    strengths: model.strengths,
+    isDefault: model.isDefault ?? false,
+    aspectRatios: model.aspectRatios,
+    durationConstraint: model.durationConstraint,
+    nativeAudio: model.nativeAudio,
+    multiShot: model.multiShot,
+    maxReferenceImages: model.maxReferenceImages,
+    pricing: model.pricing,
+    options: model.options,
+  }));
+}
+
 export const listForMcp = internalQuery({
   args: { userId: v.string() },
   handler: async (_ctx, _args) => {
@@ -87,6 +112,8 @@ export const readForMcp = internalQuery({
         return textResource(resource, accountManagerGuide());
       case "content-engine://create-model-options":
         return jsonResource(resource, createModelOptions());
+      case "content-engine://models":
+        return jsonResource(resource, modelCatalog());
       default:
         throw new Error("Unknown MCP resource");
     }

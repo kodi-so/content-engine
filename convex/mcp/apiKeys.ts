@@ -4,18 +4,16 @@ import type { Id } from "../_generated/dataModel";
 import { action, mutation, query } from "../_generated/server";
 import { requireBetaAccessForAction } from "../auth/actionAccess";
 import { requireBetaAccess } from "../auth/users";
+import { ALL_MCP_SCOPES } from "./scopes";
 
 const KEY_PREFIX = "ce_mcp_";
-const DEFAULT_SCOPES = [
-  "resources:read",
-  "artifacts:read",
-  "publishing:plan",
-];
+const DEFAULT_SCOPES = ALL_MCP_SCOPES;
 
 const insertApiKey = makeFunctionReference<
   "mutation",
   {
     userId: string;
+    workspaceId?: Id<"workspaces">;
     name: string;
     keyPrefix: string;
     keyHash: string;
@@ -87,6 +85,7 @@ export const list = query({
 export const create = action({
   args: {
     name: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
     scopes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -103,6 +102,7 @@ export const create = action({
 
     const id: Id<"mcpApiKeys"> = await ctx.runMutation(insertApiKey, {
       userId,
+      workspaceId: args.workspaceId,
       name,
       keyPrefix,
       keyHash,

@@ -22,6 +22,7 @@ import {
 } from "../features/settings/settingsPrimitives";
 import type {
   McpApiKeySummary,
+  McpOauthConnectionSummary,
   WorkspaceMemberRow,
 } from "../features/settings/settingsTypes";
 import {
@@ -48,12 +49,14 @@ export function SettingsPage() {
     activeWorkspaceId ? { workspaceId: activeWorkspaceId } : "skip"
   );
   const apiKeys = useQuery(api.mcp.apiKeys.list);
+  const oauthConnections = useQuery(api.mcp.oauth.listConnections);
   const updateWorkspace = useMutation(api.workspaces.workspaces.update);
   const addMemberByEmail = useMutation(api.workspaces.workspaces.upsertMemberByEmail);
   const setMemberRole = useMutation(api.workspaces.workspaces.setMemberRole);
   const removeMember = useMutation(api.workspaces.workspaces.removeMember);
   const createMcpKey = useAction(api.mcp.apiKeys.create);
   const revokeMcpKey = useMutation(api.mcp.apiKeys.revoke);
+  const revokeOauthConnection = useMutation(api.mcp.oauth.revokeConnection);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -80,6 +83,7 @@ export function SettingsPage() {
 
   const memberRows = (members ?? []) as WorkspaceMemberRow[];
   const apiKeyRows = apiKeys as McpApiKeySummary[] | undefined;
+  const oauthConnectionRows = oauthConnections as McpOauthConnectionSummary[] | undefined;
   const providersByMode: Record<AiGenerationMode, AiGenerationProvider> = {
     image: imageProvider,
     video: videoProvider,
@@ -277,7 +281,7 @@ export function SettingsPage() {
     if (!name) return;
     setStatusMessage("Creating agent key...");
     try {
-      const result = await createMcpKey({ name });
+      const result = await createMcpKey({ name, workspaceId: activeWorkspaceId });
       setGeneratedKey(result.key);
       setKeyName(DEFAULT_MCP_KEY_NAME);
       setStatusMessage("Agent key created. Copy it now, because it will not be shown again.");
@@ -373,10 +377,12 @@ export function SettingsPage() {
             generatedKey={generatedKey}
             keyName={keyName}
             mcpEndpoint={mcpEndpoint}
+            oauthConnections={oauthConnectionRows}
             onChangeKeyName={setKeyName}
             onCopy={(value) => void handleCopy(value)}
             onCreateKey={handleCreateKey}
             onRevokeKey={(id) => void revokeMcpKey({ id })}
+            onRevokeOauthConnection={(id) => void revokeOauthConnection({ id })}
           />
         ) : null}
       </div>
