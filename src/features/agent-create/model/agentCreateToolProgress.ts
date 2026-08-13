@@ -13,7 +13,9 @@ export type AgentCreateToolCallRecord = {
   _id: string;
   artifactIds?: unknown[];
   completedAt?: number;
+  costEstimate?: unknown;
   costUsd?: number;
+  estimatedCostUsd?: number;
   createdAt?: number;
   errorMessage?: string;
   input?: unknown;
@@ -76,6 +78,7 @@ function modelDisplayLabel(provider: string | undefined, model: string | undefin
 }
 
 function toolStepDetail(args: {
+  costEstimateValue?: unknown;
   defaultProviders?: AgentCreateDefaultProviders;
   inputValue: unknown;
   outputValue: unknown;
@@ -84,6 +87,7 @@ function toolStepDetail(args: {
 }) {
   const {
     defaultProviders,
+    costEstimateValue,
     inputValue,
     outputValue,
     resolvedModel,
@@ -91,6 +95,7 @@ function toolStepDetail(args: {
   } = args;
   const input = recordFromUnknown(inputValue);
   const output = recordFromUnknown(outputValue);
+  const costEstimate = recordFromUnknown(costEstimateValue);
   const toolMode = mediaModeForToolName(toolName);
   const provider = typeof input.provider === "string"
     ? input.provider
@@ -102,6 +107,7 @@ function toolStepDetail(args: {
   const model = resolvedModel ??
     outputId(output, "effectiveModel") ??
     (typeof input.model === "string" ? input.model : outputId(output, "model")) ??
+    (typeof costEstimate.modelId === "string" ? costEstimate.modelId : undefined) ??
     defaultModelForProviderMode(provider, outputMode, usesReferences);
   const prompt = typeof input.prompt === "string"
     ? input.prompt
@@ -157,6 +163,7 @@ export function toolProgressStepsForCall(args: {
     label: toolCall.label,
     status,
     detail: toolStepDetail({
+      costEstimateValue: toolCall.costEstimate,
       defaultProviders,
       inputValue: toolCall.input,
       outputValue: toolCall.output,
@@ -164,9 +171,11 @@ export function toolProgressStepsForCall(args: {
       toolName: toolCall.toolName,
     }),
     artifactIds: toolCall.artifactIds?.map(String),
-    costLabel: status === "succeeded" && typeof toolCall.costUsd === "number"
+    costLabel: typeof toolCall.costUsd === "number"
       ? formatAgentCreateCost(toolCall.costUsd)
-      : undefined,
+      : typeof toolCall.estimatedCostUsd === "number"
+        ? `~${formatAgentCreateCost(toolCall.estimatedCostUsd)}`
+        : undefined,
     errorMessage,
     createdAt: toolCall.createdAt,
     startedAt: toolCall.startedAt,

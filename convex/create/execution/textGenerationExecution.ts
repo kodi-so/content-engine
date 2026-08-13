@@ -112,6 +112,19 @@ export const executeTextGeneration = internalAction({
         reviewStatus: "not_required",
       });
 
+      await ctx.runMutation(internal.usage.records.recordToolCharge, {
+        threadId: args.threadId,
+        toolCallId: args.toolCallId,
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        operationKey: `tool:${args.toolCallId}:text`,
+        actualCostUsd: result.metadata.costUsd,
+        parameters: {
+          maxTokens: finitePositiveNumber(input.maxTokens),
+          promptCharacterCount: args.prompt.length,
+        },
+      });
+
       await ctx.runMutation(internal.create.toolExecution.completeTextGeneration, {
         artifactId,
         costUsd: result.metadata.costUsd,

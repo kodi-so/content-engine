@@ -115,6 +115,27 @@ export type AgentCreateToolProgressStep = {
   completedAt?: number;
 };
 
+export type AgentCreateUsageItem = {
+  operationKey: string;
+  createToolCallId?: string;
+  label: string;
+  modelId: string;
+  category: string;
+  estimatedCostUsd?: number;
+  actualCostUsd?: number;
+  outstandingEstimatedCostUsd: number;
+  parameters?: unknown;
+  status: string;
+};
+
+export type AgentCreateUsageSummary = {
+  actualCostUsd: number;
+  outstandingEstimatedCostUsd: number;
+  totalCostUsd: number;
+  isFinal: boolean;
+  items: AgentCreateUsageItem[];
+};
+
 export type AgentCreateMessage = {
   id: string;
   role: AgentCreateMessageRole;

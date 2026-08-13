@@ -21,11 +21,12 @@ import type {
   AgentCreateMessage,
   AgentCreateSelectedMention,
   AgentCreateToolProgressStep,
+  AgentCreateUsageItem,
+  AgentCreateUsageSummary,
 } from "./model/agentCreateTypes";
 import { buildAgentCreateOutputArtifacts } from "./model/agentCreateOutputArtifacts";
 import {
   type AgentCreateDefaultProviders,
-  formatAgentCreateCost,
 } from "./model/agentCreateToolProgress";
 import { agentCreateClassNames, mentionTokenForLabel } from "./model/agentCreateUi";
 import {
@@ -145,6 +146,10 @@ export function AgentCreateSurface() {
     api.create.agent.listThreadOutputs,
     activeThreadId ? { threadId: activeThreadId } : "skip"
   );
+  const usageSummary = useQuery(
+    api.usage.records.threadSummary,
+    activeThreadId ? { threadId: activeThreadId } : "skip"
+  ) as AgentCreateUsageSummary | null | undefined;
 
   const resolvedModelByContentRequestId = useMemo(
     () => buildResolvedModelByContentRequestId(threadOutputs),
@@ -259,13 +264,10 @@ export function AgentCreateSurface() {
     }),
     [artifactsByToolCall, asyncStateLookup, defaultProviders, resolvedModelByContentRequestId, toolCalls]
   );
-  const threadCostLabel = useMemo(() => {
-    const total = toolCalls?.reduce((sum, toolCall) =>
-      sum + (typeof toolCall.costUsd === "number" ? toolCall.costUsd : 0),
-      0
-    ) ?? 0;
-    return total > 0 ? formatAgentCreateCost(total) : undefined;
-  }, [toolCalls]);
+  const checkpointUsageItems = useMemo<AgentCreateUsageItem[]>(
+    () => usageSummary?.items ?? [],
+    [usageSummary]
+  );
   const artifactsByMessage = useMemo(
     () => artifactsByMessageId({
       artifactsByToolCallId: artifactsByToolCall,
@@ -647,11 +649,12 @@ export function AgentCreateSurface() {
           showThinkingPlaceholder={showThinkingPlaceholder}
           visibleMessages={visibleMessages}
           workingMessageId={workingMessageId}
+          checkpointUsageItems={checkpointUsageItems}
         />
 
         <AgentCreateComposerDock
           checkpointMode={checkpointMode}
-          costTotalLabel={threadCostLabel}
+          usageSummary={usageSummary}
           isStopping={isStopping}
           isSubmitting={isSubmitting}
           isWorking={Boolean(activeThreadId && showActivity)}

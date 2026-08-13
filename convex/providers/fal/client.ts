@@ -50,6 +50,18 @@ function getFalApiKey(): string {
   return apiKey;
 }
 
+export function hasFalAdminApiKey() {
+  return Boolean(process.env.FAL_ADMIN_API_KEY?.trim());
+}
+
+function getFalAdminApiKey(): string {
+  const apiKey = process.env.FAL_ADMIN_API_KEY?.trim();
+  if (!apiKey) {
+    throw missingProviderConfiguration("model", FAL_PROVIDER, "FAL_ADMIN_API_KEY");
+  }
+  return apiKey;
+}
+
 function mapFalStatusCode(statusCode: number): ProviderErrorCode {
   if (statusCode === 400) return "validation";
   if (statusCode === 401) return "authentication";
@@ -135,12 +147,12 @@ function createFalTransportError(
   );
 }
 
-export async function falRequest<T>(
+async function falRequestWithApiKey<T>(
   operation: string,
   url: string,
+  apiKey: string,
   init?: RequestInit
 ): Promise<T> {
-  const apiKey = getFalApiKey();
   let response: Response;
   try {
     response = await fetch(url, {
@@ -185,6 +197,31 @@ export async function falRequest<T>(
       error
     );
   }
+}
+
+export async function falRequest<T>(
+  operation: string,
+  url: string,
+  init?: RequestInit
+): Promise<T> {
+  return await falRequestWithApiKey(operation, url, getFalApiKey(), init);
+}
+
+export async function falPlatformRequest<T>(
+  operation: string,
+  url: string,
+  init?: RequestInit
+): Promise<T> {
+  const apiKey = hasFalAdminApiKey() ? getFalAdminApiKey() : getFalApiKey();
+  return await falRequestWithApiKey(operation, url, apiKey, init);
+}
+
+export async function falAdminRequest<T>(
+  operation: string,
+  url: string,
+  init?: RequestInit
+): Promise<T> {
+  return await falRequestWithApiKey(operation, url, getFalAdminApiKey(), init);
 }
 
 export function createFalDryRunId(prefix: string): string {

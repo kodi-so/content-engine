@@ -30,6 +30,8 @@ import {
   type RosterModelOptionKey,
   type RosterModel,
 } from "../../../src/lib/generation/modelRoster";
+import { estimateResolvedGenerationCost } from "../../usage/costEstimation";
+import { recordToolEstimate } from "../../usage/records";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
 
@@ -415,9 +417,23 @@ export async function createGenerationRequestForToolCall(
     provider,
     referenceCount,
   });
+  const costEstimate = await estimateResolvedGenerationCost(ctx, {
+    count,
+    durationSeconds: mode === "video" ? durationSeconds : undefined,
+    mode,
+    modelId: effectiveModel,
+    nativeAudio,
+    options,
+    provider,
+    referenceCount,
+    referenceVideoCount: references.videoReferences.length,
+    textLength: effectiveBrief.length,
+  });
   const requestId = await ctx.db.insert("contentRequests", {
     userId: thread.userId,
     workspaceId: thread.workspaceId,
+    createThreadId: thread._id,
+    createToolCallId: toolCall._id,
     contentFormat: mode,
     prompt: brief,
     requestedRenderingMode: "background_plus_overlay",
@@ -444,9 +460,20 @@ export async function createGenerationRequestForToolCall(
     },
     referenceAssets: references.creativeAssetReferences,
     status: "queued",
+    estimatedCostUsd: costEstimate?.costUsd,
+    costEstimate,
     createdAt: now,
     updatedAt: now,
   });
+
+  if (costEstimate) {
+    await recordToolEstimate(ctx, {
+      thread,
+      toolCallId: toolCall._id,
+      category: mode,
+      estimate: costEstimate,
+    });
+  }
 
   await ctx.scheduler.runAfter(0, internal.content.requests.execute, { requestId });
 
@@ -508,6 +535,8 @@ export async function createSlideshowRequestForToolCall(
   const requestId = await ctx.db.insert("contentRequests", {
     userId: thread.userId,
     workspaceId: thread.workspaceId,
+    createThreadId: thread._id,
+    createToolCallId: toolCall._id,
     contentFormat: "slideshow",
     prompt: effectiveBrief,
     requestedRenderingMode,

@@ -162,6 +162,19 @@ export default defineSchema({
     .index("by_provider_category", ["provider", "category"])
     .index("by_provider_model", ["provider", "modelId"]),
 
+  providerPriceSnapshots: defineTable({
+    provider: modelProviderValidator,
+    endpointId: v.string(),
+    unitPriceUsd: v.number(),
+    unit: v.string(),
+    currency: v.string(),
+    raw: v.optional(v.any()),
+    fetchedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_provider_and_endpoint", ["provider", "endpointId"]),
+
   contentAnalyses: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
@@ -357,6 +370,8 @@ export default defineSchema({
   contentRequests: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
+    createThreadId: v.optional(v.id("createThreads")),
+    createToolCallId: v.optional(v.id("createToolCalls")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentFormat: contentFormatValidator,
     prompt: v.string(),
@@ -380,6 +395,8 @@ export default defineSchema({
     plan: v.optional(v.any()),
     planArtifactId: v.optional(v.id("artifacts")),
     summary: v.optional(v.string()),
+    estimatedCostUsd: v.optional(v.number()),
+    costEstimate: v.optional(v.any()),
     costUsd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
     startedAt: v.optional(v.number()),
@@ -446,6 +463,8 @@ export default defineSchema({
     input: v.optional(v.any()),
     output: v.optional(v.any()),
     artifactIds: v.optional(v.array(v.id("artifacts"))),
+    estimatedCostUsd: v.optional(v.number()),
+    costEstimate: v.optional(v.any()),
     costUsd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
     startedAt: v.optional(v.number()),
@@ -457,6 +476,58 @@ export default defineSchema({
     .index("by_workspace", ["workspaceId"])
     .index("by_thread", ["createThreadId"])
     .index("by_thread_status", ["createThreadId", "status"]),
+
+  usageEvents: defineTable({
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    createThreadId: v.optional(v.id("createThreads")),
+    createToolCallId: v.optional(v.id("createToolCalls")),
+    contentRequestId: v.optional(v.id("contentRequests")),
+    provider: modelProviderValidator,
+    modelId: v.string(),
+    operationKey: v.string(),
+    providerRequestId: v.optional(v.string()),
+    category: v.union(
+      v.literal("agent"),
+      v.literal("image"),
+      v.literal("video"),
+      v.literal("audio"),
+      v.literal("lipsync"),
+      v.literal("render"),
+      v.literal("other")
+    ),
+    eventKind: v.union(
+      v.literal("estimate"),
+      v.literal("provider_submission"),
+      v.literal("charge"),
+      v.literal("failure")
+    ),
+    source: v.union(
+      v.literal("pricing_snapshot"),
+      v.literal("static_pricing"),
+      v.literal("provider_metadata"),
+      v.literal("provider_billing_event")
+    ),
+    estimatedCostUsd: v.optional(v.number()),
+    actualCostUsd: v.optional(v.number()),
+    currency: v.string(),
+    quantity: v.optional(v.number()),
+    unit: v.optional(v.string()),
+    unitPriceUsd: v.optional(v.number()),
+    parameters: v.optional(v.any()),
+    priceSnapshot: v.optional(v.any()),
+    errorMessage: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_thread", ["createThreadId"])
+    .index("by_tool_call", ["createToolCallId"])
+    .index("by_content_request", ["contentRequestId"])
+    .index("by_operation", ["operationKey"])
+    .index("by_provider_request", ["provider", "providerRequestId"])
+    .index("by_provider_and_event_kind", ["provider", "eventKind"])
+    .index("by_workspace_and_created_at", ["workspaceId", "createdAt"]),
 
   createCheckpoints: defineTable({
     userId: v.string(),

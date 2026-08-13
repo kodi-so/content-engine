@@ -10,7 +10,10 @@ import type {
   AgentCreateMessage,
   AgentCreateSelectedMention,
   AgentCreateToolProgressStep,
+  AgentCreateUsageItem,
+  AgentCreateUsageSummary,
 } from "../model/agentCreateTypes";
+import { formatAgentCreateCost } from "../model/agentCreateToolProgress";
 
 export function AgentCreateConversationBody({
   activeThinkingStep,
@@ -27,6 +30,7 @@ export function AgentCreateConversationBody({
   showThinkingPlaceholder,
   visibleMessages,
   workingMessageId,
+  checkpointUsageItems,
   onArtifactDownload,
   onArtifactOpen,
   onArtifactOpenStudio,
@@ -49,6 +53,7 @@ export function AgentCreateConversationBody({
   showThinkingPlaceholder: boolean;
   visibleMessages: AgentCreateMessage[];
   workingMessageId?: string;
+  checkpointUsageItems?: AgentCreateUsageItem[];
   onArtifactDownload: (artifact: AgentCreateArtifact) => void;
   onArtifactOpen: (artifact: AgentCreateArtifact) => void;
   onArtifactOpenStudio: (artifact: AgentCreateArtifact) => void;
@@ -99,6 +104,7 @@ export function AgentCreateConversationBody({
           }
           onRevisionChange={(value) => onRevisionChange(checkpoint.id, value)}
           revisionValue={revisionNotes[checkpoint.id] ?? ""}
+          usageItems={checkpointUsageItems}
         />
       ))}
     </div>
@@ -107,7 +113,7 @@ export function AgentCreateConversationBody({
 
 export function AgentCreateComposerDock({
   checkpointMode,
-  costTotalLabel,
+  usageSummary,
   isStopping,
   isSubmitting,
   isWorking,
@@ -123,7 +129,7 @@ export function AgentCreateComposerDock({
   onSubmit,
 }: {
   checkpointMode: AgentCreateCheckpointMode;
-  costTotalLabel?: string;
+  usageSummary?: AgentCreateUsageSummary | null;
   isStopping: boolean;
   isSubmitting: boolean;
   isWorking: boolean;
@@ -141,10 +147,36 @@ export function AgentCreateComposerDock({
   return (
     <div className="fixed bottom-0 left-[13.5rem] right-0 z-30 bg-[linear-gradient(to_top,var(--color-page)_84%,var(--color-page)_68%,oklch(97%_0.02_230_/_0))] px-[clamp(1.25rem,2.5vw,2.75rem)] pb-[calc(env(safe-area-inset-bottom)+var(--space-2))] pt-[var(--space-8)] max-[900px]:left-0 max-[900px]:px-[var(--space-4)] max-[560px]:px-[var(--space-3)]">
       <div className="mx-auto grid w-full max-w-[54rem] gap-[var(--space-2)]">
-        {costTotalLabel ? (
-          <p className="m-0 justify-self-start rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-[var(--space-3)] py-1 text-[0.74rem] font-[740] text-[var(--color-ink-muted)] shadow-[var(--shadow-sm)]">
-            Generation cost this thread: {costTotalLabel}
-          </p>
+        {usageSummary && usageSummary.totalCostUsd > 0 ? (
+          <details className="group justify-self-start text-[0.74rem] text-[var(--color-ink-muted)]">
+            <summary className="cursor-pointer list-none px-1 py-0.5 font-[720] marker:hidden">
+              Usage · {usageSummary.actualCostUsd > 0
+                ? `${formatAgentCreateCost(usageSummary.actualCostUsd)} spent`
+                : "Nothing charged yet"}
+              {usageSummary.outstandingEstimatedCostUsd > 0
+                ? ` · ~${formatAgentCreateCost(usageSummary.totalCostUsd)} total`
+                : ""}
+            </summary>
+            <div className="mt-1 grid max-h-44 min-w-[22rem] gap-1 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-[var(--space-2)] shadow-[var(--shadow-sm)] max-[560px]:min-w-[calc(100vw-2rem)]">
+              {usageSummary.items.map((item) => {
+                const displayedCost = item.actualCostUsd ?? item.estimatedCostUsd;
+                if (displayedCost === undefined && item.outstandingEstimatedCostUsd <= 0) return null;
+                return (
+                  <div className="flex min-w-0 items-center justify-between gap-4 px-1 py-0.5" key={item.operationKey}>
+                    <span className="min-w-0 truncate">{item.label} · {item.modelId}</span>
+                    <span className="shrink-0 font-[720] text-[var(--color-ink)]">
+                      {item.actualCostUsd !== undefined
+                        ? formatAgentCreateCost(item.actualCostUsd)
+                        : `~${formatAgentCreateCost(displayedCost ?? 0)}`}
+                      {item.actualCostUsd !== undefined && item.outstandingEstimatedCostUsd > 0
+                        ? ` + ~${formatAgentCreateCost(item.outstandingEstimatedCostUsd)}`
+                        : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
         ) : null}
         <AgentCreatePrompt
           checkpointMode={checkpointMode}

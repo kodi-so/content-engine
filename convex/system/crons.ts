@@ -9,4 +9,16 @@ crons.interval(
   internal.accounts.autopilotScheduling.runDueAccountAutopilots
 );
 
+crons.interval(
+  "refresh fal model prices",
+  { hours: 6 },
+  internal.providers.fal.pricing.syncRosterPrices
+);
+
+crons.hourly(
+  "reconcile fal billing events",
+  { minuteUTC: 35 },
+  internal.providers.fal.billing.reconcileRecentBillingEvents
+);
+
 export default crons;

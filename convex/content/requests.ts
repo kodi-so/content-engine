@@ -20,6 +20,7 @@ import {
   resolveWritableWorkspace,
 } from "../workspaces/workspaces";
 import {
+  imageModelForProviderRenderingMode,
   referenceInstructionFromMetadata,
   requestedRenderingModeValidator,
 } from "./requestExecution/requestExecutionHelpers";
@@ -50,6 +51,13 @@ import {
   rosterOptionsForModel,
   type RosterModelOptionKey,
 } from "../../src/lib/generation/modelRoster";
+import { estimateResolvedGenerationCost } from "../usage/costEstimation";
+import {
+  insertUsageEvent,
+  recordContentRequestCostDelta,
+  recordToolEstimate,
+  type UsageCategory,
+} from "../usage/records";
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
@@ -154,6 +162,36 @@ function contentFormatForGenerationMode(mode: CreateGenerationMode) {
     case "slideshow":
       return "slideshow";
   }
+}
+
+function requestProviderForMode(
+  workspace: Doc<"workspaces">,
+  mode: CreateGenerationMode,
+  explicitProvider?: Doc<"providerModels">["provider"]
+) {
+  if (explicitProvider) return explicitProvider;
+  const settings = workspace.aiGenerationSettings;
+  if (mode === "image" || mode === "slideshow") return settings?.imageProvider ?? "fal";
+  if (mode === "video") return settings?.videoProvider ?? "fal";
+  if (mode === "audio") return settings?.audioProvider ?? "fal";
+  return settings?.lipsyncProvider ?? "fal";
+}
+
+function requestModelForMode(
+  workspace: Doc<"workspaces">,
+  mode: CreateGenerationMode,
+  explicitModel?: string
+) {
+  if (explicitModel?.trim()) return explicitModel.trim();
+  const settings = workspace.aiGenerationSettings;
+  if (mode === "image" || mode === "slideshow") return settings?.imageModel;
+  if (mode === "video") return settings?.videoModel;
+  if (mode === "audio") return settings?.audioModel;
+  return settings?.lipsyncModel;
+}
+
+function usageCategoryForGenerationMode(mode: CreateGenerationMode): UsageCategory {
+  return mode === "slideshow" ? "image" : mode;
 }
 
 export const list = query({
@@ -270,6 +308,22 @@ export const createGeneration = mutation({
       options: args.options,
       workspace,
     });
+    const provider = requestProviderForMode(workspace, args.mode, args.provider);
+    const model = requestModelForMode(workspace, args.mode, args.model);
+    const estimate = args.mode === "slideshow" || !model
+      ? undefined
+      : await estimateResolvedGenerationCost(ctx, {
+          count: args.count,
+          durationSeconds: args.durationSeconds,
+          mode: args.mode,
+          modelId: model,
+          nativeAudio: args.nativeAudio,
+          options,
+          provider,
+          referenceCount: (args.referenceImages?.length ?? 0) + (args.referenceVideos?.length ?? 0),
+          referenceVideoCount: args.referenceVideos?.length,
+          textLength: prompt.length,
+        });
     const requestId = await ctx.db.insert("contentRequests", {
       userId,
       workspaceId: workspace._id,
@@ -279,8 +333,8 @@ export const createGeneration = mutation({
       requestedRenderingMode: args.requestedRenderingMode ?? "background_plus_overlay",
       generation: {
         mode: args.mode,
-        provider: args.provider,
-        model: args.model?.trim() || undefined,
+        provider,
+        model,
         generationOperation: args.generationOperation?.trim() || undefined,
         providerInput: args.providerInput,
         aspectRatio: args.aspectRatio,
@@ -296,9 +350,35 @@ export const createGeneration = mutation({
       },
       referenceAssets,
       status: "queued",
+      estimatedCostUsd: estimate?.costUsd,
+      costEstimate: estimate,
       createdAt: now,
       updatedAt: now,
     });
+
+    if (estimate) {
+      await insertUsageEvent(ctx, {
+        userId,
+        workspaceId: workspace._id,
+        contentRequestId: requestId,
+        provider,
+        modelId: estimate.modelId,
+        operationKey: `content-request:${requestId}`,
+        category: usageCategoryForGenerationMode(args.mode),
+        eventKind: "estimate",
+        source: estimate.source,
+        estimatedCostUsd: estimate.costUsd,
+        quantity: estimate.quantity,
+        unit: estimate.unit,
+        unitPriceUsd: estimate.unitPriceUsd,
+        parameters: estimate.parameters,
+        priceSnapshot: {
+          accuracy: estimate.accuracy,
+          modelLabel: estimate.modelLabel,
+          pricingVersion: estimate.pricingVersion,
+        },
+      });
+    }
 
     await ctx.scheduler.runAfter(0, internal.content.requests.execute, { requestId });
     return requestId;
@@ -506,6 +586,12 @@ export const transition = internalMutation({
     if (args.completedAt !== undefined) patch.completedAt = args.completedAt;
 
     await ctx.db.patch(args.requestId, patch);
+    if (args.costUsd !== undefined) {
+      await recordContentRequestCostDelta(ctx, {
+        ...current,
+        ...patch,
+      }, args.costUsd);
+    }
     if (
       args.status === "ready" ||
       args.status === "failed" ||
@@ -516,6 +602,62 @@ export const transition = internalMutation({
         contentRequestId: args.requestId,
       });
     }
+  },
+});
+
+export const recordSlideshowImageEstimate = internalMutation({
+  args: {
+    requestId: v.id("contentRequests"),
+    createThreadId: v.id("createThreads"),
+    createToolCallId: v.id("createToolCalls"),
+    imageCount: v.number(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const [request, thread, toolCall] = await Promise.all([
+      ctx.db.get(args.requestId),
+      ctx.db.get(args.createThreadId),
+      ctx.db.get(args.createToolCallId),
+    ]);
+    if (
+      !request ||
+      !thread ||
+      !toolCall ||
+      toolCall.createThreadId !== thread._id ||
+      (thread.workspaceId
+        ? request.workspaceId !== thread.workspaceId
+        : request.userId !== thread.userId)
+    ) {
+      return false;
+    }
+    const renderingMode = request.requestedRenderingMode ?? "background_plus_overlay";
+    const provider = request.generation?.provider ?? "fal";
+    const model = request.generation?.model?.trim() ||
+      imageModelForProviderRenderingMode(provider, renderingMode);
+    const estimate = provider === "fal" && model && args.imageCount > 0
+      ? await estimateResolvedGenerationCost(ctx, {
+          allowBatchCount: true,
+          count: args.imageCount,
+          mode: "image",
+          modelId: model,
+          options: { resolution: "2K" },
+          provider,
+          referenceCount: request.referenceAssets?.length ?? 0,
+        })
+      : undefined;
+    if (!estimate) return false;
+    await ctx.db.patch(request._id, {
+      estimatedCostUsd: estimate.costUsd,
+      costEstimate: estimate,
+      updatedAt: Date.now(),
+    });
+    await recordToolEstimate(ctx, {
+      thread,
+      toolCallId: toolCall._id,
+      category: "image",
+      estimate,
+    });
+    return true;
   },
 });
 

@@ -17,6 +17,8 @@ import {
   rosterModelById,
   type RosterModelMode,
 } from "../../../src/lib/generation/modelRoster";
+import { estimateToolCallCost } from "../../usage/costEstimation";
+import { recordToolEstimate, type UsageCategory } from "../../usage/records";
 
 function requiresDebugReviewBeforeExecution(toolCall: CreatePlannedToolCall) {
   const tool = toolDescriptorMap().get(toolCall.toolName);
@@ -71,6 +73,12 @@ function modelModeForToolName(toolName: string): RosterModelMode | undefined {
   if (toolName === "media.generateAudio") return "audio";
   if (toolName === "media.lipsync") return "lipsync";
   return undefined;
+}
+
+function usageCategoryForToolName(toolName: string): UsageCategory {
+  return modelModeForToolName(toolName) ??
+    (toolName === "slideshow.render" ? "image" :
+      toolName === "media.renderVideo" || toolName === "studio.render" ? "render" : "other");
 }
 
 function currentModelOverrideForTool(
@@ -216,6 +224,20 @@ export async function recordPlannedTools(
       createdAt: now,
       updatedAt: now,
     });
+    const estimate = await estimateToolCallCost(
+      ctx,
+      thread,
+      plannedCall.toolName,
+      input
+    );
+    if (estimate) {
+      await recordToolEstimate(ctx, {
+        thread,
+        toolCallId: id,
+        category: usageCategoryForToolName(plannedCall.toolName),
+        estimate,
+      });
+    }
     insertedCalls.push({
       id,
       input,

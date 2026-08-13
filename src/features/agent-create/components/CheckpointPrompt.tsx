@@ -1,7 +1,11 @@
 import { Check, MessageSquareText, X } from "lucide-react";
 import { LoadingSignal } from "../../../components/ui";
 import { AgentCreateArtifactGrid } from "./AgentCreateArtifactCard";
-import type { AgentCreateCheckpoint } from "../model/agentCreateTypes";
+import type {
+  AgentCreateCheckpoint,
+  AgentCreateUsageItem,
+} from "../model/agentCreateTypes";
+import { formatAgentCreateCost } from "../model/agentCreateToolProgress";
 
 type SlideshowPromptReviewItem = {
   slideIndex: number;
@@ -30,6 +34,11 @@ function slideshowPromptReviewItems(data: unknown): SlideshowPromptReviewItem[] 
   });
 }
 
+function slideshowPromptReviewToolCallId(data: unknown) {
+  if (!isRecord(data) || data.kind !== "slideshow_prompt_review") return undefined;
+  return typeof data.createToolCallId === "string" ? data.createToolCallId : undefined;
+}
+
 export function CheckpointPrompt({
   checkpoint,
   disabled = false,
@@ -39,6 +48,7 @@ export function CheckpointPrompt({
   onRevise,
   onRevisionChange,
   revisionValue = "",
+  usageItems = [],
 }: {
   checkpoint: AgentCreateCheckpoint;
   disabled?: boolean;
@@ -48,9 +58,22 @@ export function CheckpointPrompt({
   onRevise?: (checkpoint: AgentCreateCheckpoint, instructions: string) => void;
   onRevisionChange?: (value: string) => void;
   revisionValue?: string;
+  usageItems?: AgentCreateUsageItem[];
 }) {
   const canRevise = Boolean(onRevise && revisionValue.trim());
   const slideshowPrompts = slideshowPromptReviewItems(checkpoint.data);
+  const slideshowToolCallId = slideshowPromptReviewToolCallId(checkpoint.data);
+  const quotedUsageItems = usageItems.filter((item) =>
+    item.estimatedCostUsd !== undefined &&
+    item.outstandingEstimatedCostUsd > 0 &&
+    (slideshowToolCallId
+      ? item.createToolCallId === slideshowToolCallId
+      : item.status === "queued")
+  );
+  const estimatedCostUsd = quotedUsageItems.reduce(
+    (sum, item) => sum + item.outstandingEstimatedCostUsd,
+    0
+  );
 
   return (
     <section className="grid min-w-0 gap-[var(--space-4)] rounded-[var(--radius-md)] border border-[oklch(70%_0.105_155_/_0.45)] bg-[oklch(97%_0.025_155)] p-[var(--space-4)]">
@@ -63,6 +86,31 @@ export function CheckpointPrompt({
           {checkpoint.message}
         </p>
       </div>
+
+      {estimatedCostUsd > 0 ? (
+        <details className="group border-y border-[var(--color-border-subtle)] py-[var(--space-2)]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[0.78rem] text-[var(--color-ink-muted)] marker:hidden">
+            <span>
+              {quotedUsageItems.length} paid {quotedUsageItems.length === 1 ? "step" : "steps"} · estimated ~{formatAgentCreateCost(estimatedCostUsd)}
+            </span>
+            <span className="text-[0.7rem] font-[760] text-[var(--color-ink-soft)] group-open:hidden">
+              Details
+            </span>
+          </summary>
+          <div className="grid gap-2 pt-[var(--space-2)]">
+            {quotedUsageItems.map((item) => (
+              <div className="flex min-w-0 items-start justify-between gap-4 text-[0.75rem]" key={item.operationKey}>
+                <span className="min-w-0 truncate text-[var(--color-ink-muted)]">
+                  {item.label} · {item.modelId}
+                </span>
+                <span className="shrink-0 font-[740] text-[var(--color-ink)]">
+                  ~{formatAgentCreateCost(item.outstandingEstimatedCostUsd)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
 
       {checkpoint.artifacts?.length ? (
         <AgentCreateArtifactGrid artifacts={checkpoint.artifacts} />
@@ -138,7 +186,7 @@ export function CheckpointPrompt({
           type="button"
         >
           {isPending ? <LoadingSignal label="Approving" size="sm" /> : <Check size={16} />}
-          Approve
+          Approve{estimatedCostUsd > 0 ? ` · ~${formatAgentCreateCost(estimatedCostUsd)}` : ""}
         </button>
         {onRevise ? (
           <button

@@ -141,9 +141,9 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function slideshowDebugContext(generation: CreateGenerationPayload | null) {
+function slideshowAgentContext(generation: CreateGenerationPayload | null) {
   const providerInput = recordValue(generation?.providerInput);
-  if (providerInput?.debugPauseAfterPlanning !== true) return null;
+  if (!providerInput) return null;
   const createThreadId = typeof providerInput.createThreadId === "string"
     ? providerInput.createThreadId as Id<"createThreads">
     : undefined;
@@ -151,7 +151,11 @@ function slideshowDebugContext(generation: CreateGenerationPayload | null) {
     ? providerInput.createToolCallId as Id<"createToolCalls">
     : undefined;
   if (!createThreadId) return null;
-  return { createThreadId, createToolCallId };
+  return {
+    createThreadId,
+    createToolCallId,
+    debugPauseAfterPlanning: providerInput.debugPauseAfterPlanning === true,
+  };
 }
 
 function previewTextBlocksForSlide(slide: SlideshowPlan["slides"][number]) {
@@ -340,7 +344,13 @@ export async function executeContentRequest(
     });
 
     const requestedRenderingMode = (context.request.requestedRenderingMode ?? "background_plus_overlay") as RequestedRenderingMode;
-    const plannerReferences = context.referenceAssets.map(({ asset, instruction }) =>
+    const plannerReferences = context.referenceAssets.map(({
+      asset,
+      instruction,
+    }: {
+      asset: Doc<"creativeAssets">;
+      instruction?: string;
+    }) =>
       plannerReferenceFromAsset(asset, instruction)
     );
     let plan = context.request.plan as SlideshowPlan | undefined;
@@ -421,12 +431,20 @@ export async function executeContentRequest(
         costUsd,
       });
 
-      const debugContext = slideshowDebugContext(generation);
-      if (debugContext) {
+      const agentContext = slideshowAgentContext(generation);
+      if (agentContext?.createToolCallId) {
+        await ctx.runMutation(internal.content.requests.recordSlideshowImageEstimate, {
+          requestId: args.requestId,
+          createThreadId: agentContext.createThreadId,
+          createToolCallId: agentContext.createToolCallId,
+          imageCount: plan.slides.length,
+        });
+      }
+      if (agentContext?.debugPauseAfterPlanning) {
         await ctx.runMutation(internal.content.requests.pauseSlideshowForDebugPromptReview, {
           requestId: args.requestId,
-          createThreadId: debugContext.createThreadId,
-          createToolCallId: debugContext.createToolCallId,
+          createThreadId: agentContext.createThreadId,
+          createToolCallId: agentContext.createToolCallId,
           specArtifactId,
           prompts: promptReviewItemsForPlan(plan),
         });
@@ -454,7 +472,11 @@ export async function executeContentRequest(
       costUsd,
     });
 
-    const referenceAssets = context.referenceAssets.map(({ asset }) => asset);
+    const referenceAssets = context.referenceAssets.map(({
+      asset,
+    }: {
+      asset: Doc<"creativeAssets">;
+    }) => asset);
     const anySlideUsesReferences = plan.slides.some((slide) => slide.useReferenceImage === true);
     const referenceImages = anySlideUsesReferences
       ? await referenceImagesFromAssets(referenceAssets)
@@ -502,6 +524,19 @@ export async function executeContentRequest(
             renderingMode: plan.renderingMode,
             useReferenceImage: slide.useReferenceImage === true,
             referenceAssetIds,
+          },
+        });
+        await ctx.runMutation(internal.usage.records.recordProviderExecution, {
+          contentRequestId: args.requestId,
+          provider: image.metadata.provider,
+          modelId: image.metadata.model,
+          providerRequestId: image.jobId,
+          actualCostUsd: image.metadata.costUsd,
+          parameters: {
+            count: 1,
+            resolution: "2K",
+            renderingMode: plan.renderingMode,
+            useReferenceImage: slide.useReferenceImage === true,
           },
         });
         costUsd = sumCost(costUsd, image.metadata);

@@ -66,6 +66,7 @@ npx convex env set CLERK_JWT_ISSUER_DOMAIN "https://..."
 npx convex env set BETA_ACCESS_EMAILS "you@example.com"
 npx convex env set OPENROUTER_API_KEY "..."
 npx convex env set FAL_API_KEY "..."
+npx convex env set FAL_ADMIN_API_KEY "..." # optional: exact fal billing reconciliation
 npx convex env set GEMINI_API_KEY "..."
 npx convex env set BULKAPIS_API_KEY "..."
 npx convex env set POSTIZ_API_KEY "..."

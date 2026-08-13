@@ -233,8 +233,8 @@ export const ROSTER_MODELS: RosterModel[] = [
     maxReferenceImages: 1,
     pricing: {
       kind: "variable",
-      label: "from $0.01/image",
-      notes: "Quality and resolution significantly affect cost; high 4K can be about $0.41/image.",
+      label: "from $0.005/image",
+      notes: "Quality, resolution, and editing affect cost; high-quality 4K edits can be about $0.41/image.",
     },
     options: {
       quality: {
@@ -325,8 +325,8 @@ export const ROSTER_MODELS: RosterModel[] = [
     maxReferenceImages: 9,
     pricing: {
       kind: "variable",
-      label: "Pricing varies",
-      notes: "Seedance 2.0 reference pricing is endpoint and request dependent.",
+      label: "from $0.3034/s",
+      notes: "720p is $0.3034/s and 1080p is $0.682/s; video-reference input receives a lower rate.",
     },
     strengths: "Reference-heavy multimodal video route with native audio and multi-shot continuity.",
   },
@@ -437,9 +437,9 @@ export const ROSTER_MODELS: RosterModel[] = [
     aliases: ["xai tts", "tts", "voiceover"],
     falModelId: "fal-ai/xai/tts/v1",
     pricing: {
-      kind: "variable",
-      label: "Pricing varies",
-      notes: "No simple public FAL rate was available in the model page surface.",
+      kind: "perThousandCharacters",
+      costPerThousandCharactersUsd: 0.015,
+      label: "$0.015/1K chars",
     },
     strengths: "Default text-to-speech route for quick narration and spoken audio.",
     isDefault: true,

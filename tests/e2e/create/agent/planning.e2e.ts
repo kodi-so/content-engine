@@ -57,6 +57,8 @@ import {
 } from "../../../../src/lib/generation/modelRoster";
 import { shouldRenderAgentCreateMessage } from "../../../../src/features/agent-create/model/agentCreateSurfaceModel";
 import { nextAutopilotRunAt } from "../../../../convex/accounts/accountCadence";
+import { estimateGenerationCost } from "../../../../src/lib/generation/costEstimation";
+import { buildThreadUsageSummary } from "../../../../convex/usage/threadSummary";
 
 function userMessage(
   content: string,
@@ -170,6 +172,119 @@ assert.deepEqual(rosterModelIds(rosterModelById("sora-2")!), [
   "fal-ai/sora-2/text-to-video",
   "fal-ai/sora-2/image-to-video",
 ]);
+
+assert.equal(estimateGenerationCost({
+  provider: "fal",
+  mode: "image",
+  modelId: "fal-ai/nano-banana-2",
+  count: 2,
+  options: { resolution: "4K", webSearch: true },
+})?.costUsd, 0.35);
+assert.equal(estimateGenerationCost({
+  provider: "fal",
+  mode: "video",
+  modelId: "fal-ai/kling-video/v3/pro/text-to-video",
+  durationSeconds: 10,
+  nativeAudio: true,
+})?.costUsd, 1.68);
+assert.equal(estimateGenerationCost({
+  provider: "fal",
+  mode: "video",
+  modelId: "fal-ai/veo3.1",
+  durationSeconds: 8,
+  nativeAudio: true,
+  options: { resolution: "4K" },
+})?.costUsd, 4.8);
+assert.equal(estimateGenerationCost({
+  provider: "fal",
+  mode: "image",
+  modelId: "fal-ai/not-a-real-model",
+}), undefined);
+assert.equal(estimateGenerationCost({
+  allowBatchCount: true,
+  provider: "fal",
+  mode: "image",
+  modelId: "fal-ai/nano-banana-2",
+  count: 7,
+  options: { resolution: "2K" },
+})?.costUsd, 0.84);
+
+const threadUsageSummary = buildThreadUsageSummary({
+  thread: {
+    _id: "thread_1",
+    status: "ready",
+  } as unknown as Doc<"createThreads">,
+  toolCalls: [{
+    _id: "tool_1",
+    createThreadId: "thread_1",
+    label: "Generate image",
+    status: "succeeded",
+  }] as unknown as Doc<"createToolCalls">[],
+  events: [{
+    createToolCallId: "tool_1",
+    operationKey: "fal:req_1",
+    eventKind: "charge",
+    actualCostUsd: 0.13,
+    category: "image",
+    modelId: "fal-ai/nano-banana-2",
+  }, {
+    createToolCallId: "tool_1",
+    operationKey: "fal:req_1",
+    eventKind: "charge",
+    actualCostUsd: 0.12,
+    category: "image",
+    modelId: "fal-ai/nano-banana-2",
+  }, {
+    createToolCallId: "tool_1",
+    operationKey: "tool:tool_1",
+    eventKind: "estimate",
+    estimatedCostUsd: 0.12,
+    category: "image",
+    modelId: "fal-ai/nano-banana-2",
+  }, {
+    operationKey: "agent:decision",
+    eventKind: "charge",
+    actualCostUsd: 0.01,
+    category: "agent",
+    modelId: "openai/gpt-4.1",
+  }] as unknown as Doc<"usageEvents">[],
+});
+assert.equal(threadUsageSummary.actualCostUsd, 0.14);
+assert.equal(threadUsageSummary.outstandingEstimatedCostUsd, 0);
+assert.equal(threadUsageSummary.totalCostUsd, 0.14);
+assert.equal(threadUsageSummary.isFinal, true);
+
+const inProgressSlideshowUsage = buildThreadUsageSummary({
+  thread: {
+    _id: "thread_2",
+    status: "waiting_for_user",
+  } as unknown as Doc<"createThreads">,
+  toolCalls: [{
+    _id: "tool_2",
+    createThreadId: "thread_2",
+    label: "Render slideshow",
+    status: "succeeded",
+  }] as unknown as Doc<"createToolCalls">[],
+  events: [{
+    createToolCallId: "tool_2",
+    operationKey: "tool:tool_2",
+    eventKind: "estimate",
+    estimatedCostUsd: 0.84,
+    category: "image",
+    modelId: "fal-ai/nano-banana-2",
+  }, {
+    createToolCallId: "tool_2",
+    operationKey: "content-request:planning",
+    eventKind: "charge",
+    actualCostUsd: 0.02,
+    category: "agent",
+    modelId: "openai/gpt-4.1",
+  }] as unknown as Doc<"usageEvents">[],
+});
+assert.equal(inProgressSlideshowUsage.actualCostUsd, 0.02);
+assert.equal(inProgressSlideshowUsage.outstandingEstimatedCostUsd, 0.84);
+assert.equal(inProgressSlideshowUsage.totalCostUsd, 0.86);
+assert.equal(inProgressSlideshowUsage.isFinal, false);
 
 assert.throws(
   () => normalizeAgentDecision(`Here is the JSON:\n${JSON.stringify({

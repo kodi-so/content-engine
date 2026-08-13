@@ -27,6 +27,7 @@ import {
   providerInputForGenerationSubmit,
 } from "../features/create/createSubmitPayload";
 import { useCreateReferenceFiles } from "../features/create/useCreateReferenceFiles";
+import { useCreateGenerationEstimate } from "../features/create/useCreateGenerationEstimate";
 import {
   generationOperationForConfig,
   generationOperationsForNodeType,
@@ -61,6 +62,7 @@ import {
   generationDefaultForMode,
   generationModeForCreateMode,
 } from "../lib/providers/aiGenerationDefaults";
+import { formatGenerationCost } from "../lib/generation/costEstimation";
 
 export function CreateToolsPage() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
@@ -186,6 +188,15 @@ export function CreateToolsPage() {
           fields: generationFields,
         })
     : Boolean(currentPrompt);
+  const generationEstimate = useCreateGenerationEstimate({
+    currentPrompt,
+    generationConfig,
+    generationOperationId: selectedGenerationOperation?.id,
+    mode,
+    provider: selectedGenerationProvider,
+    selectedModel,
+    selectedRosterModel,
+  });
 
   useEffect(() => {
     if (!rosterMode) return;
@@ -548,9 +559,18 @@ export function CreateToolsPage() {
               )}
               {isSubmitting
                 ? "Creating"
-                : `Create ${mode}`}
+                : `Create ${mode}${generationEstimate
+                    ? ` · ~${formatGenerationCost(generationEstimate.costUsd)}`
+                    : ""}`}
               <ArrowRight size={16} />
             </button>
+            {activeRequest && (activeRequest.costUsd !== undefined || activeRequest.estimatedCostUsd !== undefined) ? (
+              <p className="m-0 text-[0.76rem] text-[var(--color-ink-muted)]">
+                {activeRequest.costUsd !== undefined ? "Charged" : "Estimated"} {activeRequest.costUsd === undefined ? "~" : ""}
+                {formatGenerationCost(activeRequest.costUsd ?? activeRequest.estimatedCostUsd ?? 0)}
+                {activeRequest.generation?.model ? ` · ${activeRequest.generation.model}` : ""}
+              </p>
+            ) : null}
             {status && <p className="muted">{status}</p>}
 
             {activeSlideshow && activeRequest?.status === "ready" ? (

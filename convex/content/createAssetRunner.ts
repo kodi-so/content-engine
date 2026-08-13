@@ -138,6 +138,28 @@ function defaultTitle(prompt: string, fallback: string) {
   return cleanPrompt.length > 58 ? `${cleanPrompt.slice(0, 58)}...` : cleanPrompt;
 }
 
+async function recordProviderExecution(
+  ctx: ActionCtx,
+  args: {
+    contentRequestId?: Id<"contentRequests">;
+    provider: ModelProviderName;
+    modelId: string;
+    providerRequestId?: string;
+    actualCostUsd?: number;
+    parameters?: Record<string, unknown>;
+  }
+) {
+  if (!args.contentRequestId) return;
+  await ctx.runMutation(internal.usage.records.recordProviderExecution, {
+    contentRequestId: args.contentRequestId,
+    provider: args.provider,
+    modelId: args.modelId,
+    providerRequestId: args.providerRequestId,
+    actualCostUsd: args.actualCostUsd,
+    parameters: args.parameters,
+  });
+}
+
 export async function runCreateImageRequest(
   ctx: ActionCtx,
   args: CreateImageRunnerInput
@@ -200,6 +222,19 @@ export async function runCreateImageRequest(
       referenceImageCount: referenceImages.length,
       arguments: providerArguments,
       bulkapisInput: providerArguments,
+    },
+  });
+  await recordProviderExecution(ctx, {
+    contentRequestId: args.contentRequestId,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    parameters: {
+      count,
+      aspectRatio: args.aspectRatio,
+      options: args.options,
+      referenceImageCount: referenceImages.length,
     },
   });
 
@@ -311,6 +346,20 @@ export async function runCreateVideoRequest(
       bulkapisInput: providerInput,
     },
   });
+  await recordProviderExecution(ctx, {
+    contentRequestId: args.contentRequestId,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    parameters: {
+      durationSeconds: args.durationSeconds,
+      nativeAudio: args.nativeAudio,
+      options: args.options,
+      referenceImageCount: referenceImages.length,
+      referenceVideoCount: referenceVideos.length,
+    },
+  });
   const video = await waitForGeneratedVideo(provider, {
     jobId: result.jobId,
     model: result.metadata.model,
@@ -404,6 +453,17 @@ export async function runCreateAudioRequest(
         mode: args.mode,
         ...providerInput,
       },
+    },
+  });
+  await recordProviderExecution(ctx, {
+    contentRequestId: args.contentRequestId,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    parameters: {
+      characterCount: text.length,
+      mode: args.mode,
     },
   });
   const generatedAudios = [...result.audios];
@@ -503,6 +563,19 @@ export async function runCreateLipsyncRequest(
       hasAudioInput: Boolean(audio),
       arguments: providerInput,
       bulkapisInput: providerInput,
+    },
+  });
+  await recordProviderExecution(ctx, {
+    contentRequestId: args.contentRequestId,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    parameters: {
+      resolution: args.resolution,
+      hasImageInput: Boolean(image),
+      hasVideoInput: Boolean(video),
+      hasAudioInput: Boolean(audio),
     },
   });
   const videoAsset = await waitForGeneratedVideo(provider, {

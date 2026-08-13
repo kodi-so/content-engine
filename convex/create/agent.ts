@@ -610,7 +610,7 @@ export const decideAgentTurn = internalAction({
       } else if (lastDroppedMessage) {
         try {
           const previousSummaryIndex = context.thread.contextSummaryThroughMessageId
-            ? droppedMessages.findIndex((message) =>
+            ? droppedMessages.findIndex((message: Doc<"createMessages">) =>
                 message._id === context.thread.contextSummaryThroughMessageId
               )
             : -1;
@@ -618,7 +618,7 @@ export const decideAgentTurn = internalAction({
             ? droppedMessages.slice(previousSummaryIndex + 1)
             : droppedMessages;
           const droppedTranscript = messagesToSummarize
-            .map((message) => `${message.role}: ${message.content}`)
+            .map((message: Doc<"createMessages">) => `${message.role}: ${message.content}`)
             .join("\n\n");
           const trimmedDroppedTranscript = droppedTranscript.trim();
           if (!trimmedDroppedTranscript && context.thread.contextSummary) {
@@ -643,6 +643,14 @@ export const decideAgentTurn = internalAction({
                 createMessageId: String(args.userMessageId),
                 toolName: "create.agent.summarize_context",
               },
+            });
+            await ctx.runMutation(internal.usage.records.recordAgentCharge, {
+              threadId: args.threadId,
+              provider: summaryResult.metadata.provider,
+              modelId: summaryResult.metadata.model,
+              operationKey: `agent:${args.decisionRunId}:context-summary`,
+              actualCostUsd: summaryResult.metadata.costUsd,
+              parameters: { maxTokens: 600, operation: "context_summary" },
             });
             earlierConversationSummary = summaryResult.text.trim();
           }
@@ -713,6 +721,15 @@ export const decideAgentTurn = internalAction({
           },
         ]);
       }
+
+      await ctx.runMutation(internal.usage.records.recordAgentCharge, {
+        threadId: args.threadId,
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        operationKey: `agent:${args.decisionRunId}:decision`,
+        actualCostUsd: result.metadata.costUsd,
+        parameters: { maxTokens: 4000, operation: "decision" },
+      });
 
       await ctx.runMutation(internal.create.agent.applyAgentDecision, {
         checkpointMode: args.checkpointMode,
