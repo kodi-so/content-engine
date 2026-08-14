@@ -305,6 +305,7 @@ export default defineSchema({
     username: v.string(),
     displayName: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
     status: socialAccountStatusValidator,
     capabilities: v.optional(v.array(v.string())),
     metadata: v.optional(v.any()),

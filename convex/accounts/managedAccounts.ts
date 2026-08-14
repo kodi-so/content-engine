@@ -9,6 +9,7 @@ import {
 } from "../validators";
 import { requireAccountPostAccess, requireSocialAccountAccess } from "./accountAccess";
 import { nextAutopilotRunAt } from "./accountCadence";
+import { withResolvedAccountAvatar } from "./profileImages";
 
 export const get = query({
   args: { id: v.id("socialAccounts") },
@@ -45,7 +46,7 @@ export const get = query({
     const pendingApprovalCount = posts.filter((post) => post.status === "awaiting_approval").length;
     const publishedCount = posts.filter((post) => post.status === "published").length;
     return {
-      account,
+      account: await withResolvedAccountAvatar(ctx, account),
       insights,
       pendingApprovalCount,
       posts,

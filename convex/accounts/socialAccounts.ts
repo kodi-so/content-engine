@@ -15,6 +15,7 @@ import {
   publishingProviderValidator,
   socialAccountStatusValidator,
 } from "../validators";
+import { withResolvedAccountAvatar } from "./profileImages";
 
 type UpsertSyncedAccountsResult = {
   disconnected: number;
@@ -40,20 +41,25 @@ export const list = query({
     const identity = await requireBetaAccess(ctx);
     if (!identity) return [];
 
+    let accounts;
     if (args.workspaceId) {
       await requireWorkspaceMember(ctx, args.workspaceId, identity.subject);
-      return await ctx.db
+      accounts = await ctx.db
         .query("socialAccounts")
         .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
         .order("desc")
         .take(200);
+    } else {
+      accounts = await ctx.db
+        .query("socialAccounts")
+        .withIndex("by_user", (q) => q.eq("userId", identity.subject))
+        .order("desc")
+        .take(200);
     }
 
-    return await ctx.db
-      .query("socialAccounts")
-      .withIndex("by_user", (q) => q.eq("userId", identity.subject))
-      .order("desc")
-      .take(200);
+    return await Promise.all(
+      accounts.map((account) => withResolvedAccountAvatar(ctx, account))
+    );
   },
 });
 
@@ -504,6 +510,9 @@ export const remove = mutation({
         accountAgentRunId: undefined,
         updatedAt: Date.now(),
       });
+    }
+    if (account.avatarStorageId) {
+      await ctx.storage.delete(account.avatarStorageId);
     }
     await ctx.db.delete(args.id);
     return null;

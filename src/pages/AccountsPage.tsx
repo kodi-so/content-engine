@@ -9,17 +9,19 @@ import {
   Settings2,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Field, LoadingState, Page, Select } from "../components/ui";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import { AccountsTable } from "../features/accounts/AccountsTable";
+import { AccountAvatar } from "../features/accounts/AccountAvatar";
 import { ManagedAccountInspector } from "../features/accounts/ManagedAccountInspector";
 import {
   ACCOUNT_CREATION_PLATFORMS,
   PLATFORM_LABELS,
+  accountProfileImageNeedsSync,
   aggregateMetricsByAccount,
   platformLabel,
   type AccountCredentials,
@@ -45,14 +47,6 @@ function syncErrorMessage(error: unknown, providerLabel: string): string {
   return message || `${providerLabel} account sync failed.`;
 }
 
-function AccountAvatar({ account }: { account: SocialAccount }) {
-  return account.avatarUrl ? (
-    <img alt="" className="size-9 shrink-0 rounded-full border border-[var(--color-border)] object-cover" src={account.avatarUrl} />
-  ) : (
-    <span className="grid size-9 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-ink-faint)]"><Bot size={15} /></span>
-  );
-}
-
 export function AccountsPage() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -71,6 +65,7 @@ export function AccountsPage() {
   const updateAccountCredentials = useMutation(api.accounts.socialAccounts.updateCredentials);
   const deleteAccount = useMutation(api.accounts.socialAccounts.remove);
   const syncProviderAccounts = useAction(api.accounts.socialAccounts.syncProviderAccounts);
+  const syncProfileImages = useAction(api.accounts.profileImages.sync);
   const [platform, setPlatform] = useState<Platform>("tiktok");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -79,6 +74,7 @@ export function AccountsPage() {
   const [revealedAccountIds, setRevealedAccountIds] = useState<Set<string>>(() => new Set());
   const [actionStatus, setActionStatus] = useState("");
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const lastProfileSyncKey = useRef("");
   const accountMetricsById = useMemo(() => aggregateMetricsByAccount(postMetrics), [postMetrics]);
   const sortedAccounts = useMemo(() => {
     if (!accounts) return undefined;
@@ -89,11 +85,29 @@ export function AccountsPage() {
     });
   }, [accounts]);
   const selectedAccount = sortedAccounts?.find((account) => account._id === selectedAccountId);
+  const profileSyncKey = useMemo(() => {
+    const accountIds = (accounts ?? [])
+      .filter((account) => accountProfileImageNeedsSync(account))
+      .map((account) => String(account._id))
+      .sort();
+    if (!accountIds.length) return "";
+    return `${activeWorkspaceId ?? "personal"}:${accountIds.join(",")}`;
+  }, [accounts, activeWorkspaceId]);
 
   useEffect(() => {
     if (requestedAccountId || !accounts?.[0]) return;
     setSearchParams({ accountId: String(accounts[0]._id) }, { replace: true });
   }, [accounts, requestedAccountId, setSearchParams]);
+
+  useEffect(() => {
+    if (!profileSyncKey || lastProfileSyncKey.current === profileSyncKey) return;
+    lastProfileSyncKey.current = profileSyncKey;
+    void syncProfileImages(
+      activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}
+    ).catch((error) => {
+      console.error("Could not refresh account profile images", error);
+    });
+  }, [activeWorkspaceId, profileSyncKey, syncProfileImages]);
 
   const selectAccount = (id: Id<"socialAccounts">) => {
     setSearchParams({ accountId: String(id) });

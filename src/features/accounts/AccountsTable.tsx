@@ -13,6 +13,7 @@ import {
   type AccountMetrics,
   type SocialAccount,
 } from "./accountDisplay";
+import { AccountAvatar } from "./AccountAvatar";
 
 type AccountsTableProps = {
   accountMetricsById: Map<string, AccountMetrics>;
@@ -24,32 +25,6 @@ type AccountsTableProps = {
   onToggleReveal: (accountId: string) => void;
   revealedAccountIds: Set<string>;
 };
-
-function AccountAvatar({ account }: { account: SocialAccount }) {
-  const [isVisible, setIsVisible] = useState(Boolean(account.avatarUrl));
-
-  useEffect(() => {
-    setIsVisible(Boolean(account.avatarUrl));
-  }, [account.avatarUrl]);
-
-  if (!account.avatarUrl || !isVisible) return null;
-
-  return (
-    <span
-      aria-label={`${account.displayName || account.username} profile image`}
-      className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-page)] shadow-[inset_0_1px_0_oklch(100%_0_0_/_0.82)]"
-    >
-      <img
-        alt=""
-        className="size-full object-cover"
-        loading="lazy"
-        onError={() => setIsVisible(false)}
-        referrerPolicy="no-referrer"
-        src={account.avatarUrl}
-      />
-    </span>
-  );
-}
 
 type CredentialDraft = Required<AccountCredentials>;
 type CopyFeedback = {
@@ -299,7 +274,7 @@ export function AccountsTable({
                 </td>
                 <td className="w-[13rem] max-w-[13rem] px-[var(--space-2)] py-[var(--space-2)]">
                   <div className="flex min-w-0 items-center gap-[var(--space-2)]">
-                    <AccountAvatar account={account} />
+                    <AccountAvatar account={account} showFallback={false} />
                     <div className="grid min-w-0 gap-[0.1rem]">
                       <strong className="min-w-0 truncate text-[0.86rem] font-[760] text-[var(--color-ink)]">
                         {account.username}

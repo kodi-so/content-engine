@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
   buildScrapeCreatorsDiscoveryUrl,
+  buildScrapeCreatorsProfileUrl,
   discoverSocialContent,
+  normalizeSocialProfile,
   normalizeInstagramDiscoveryPage,
   normalizeTikTokDiscoveryPage,
   resolveSocialDiscoveryTarget,
@@ -73,6 +75,50 @@ assert.equal(tiktokRequestUrl.searchParams.get("handle"), "sample_creator");
 assert.equal(tiktokRequestUrl.searchParams.get("max_cursor"), "1734562353000");
 assert.equal(tiktokRequestUrl.searchParams.get("region"), "US");
 assert.equal(tiktokRequestUrl.searchParams.get("sort_by"), "popular");
+
+const instagramProfileUrl = new URL(buildScrapeCreatorsProfileUrl(instagramTarget));
+assert.equal(instagramProfileUrl.pathname, "/v1/instagram/profile");
+assert.equal(instagramProfileUrl.searchParams.get("handle"), "Example.Creator");
+assert.equal(instagramProfileUrl.searchParams.get("cache_max_age"), "1d");
+
+const tiktokProfileUrl = new URL(buildScrapeCreatorsProfileUrl(tiktokTarget));
+assert.equal(tiktokProfileUrl.pathname, "/v1/tiktok/profile");
+assert.equal(tiktokProfileUrl.searchParams.get("handle"), "sample_creator");
+
+const instagramProfile = normalizeSocialProfile({
+  success: true,
+  credits_charged: 1,
+  data: {
+    user: {
+      full_name: "Example Creator",
+      biography: "An example account",
+      is_verified: true,
+      profile_pic_url: "https://cdn.example/instagram-small.jpg",
+      profile_pic_url_hd: "https://cdn.example/instagram-hd.jpg",
+    },
+  },
+}, instagramTarget);
+assert.equal(instagramProfile.avatarUrl, "https://cdn.example/instagram-hd.jpg");
+assert.equal(instagramProfile.displayName, "Example Creator");
+assert.equal(instagramProfile.verified, true);
+assert.equal(instagramProfile.creditsCharged, 1);
+
+const tiktokProfile = normalizeSocialProfile({
+  success: true,
+  credits_charged: 1,
+  user: {
+    nickname: "Sample Creator",
+    signature: "A TikTok account",
+    verified: false,
+    avatarLarger: "https://cdn.example/tiktok-large.jpg",
+    avatar_medium: {
+      url_list: ["https://cdn.example/tiktok-medium.jpg"],
+    },
+  },
+}, tiktokTarget);
+assert.equal(tiktokProfile.avatarUrl, "https://cdn.example/tiktok-large.jpg");
+assert.equal(tiktokProfile.displayName, "Sample Creator");
+assert.equal(tiktokProfile.verified, false);
 
 const instagramPage = normalizeInstagramDiscoveryPage({
   success: true,

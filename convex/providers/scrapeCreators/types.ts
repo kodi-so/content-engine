@@ -59,6 +59,19 @@ export type SocialDiscoveryResult = {
   fetchedAt: number;
 };
 
+export type SocialProfileResult = {
+  provider: typeof SCRAPE_CREATORS_PROVIDER;
+  platform: SocialDiscoveryPlatform;
+  handle: string;
+  profileUrl: string;
+  avatarUrl?: string;
+  displayName?: string;
+  bio?: string;
+  verified?: boolean;
+  creditsCharged: number;
+  fetchedAt: number;
+};
+
 export type NormalizedSocialDiscoveryPage = {
   content: DiscoveredSocialContent[];
   hasMore: boolean;

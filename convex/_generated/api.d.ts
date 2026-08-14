@@ -14,6 +14,7 @@ import type * as accounts_accountMemory from "../accounts/accountMemory.js";
 import type * as accounts_autopilotScheduling from "../accounts/autopilotScheduling.js";
 import type * as accounts_creativeAssets from "../accounts/creativeAssets.js";
 import type * as accounts_managedAccounts from "../accounts/managedAccounts.js";
+import type * as accounts_profileImages from "../accounts/profileImages.js";
 import type * as accounts_socialAccounts from "../accounts/socialAccounts.js";
 import type * as analyze_mediaResolver from "../analyze/mediaResolver.js";
 import type * as analyze_videoAnalysis from "../analyze/videoAnalysis.js";
@@ -130,6 +131,7 @@ import type * as providers_publishingProviders_postiz from "../providers/publish
 import type * as providers_runtime_providerInputs from "../providers/runtime/providerInputs.js";
 import type * as providers_scrapeCreators_client from "../providers/scrapeCreators/client.js";
 import type * as providers_scrapeCreators_normalizers from "../providers/scrapeCreators/normalizers.js";
+import type * as providers_scrapeCreators_profileClient from "../providers/scrapeCreators/profileClient.js";
 import type * as providers_scrapeCreators_profileTarget from "../providers/scrapeCreators/profileTarget.js";
 import type * as providers_scrapeCreators_request from "../providers/scrapeCreators/request.js";
 import type * as providers_scrapeCreators_trendClient from "../providers/scrapeCreators/trendClient.js";
@@ -164,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   "accounts/autopilotScheduling": typeof accounts_autopilotScheduling;
   "accounts/creativeAssets": typeof accounts_creativeAssets;
   "accounts/managedAccounts": typeof accounts_managedAccounts;
+  "accounts/profileImages": typeof accounts_profileImages;
   "accounts/socialAccounts": typeof accounts_socialAccounts;
   "analyze/mediaResolver": typeof analyze_mediaResolver;
   "analyze/videoAnalysis": typeof analyze_videoAnalysis;
@@ -280,6 +283,7 @@ declare const fullApi: ApiFromModules<{
   "providers/runtime/providerInputs": typeof providers_runtime_providerInputs;
   "providers/scrapeCreators/client": typeof providers_scrapeCreators_client;
   "providers/scrapeCreators/normalizers": typeof providers_scrapeCreators_normalizers;
+  "providers/scrapeCreators/profileClient": typeof providers_scrapeCreators_profileClient;
   "providers/scrapeCreators/profileTarget": typeof providers_scrapeCreators_profileTarget;
   "providers/scrapeCreators/request": typeof providers_scrapeCreators_request;
   "providers/scrapeCreators/trendClient": typeof providers_scrapeCreators_trendClient;

@@ -1,9 +1,10 @@
 import { useMutation } from "convex/react";
-import { Bot, Clock3, ExternalLink, MessageCircle, Sparkles } from "lucide-react";
+import { Clock3, ExternalLink, MessageCircle, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import { accountProfileUrl, platformLabel } from "./accountDisplay";
+import { AccountAvatar } from "./AccountAvatar";
 import { AccountAutopilotEditor } from "./managed/AccountAutopilotEditor";
 import { AccountPlaybookEditor } from "./managed/AccountPlaybookEditor";
 import { AccountPostHistory } from "./managed/AccountPostHistory";
@@ -83,7 +84,7 @@ export function ManagedAccountInspector({ detail, connectionPanel }: { detail: A
     <section className="min-w-0 bg-[var(--color-surface)]">
       <header className="grid gap-4 border-b border-[var(--color-border)] px-5 py-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          {account.avatarUrl ? <img alt="" className="size-12 rounded-full border border-[var(--color-border)] object-cover" src={account.avatarUrl} /> : <div className="grid size-12 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-ink-muted)]"><Bot size={20} /></div>}
+          <AccountAvatar account={account} size="md" />
           <div className="grid min-w-0 gap-1">
             <div className="flex flex-wrap items-center gap-2"><h2 className="m-0 truncate text-[1.25rem] font-[800] text-[var(--color-ink)]">{account.displayName || `@${account.username.replace(/^@/, "")}`}</h2><AccountStatusPill status={account.autopilotStatus ?? "off"} /></div>
             <div className="flex flex-wrap items-center gap-2 text-[0.76rem] text-[var(--color-ink-muted)]"><span>@{account.username.replace(/^@/, "")}</span><span>·</span><span>{platformLabel(account.platform)}</span><span>·</span><span>{account.status.replace(/_/g, " ")}</span>{profileUrl ? <a className="inline-flex items-center gap-1 text-[var(--color-accent-strong)]" href={profileUrl} rel="noreferrer" target="_blank">View profile <ExternalLink size={12} /></a> : null}</div>

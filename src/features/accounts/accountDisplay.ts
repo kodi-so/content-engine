@@ -43,6 +43,21 @@ export const EMPTY_METRICS: AccountMetrics = {
   posts: 0,
 };
 
+const MISSING_AVATAR_RETRY_MS = 60 * 60 * 1_000;
+const PROFILE_IMAGE_REFRESH_MS = 7 * 24 * 60 * 60 * 1_000;
+
+export function accountProfileImageNeedsSync(
+  account: SocialAccount,
+  now = Date.now()
+) {
+  if (account.platform !== "instagram" && account.platform !== "tiktok") return false;
+  if (!account.profileSyncedAt) return true;
+  const elapsed = now - account.profileSyncedAt;
+  return account.avatarStorageId
+    ? elapsed >= PROFILE_IMAGE_REFRESH_MS
+    : elapsed >= MISSING_AVATAR_RETRY_MS;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -30,6 +30,11 @@ export {
   researchSocialTrends,
 } from "./trendClient";
 export {
+  buildScrapeCreatorsProfileUrl,
+  fetchSocialProfile,
+  normalizeSocialProfile,
+} from "./profileClient";
+export {
   SCRAPE_CREATORS_PROVIDER,
   ScrapeCreatorsError,
 } from "./types";
@@ -43,6 +48,7 @@ export type {
   SocialDiscoveryResult,
   SocialDiscoverySort,
   SocialDiscoveryTarget,
+  SocialProfileResult,
   SocialTrendPlatform,
   SocialTrendResearchInput,
   SocialTrendResearchResult,
