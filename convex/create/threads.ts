@@ -400,6 +400,7 @@ export const recordToolCall = mutation({
       userId: thread.userId,
       workspaceId: thread.workspaceId,
       createThreadId: thread._id,
+      decisionRunId: thread.decisionRunId,
       messageId: args.messageId,
       toolName,
       dependsOnToolCallIds: [],

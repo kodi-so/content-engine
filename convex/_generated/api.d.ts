@@ -71,6 +71,12 @@ import type * as create_execution_toolExecutionShared from "../create/execution/
 import type * as create_execution_toolOutputActions from "../create/execution/toolOutputActions.js";
 import type * as create_execution_toolReferenceCollection from "../create/execution/toolReferenceCollection.js";
 import type * as create_execution_videoRenderExecution from "../create/execution/videoRenderExecution.js";
+import type * as create_observability_modelTracing from "../create/observability/modelTracing.js";
+import type * as create_observability_providerTracing from "../create/observability/providerTracing.js";
+import type * as create_observability_runEvents from "../create/observability/runEvents.js";
+import type * as create_observability_sanitization from "../create/observability/sanitization.js";
+import type * as create_observability_trace from "../create/observability/trace.js";
+import type * as create_observability_validators from "../create/observability/validators.js";
 import type * as create_planning from "../create/planning.js";
 import type * as create_references_referenceDiscovery from "../create/references/referenceDiscovery.js";
 import type * as create_references_referenceResolution from "../create/references/referenceResolution.js";
@@ -223,6 +229,12 @@ declare const fullApi: ApiFromModules<{
   "create/execution/toolOutputActions": typeof create_execution_toolOutputActions;
   "create/execution/toolReferenceCollection": typeof create_execution_toolReferenceCollection;
   "create/execution/videoRenderExecution": typeof create_execution_videoRenderExecution;
+  "create/observability/modelTracing": typeof create_observability_modelTracing;
+  "create/observability/providerTracing": typeof create_observability_providerTracing;
+  "create/observability/runEvents": typeof create_observability_runEvents;
+  "create/observability/sanitization": typeof create_observability_sanitization;
+  "create/observability/trace": typeof create_observability_trace;
+  "create/observability/validators": typeof create_observability_validators;
   "create/planning": typeof create_planning;
   "create/references/referenceDiscovery": typeof create_references_referenceDiscovery;
   "create/references/referenceResolution": typeof create_references_referenceResolution;

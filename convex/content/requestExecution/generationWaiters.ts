@@ -1,6 +1,17 @@
 import { isProviderError } from "../../providers/errors";
 import type { GeneratedAsset, ModelProvider } from "../../providers/model";
 
+export type GenerationPollObservation = {
+  attempt: number;
+  errorMessage?: string;
+  status: string;
+};
+
+type GenerationStatusObserver = (
+  status: string,
+  observation: GenerationPollObservation
+) => Promise<void>;
+
 export function costUsdFromMetadata(metadata: { costUsd?: number }): number {
   return typeof metadata.costUsd === "number" ? metadata.costUsd : 0;
 }
@@ -16,7 +27,7 @@ async function waitForGeneratedAsset(
     pollIntervalMs?: number;
     timeoutLabel: string;
   },
-  onStatus?: (status: string) => Promise<void>
+  onStatus?: GenerationStatusObserver
 ): Promise<GeneratedAsset> {
   const assets = await waitForGeneratedAssets(provider, args, onStatus);
   return assets[0];
@@ -33,7 +44,7 @@ async function waitForGeneratedAssets(
     pollIntervalMs?: number;
     timeoutLabel: string;
   },
-  onStatus?: (status: string) => Promise<void>
+  onStatus?: GenerationStatusObserver
 ): Promise<GeneratedAsset[]> {
   if (!args.jobId) {
     throw new Error(`${args.kind[0].toUpperCase()}${args.kind.slice(1)} generation did not return ${args.kind === "image" ? "an image" : args.kind === "audio" ? "an audio asset" : "a video"} or job id`);
@@ -54,14 +65,22 @@ async function waitForGeneratedAssets(
 
       lastStatus = "retrying";
       lastError = error.message;
-      await onStatus?.("retrying");
+      await onStatus?.("retrying", {
+        attempt: attempt + 1,
+        errorMessage: error.message,
+        status: "retrying",
+      });
       await new Promise((resolve) => setTimeout(resolve, args.pollIntervalMs ?? 5000));
       continue;
     }
 
     lastStatus = result.status;
     lastError = result.errorMessage ?? "";
-    await onStatus?.(result.status);
+    await onStatus?.(result.status, {
+      attempt: attempt + 1,
+      errorMessage: result.errorMessage,
+      status: result.status,
+    });
 
     if (result.status === "succeeded") {
       const assets = result.assets?.filter((candidate) =>
@@ -87,7 +106,7 @@ export async function waitForGeneratedImage(
     metadata?: Record<string, unknown>;
     pollIntervalMs?: number;
   },
-  onStatus?: (status: string) => Promise<void>
+  onStatus?: GenerationStatusObserver
 ): Promise<GeneratedAsset> {
   return waitForGeneratedAsset(provider, {
     ...args,
@@ -105,7 +124,7 @@ export async function waitForGeneratedImages(
     metadata?: Record<string, unknown>;
     pollIntervalMs?: number;
   },
-  onStatus?: (status: string) => Promise<void>
+  onStatus?: GenerationStatusObserver
 ): Promise<GeneratedAsset[]> {
   return waitForGeneratedAssets(provider, {
     ...args,
@@ -123,7 +142,7 @@ export async function waitForGeneratedVideo(
     metadata?: Record<string, unknown>;
     pollIntervalMs?: number;
   },
-  onStatus?: (status: string) => Promise<void>
+  onStatus?: GenerationStatusObserver
 ): Promise<GeneratedAsset> {
   return waitForGeneratedAsset(provider, {
     ...args,
@@ -141,7 +160,7 @@ export async function waitForGeneratedAudio(
     metadata?: Record<string, unknown>;
     pollIntervalMs?: number;
   },
-  onStatus?: (status: string) => Promise<void>
+  onStatus?: GenerationStatusObserver
 ): Promise<GeneratedAsset> {
   return waitForGeneratedAsset(provider, {
     ...args,

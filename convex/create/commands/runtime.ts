@@ -7,6 +7,7 @@ import { hasExplicitPriorOutputSelection } from "../planning";
 import { getCreateTool } from "../tools";
 import type { CreateToolName } from "../tools";
 import { validateToolCallInput } from "../tools/validateToolInput";
+import { insertCreateRunEvent } from "../observability/runEvents";
 
 export type CreateCommandInput = {
   input: Record<string, unknown>;
@@ -141,6 +142,7 @@ export async function enqueueCreateCommands(
       userId: thread.userId,
       workspaceId: thread.workspaceId,
       createThreadId: thread._id,
+      decisionRunId: thread.decisionRunId,
       messageId: args.messageId,
       toolName: command.toolName,
       dependsOnToolCallIds: [],
@@ -177,6 +179,31 @@ export async function enqueueCreateCommands(
         ...dependencies.map((dependencyIndex) => insertedCalls[dependencyIndex].id),
       ],
       updatedAt: now,
+    });
+  }
+
+  for (const command of insertedCalls) {
+    const toolCall = await ctx.db.get(command.id);
+    if (!toolCall) continue;
+    await insertCreateRunEvent(ctx, thread, {
+      decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
+      createMessageId: args.messageId,
+      createToolCallId: toolCall._id,
+      operationId: `tool:${toolCall._id}`,
+      parentOperationId: `turn:${toolCall.decisionRunId ?? thread.decisionRunId}`,
+      scope: "tool",
+      eventType: "tool.queued",
+      status: "queued",
+      estimatedCostUsd: toolCall.estimatedCostUsd,
+      pricingSource: toolCall.costEstimate ? "pricing_estimate" : undefined,
+      summary: `Queued ${toolCall.toolName}.`,
+      details: {
+        label: toolCall.label,
+        input: toolCall.input,
+        dependsOnToolCallIds: toolCall.dependsOnToolCallIds,
+        costEstimate: toolCall.costEstimate,
+      },
+      occurredAt: now,
     });
   }
 

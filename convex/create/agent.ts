@@ -84,6 +84,13 @@ import {
 } from "./execution/toolExecutionShared";
 import { stopCreateThread } from "./agent/agentStopActions";
 import { requireSocialAccountAccess } from "../accounts/accountAccess";
+import {
+  insertCreateRunEvent,
+} from "./observability/runEvents";
+import {
+  observeCreateModelCall,
+  recordCreateActionTrace,
+} from "./observability/modelTracing";
 
 export {
   AgentDecisionParseError,
@@ -569,6 +576,18 @@ export const decideAgentTurn = internalAction({
     userMessageId: v.id("createMessages"),
   },
   handler: async (ctx, args) => {
+    const turnOperationId = `turn:${args.decisionRunId}`;
+    const traceIdentity = {
+      threadId: args.threadId,
+      decisionRunId: args.decisionRunId,
+      createMessageId: args.userMessageId,
+      parentOperationId: turnOperationId,
+    };
+    const recordTrace = async (
+      event: Parameters<typeof recordCreateActionTrace>[2]
+    ) => {
+      await recordCreateActionTrace(ctx, traceIdentity, event);
+    };
     let diagnosticContext: Record<string, unknown> = {
       createThreadId: String(args.threadId),
       createMessageId: String(args.userMessageId),
@@ -596,6 +615,23 @@ export const decideAgentTurn = internalAction({
         contextMessageCount: context.sections.recentMessages.length,
         droppedContextMessageCount: context.sections.droppedMessages.length,
       };
+      await recordTrace({
+        operationId: turnOperationId,
+        parentOperationId: undefined,
+        scope: "agent",
+        eventType: "agent.context.built",
+        status: "succeeded",
+        summary: "Built the Create agent context for this turn.",
+        details: {
+          effectiveBrief: effectiveBrief.content,
+          referenceMentions: effectiveBrief.referenceMentions,
+          contextBlock: context.sections.contextBlock,
+          recentMessageCount: context.sections.recentMessages.length,
+          droppedMessageCount: context.sections.droppedMessages.length,
+          isContinuation: context.isContinuation,
+          priorToolNames: context.toolNames,
+        },
+      });
 
       const provider = getModelProvider(createAgentProvider);
       let earlierConversationSummary: string | undefined;
@@ -625,24 +661,43 @@ export const decideAgentTurn = internalAction({
             earlierConversationSummary = context.thread.contextSummary;
           }
           if (trimmedDroppedTranscript) {
-            const summaryResult = await provider.generateText({
-              model: createAgentModel,
-              maxTokens: 600,
-              temperature: 0.1,
-              prompt: [
-                "Summarize the earlier Create agent conversation for future planning.",
-                "Keep a factual digest of what was requested, produced, decided, and rejected.",
-                "Do not add advice, speculation, or new plans.",
-                context.thread.contextSummary
-                  ? `Previous summary:\n${context.thread.contextSummary}`
-                  : "Previous summary: none.",
-                `Newly dropped messages:\n${trimmedDroppedTranscript}`,
-              ].join("\n\n"),
-              metadata: {
-                createThreadId: String(args.threadId),
-                createMessageId: String(args.userMessageId),
-                toolName: "create.agent.summarize_context",
+            const summaryOperationId = `agent:${args.decisionRunId}:context-summary`;
+            const summaryPrompt = [
+              "Summarize the earlier Create agent conversation for future planning.",
+              "Keep a factual digest of what was requested, produced, decided, and rejected.",
+              "Do not add advice, speculation, or new plans.",
+              context.thread.contextSummary
+                ? `Previous summary:\n${context.thread.contextSummary}`
+                : "Previous summary: none.",
+              `Newly dropped messages:\n${trimmedDroppedTranscript}`,
+            ].join("\n\n");
+            const summaryResult = await observeCreateModelCall(ctx, {
+              identity: traceIdentity,
+              operationId: summaryOperationId,
+              provider: createAgentProvider,
+              modelId: createAgentModel,
+              attempt: 1,
+              input: {
+                operation: "context_summary",
+                prompt: summaryPrompt,
+                maxTokens: 600,
+                temperature: 0.1,
               },
+              startedSummary: "Started the earlier-conversation summary model call.",
+              completedSummary: "Completed the earlier-conversation summary model call.",
+              failedSummary: "The earlier-conversation summary model call failed.",
+              execute: async () => await provider.generateText({
+                model: createAgentModel,
+                maxTokens: 600,
+                temperature: 0.1,
+                prompt: summaryPrompt,
+                metadata: {
+                  createThreadId: String(args.threadId),
+                  createMessageId: String(args.userMessageId),
+                  toolName: "create.agent.summarize_context",
+                },
+              }),
+              resultDetails: (result) => ({ responseText: result.text }),
             });
             await ctx.runMutation(internal.usage.records.recordAgentCharge, {
               threadId: args.threadId,
@@ -688,30 +743,82 @@ export const decideAgentTurn = internalAction({
         },
       ];
 
-      const generateDecision = async (messages: ModelMessage[]) =>
-        await provider.generateStructured<AgentDecision>({
-          messages,
-          model: createAgentModel,
-          temperature: 0.2,
+      const decisionOperationId = `agent:${args.decisionRunId}:decision`;
+      await recordTrace({
+        operationId: decisionOperationId,
+        scope: "agent",
+        eventType: "agent.decision.started",
+        status: "running",
+        provider: createAgentProvider,
+        modelId: createAgentModel,
+        startedAt: Date.now(),
+        summary: "Started planning the next Create action.",
+        details: {
+          promptModules,
+          modelMessages,
           maxTokens: 4000,
-          schema: AGENT_DECISION_JSON_SCHEMA,
+          temperature: 0.2,
           schemaName: "create_agent_decision",
-          parser: normalizeAgentDecision,
-          metadata: {
-            createThreadId: String(args.threadId),
-            createMessageId: String(args.userMessageId),
-            toolName: "create.agent.decide",
+        },
+      });
+
+      const generateDecision = async (messages: ModelMessage[], attempt: number) => {
+        const modelOperationId = `${decisionOperationId}:attempt:${attempt}`;
+        return await observeCreateModelCall(ctx, {
+          identity: { ...traceIdentity, parentOperationId: decisionOperationId },
+          operationId: modelOperationId,
+          provider: createAgentProvider,
+          modelId: createAgentModel,
+          attempt,
+          input: {
+            messages,
+            maxTokens: 4000,
+            temperature: 0.2,
+            schemaName: "create_agent_decision",
           },
+          startedSummary: `Started Create decision model attempt ${attempt}.`,
+          completedSummary: `Completed Create decision model attempt ${attempt}.`,
+          failedSummary: `Create decision model attempt ${attempt} failed.`,
+          execute: async () => await provider.generateStructured<AgentDecision>({
+            messages,
+            model: createAgentModel,
+            temperature: 0.2,
+            maxTokens: 4000,
+            schema: AGENT_DECISION_JSON_SCHEMA,
+            schemaName: "create_agent_decision",
+            parser: normalizeAgentDecision,
+            metadata: {
+              createThreadId: String(args.threadId),
+              createMessageId: String(args.userMessageId),
+              toolName: "create.agent.decide",
+            },
+          }),
+          resultDetails: (result) => ({
+            responseText: result.text,
+            structuredOutput: result.object,
+          }),
         });
+      };
 
       let result;
       try {
-        result = await generateDecision(modelMessages);
+        result = await generateDecision(modelMessages, 1);
       } catch (error) {
         if (!shouldRepairAgentDecision(error)) throw error;
         console.error("[create.agent.decide] structured output repair", {
           ...diagnosticContext,
           error: createAgentDecisionErrorLog(error),
+        });
+        await recordTrace({
+          operationId: decisionOperationId,
+          scope: "agent",
+          eventType: "agent.decision.repair",
+          status: "running",
+          provider: createAgentProvider,
+          modelId: createAgentModel,
+          attempt: 2,
+          summary: "Retrying the Create decision after invalid structured output.",
+          errorMessage: agentDecisionErrorMessage(error),
         });
         result = await generateDecision([
           ...modelMessages,
@@ -719,7 +826,7 @@ export const decideAgentTurn = internalAction({
             role: "user",
             content: `Your previous response was not valid: ${agentDecisionErrorMessage(error)}. Respond again following the required JSON schema exactly.`,
           },
-        ]);
+        ], 2);
       }
 
       await ctx.runMutation(internal.usage.records.recordAgentCharge, {
@@ -729,6 +836,23 @@ export const decideAgentTurn = internalAction({
         operationKey: `agent:${args.decisionRunId}:decision`,
         actualCostUsd: result.metadata.costUsd,
         parameters: { maxTokens: 4000, operation: "decision" },
+      });
+
+      await recordTrace({
+        operationId: decisionOperationId,
+        scope: "agent",
+        eventType: "agent.decision.completed",
+        status: "succeeded",
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        inputTokens: result.metadata.usage?.inputTokens,
+        outputTokens: result.metadata.usage?.outputTokens,
+        totalTokens: result.metadata.usage?.totalTokens,
+        actualCostUsd: result.metadata.costUsd,
+        pricingSource: "provider_metadata",
+        completedAt: Date.now(),
+        summary: `The Create agent chose ${result.object.kind}.`,
+        details: { decision: result.object },
       });
 
       await ctx.runMutation(internal.create.agent.applyAgentDecision, {
@@ -747,6 +871,18 @@ export const decideAgentTurn = internalAction({
       console.error("[create.agent.decide] failed", {
         ...diagnosticContext,
         error: createAgentDecisionErrorLog(error),
+      });
+      await recordTrace({
+        operationId: `agent:${args.decisionRunId}:decision`,
+        scope: "agent",
+        eventType: "agent.decision.failed",
+        status: "failed",
+        provider: createAgentProvider,
+        modelId: createAgentModel,
+        completedAt: Date.now(),
+        summary: "The Create agent could not decide the next action.",
+        errorMessage: agentDecisionErrorMessage(error),
+        details: { error },
       });
       await ctx.runMutation(internal.create.agent.failAgentDecision, {
         decisionRunId: args.decisionRunId,
@@ -813,6 +949,22 @@ export const submit = mutation({
       title: thread.title === "New Chat" ? threadTitleFromMessage(content) : thread.title,
       turnDecisionCount: 0,
       updatedAt: now,
+    });
+    await insertCreateRunEvent(ctx, thread, {
+      decisionRunId,
+      createMessageId: userMessageId,
+      operationId: `turn:${decisionRunId}`,
+      scope: "run",
+      eventType: "run.turn.started",
+      status: "running",
+      startedAt: now,
+      summary: "A user started a Create agent turn.",
+      details: {
+        checkpointMode,
+        message: content,
+        referenceMentions: args.referenceMentions,
+      },
+      occurredAt: now,
     });
     await ctx.scheduler.runAfter(0, internal.create.agent.decideAgentTurn, {
       checkpointMode,
@@ -1047,6 +1199,18 @@ export const retryToolCall = mutation({
       output: undefined,
       completedAt: undefined,
       updatedAt: now,
+    });
+    await insertCreateRunEvent(ctx, thread, {
+      decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
+      createToolCallId: toolCall._id,
+      operationId: `tool:${toolCall._id}`,
+      parentOperationId: `turn:${toolCall.decisionRunId ?? thread.decisionRunId}`,
+      scope: "tool",
+      eventType: "tool.retried",
+      status: "queued",
+      summary: `Retrying ${toolCall.toolName}.`,
+      details: { previousError: asyncFailureMessage ?? toolCall.errorMessage },
+      occurredAt: now,
     });
     await appendMessage(ctx, thread, {
       role: "agent",

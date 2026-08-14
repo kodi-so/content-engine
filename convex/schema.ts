@@ -38,6 +38,11 @@ import {
   videoAnalysisSourceTypeValidator,
   videoAnalysisStatusValidator,
 } from "./validators";
+import {
+  createRunEventScopeValidator,
+  createRunEventStatusValidator,
+  createRunEventTypeValidator,
+} from "./create/observability/validators";
 
 export default defineSchema({
   users: defineTable({
@@ -435,6 +440,7 @@ export default defineSchema({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     createThreadId: v.optional(v.id("createThreads")),
+    decisionRunId: v.optional(v.string()),
     createToolCallId: v.optional(v.id("createToolCalls")),
     socialAccountId: v.optional(v.id("socialAccounts")),
     contentFormat: contentFormatValidator,
@@ -471,6 +477,7 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
+    .index("by_thread", ["createThreadId"])
     .index("by_user_status", ["userId", "status"]),
 
   createThreads: defineTable({
@@ -523,6 +530,7 @@ export default defineSchema({
     userId: v.string(),
     workspaceId: v.optional(v.id("workspaces")),
     createThreadId: v.id("createThreads"),
+    decisionRunId: v.optional(v.string()),
     messageId: v.optional(v.id("createMessages")),
     toolName: v.string(),
     dependsOnToolCallIds: v.array(v.id("createToolCalls")),
@@ -596,6 +604,43 @@ export default defineSchema({
     .index("by_provider_request", ["provider", "providerRequestId"])
     .index("by_provider_and_event_kind", ["provider", "eventKind"])
     .index("by_workspace_and_created_at", ["workspaceId", "createdAt"]),
+
+  createRunEvents: defineTable({
+    userId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    createThreadId: v.id("createThreads"),
+    decisionRunId: v.optional(v.string()),
+    createMessageId: v.optional(v.id("createMessages")),
+    createToolCallId: v.optional(v.id("createToolCalls")),
+    contentRequestId: v.optional(v.id("contentRequests")),
+    artifactId: v.optional(v.id("artifacts")),
+    operationId: v.string(),
+    parentOperationId: v.optional(v.string()),
+    scope: createRunEventScopeValidator,
+    eventType: createRunEventTypeValidator,
+    status: createRunEventStatusValidator,
+    provider: v.optional(modelProviderValidator),
+    modelId: v.optional(v.string()),
+    providerRequestId: v.optional(v.string()),
+    attempt: v.optional(v.number()),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    totalTokens: v.optional(v.number()),
+    estimatedCostUsd: v.optional(v.number()),
+    actualCostUsd: v.optional(v.number()),
+    pricingSource: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    summary: v.optional(v.string()),
+    details: v.optional(v.any()),
+    errorMessage: v.optional(v.string()),
+    occurredAt: v.number(),
+  })
+    .index("by_thread_and_occurred_at", ["createThreadId", "occurredAt"])
+    .index("by_operation", ["operationId"])
+    .index("by_tool_call", ["createToolCallId"])
+    .index("by_content_request", ["contentRequestId"]),
 
   createCheckpoints: defineTable({
     userId: v.string(),

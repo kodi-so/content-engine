@@ -32,6 +32,7 @@ import {
 } from "../../../src/lib/generation/modelRoster";
 import { estimateResolvedGenerationCost } from "../../usage/costEstimation";
 import { recordToolEstimate } from "../../usage/records";
+import { insertCreateRunEvent } from "../observability/runEvents";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
 
@@ -433,6 +434,7 @@ export async function createGenerationRequestForToolCall(
     userId: thread.userId,
     workspaceId: thread.workspaceId,
     createThreadId: thread._id,
+    decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
     createToolCallId: toolCall._id,
     contentFormat: mode,
     prompt: brief,
@@ -501,6 +503,39 @@ export async function createGenerationRequestForToolCall(
     updatedAt: now,
   });
 
+  await insertCreateRunEvent(ctx, thread, {
+    decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
+    createMessageId: toolCall.messageId,
+    createToolCallId: toolCall._id,
+    contentRequestId: requestId,
+    operationId: `content-request:${requestId}`,
+    parentOperationId: `tool:${toolCall._id}`,
+    scope: "content_request",
+    eventType: "content_request.queued",
+    status: "queued",
+    provider,
+    modelId: effectiveModel ?? model,
+    estimatedCostUsd: costEstimate?.costUsd,
+    pricingSource: costEstimate?.source,
+    summary: `Queued a ${mode} content request.`,
+    details: {
+      mode,
+      prompt: effectiveBrief,
+      requestedModel: model,
+      effectiveModel,
+      aspectRatio,
+      count,
+      durationSeconds,
+      requestedDurationSeconds,
+      nativeAudio,
+      options,
+      audioMode,
+      referenceCount,
+      costEstimate,
+    },
+    occurredAt: now,
+  });
+
   return requestId;
 }
 
@@ -536,6 +571,7 @@ export async function createSlideshowRequestForToolCall(
     userId: thread.userId,
     workspaceId: thread.workspaceId,
     createThreadId: thread._id,
+    decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
     createToolCallId: toolCall._id,
     contentFormat: "slideshow",
     prompt: effectiveBrief,
@@ -572,6 +608,27 @@ export async function createSlideshowRequestForToolCall(
     },
     completedAt: now,
     updatedAt: now,
+  });
+
+  await insertCreateRunEvent(ctx, thread, {
+    decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
+    createMessageId: toolCall.messageId,
+    createToolCallId: toolCall._id,
+    contentRequestId: requestId,
+    operationId: `content-request:${requestId}`,
+    parentOperationId: `tool:${toolCall._id}`,
+    scope: "content_request",
+    eventType: "content_request.queued",
+    status: "queued",
+    provider,
+    summary: "Queued a slideshow content request.",
+    details: {
+      mode: "slideshow",
+      prompt: effectiveBrief,
+      requestedRenderingMode,
+      referenceCount: references.imageReferences.length + references.creativeAssetReferences.length,
+    },
+    occurredAt: now,
   });
 
   return requestId;

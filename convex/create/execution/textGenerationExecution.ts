@@ -11,6 +11,7 @@ import {
   modelProviderFromInput,
 } from "./toolExecutionShared";
 import { isRecord } from "../references/referenceResolution";
+import { observeCreateModelCall } from "../observability/modelTracing";
 
 function textArtifactTypeFromInput(value: unknown): "text_draft" | "caption" | "script" | "scene_spec" | "shot_list" {
   if (value === "caption" || value === "captions") return "caption";
@@ -78,13 +79,14 @@ export const executeTextGeneration = internalAction({
   },
   handler: async (ctx, args) => {
     const input = isRecord(args.input) ? args.input : {};
+    const operationId = `tool:${args.toolCallId}:text-model`;
     try {
       const provider = getModelProvider(args.provider);
       if (!provider.capabilities.text) {
         throw new Error(`${provider.displayName} does not support text generation.`);
       }
 
-      const result = await provider.generateText({
+      const modelInput = {
         prompt: args.prompt,
         systemPrompt: cleanOptionalStringFromRecord(input, "systemPrompt"),
         model: args.model,
@@ -95,6 +97,22 @@ export const executeTextGeneration = internalAction({
           createToolCallId: String(args.toolCallId),
           toolName: "text.generate",
         },
+      };
+      const result = await observeCreateModelCall(ctx, {
+        identity: {
+          threadId: args.threadId,
+          createToolCallId: args.toolCallId,
+          parentOperationId: `tool:${args.toolCallId}`,
+        },
+        operationId,
+        provider: args.provider,
+        modelId: args.model,
+        input: modelInput,
+        startedSummary: "Started the text-generation model call.",
+        completedSummary: "Completed the text-generation model call.",
+        failedSummary: "The text-generation model call failed.",
+        execute: async () => await provider.generateText(modelInput),
+        resultDetails: (modelResult) => ({ responseText: modelResult.text }),
       });
       const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: args.userId,
@@ -110,6 +128,20 @@ export const executeTextGeneration = internalAction({
         model: result.metadata.model,
         prompt: args.prompt,
         reviewStatus: "not_required",
+      });
+      await ctx.runMutation(internal.create.observability.runEvents.record, {
+        threadId: args.threadId,
+        createToolCallId: args.toolCallId,
+        artifactId,
+        operationId: `artifact:${artifactId}`,
+        parentOperationId: operationId,
+        scope: "artifact",
+        eventType: "artifact.created",
+        status: "succeeded",
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        completedAt: Date.now(),
+        summary: "Stored the generated text artifact.",
       });
 
       await ctx.runMutation(internal.usage.records.recordToolCharge, {

@@ -46,6 +46,12 @@ import {
   runCreateVideoRequest,
   type CreateReferenceAsset,
 } from "../createAssetRunner";
+import { observeContentRequestModelCall } from "../../create/observability/modelTracing";
+import {
+  providerPollObserver,
+  recordProviderCompletion,
+  submitObservedProviderCall,
+} from "../../create/observability/providerTracing";
 
 type CreateGenerationMode = "image" | "video" | "audio" | "lipsync" | "slideshow";
 
@@ -114,18 +120,39 @@ function structuredTextProviderCandidates(): StructuredTextProviderName[] {
 }
 
 async function generateStructuredWithFallback<T>(
-  input: GenerateStructuredInput<T>
+  ctx: ActionCtx,
+  args: {
+    requestId: Id<"contentRequests">;
+    operationName: string;
+    input: GenerateStructuredInput<T>;
+  }
 ): Promise<GenerateStructuredResult<T>> {
   const failures: string[] = [];
 
-  for (const providerName of structuredTextProviderCandidates()) {
+  for (const [index, providerName] of structuredTextProviderCandidates().entries()) {
     const provider = getModelProvider(providerName);
+    const model = providerName === "openrouter"
+      ? args.input.model ?? structuredTextProviderDefaults[providerName]
+      : structuredTextProviderDefaults[providerName];
     try {
-      return await provider.generateStructured<T>({
-        ...input,
-        model: providerName === "openrouter"
-          ? input.model ?? structuredTextProviderDefaults[providerName]
-          : structuredTextProviderDefaults[providerName],
+      return await observeContentRequestModelCall(ctx, {
+        requestId: args.requestId,
+        operationId: `content-request:${args.requestId}:model:${args.operationName}:attempt:${index + 1}`,
+        provider: providerName,
+        modelId: model,
+        attempt: index + 1,
+        input: { ...args.input, model },
+        startedSummary: `Started ${args.operationName} with ${providerName}.`,
+        completedSummary: `Completed ${args.operationName} with ${providerName}.`,
+        failedSummary: `${args.operationName} failed with ${providerName}.`,
+        execute: async () => await provider.generateStructured<T>({
+          ...args.input,
+          model,
+        }),
+        resultDetails: (result) => ({
+          responseText: result.text,
+          structuredOutput: result.object,
+        }),
       });
     } catch (error) {
       failures.push(`${provider.displayName}: ${requestErrorMessage(error)}`);
@@ -357,45 +384,57 @@ export async function executeContentRequest(
     let specArtifactId = context.request.planArtifactId;
 
     if (!plan) {
-      const structured = await generateStructuredWithFallback<SlideshowPlannerOutput>({
-        systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
-        prompt: planPromptForMode({
-          prompt: context.request.prompt,
-          revisionPrompt: context.request.revisionPrompt,
-          socialAccount: context.socialAccount,
-          requestedRenderingMode,
-          references: plannerReferences,
-        }),
-        schema: planSchemaForMode(requestedRenderingMode),
-        schemaName: "slideshow_create_plan",
-        temperature: 0.7,
-        // Full multi-slide plans overflow provider default output limits (Gemini defaults to 2048).
-        maxTokens: 8192,
-        parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
+      const structured = await generateStructuredWithFallback<SlideshowPlannerOutput>(ctx, {
+        requestId: args.requestId,
+        operationName: "slideshow-plan",
+        input: {
+          systemPrompt: "You are a senior short-form content creative director and slideshow planner.",
+          prompt: planPromptForMode({
+            prompt: context.request.prompt,
+            revisionPrompt: context.request.revisionPrompt,
+            socialAccount: context.socialAccount,
+            requestedRenderingMode,
+            references: plannerReferences,
+          }),
+          schema: planSchemaForMode(requestedRenderingMode),
+          schemaName: "slideshow_create_plan",
+          temperature: 0.7,
+          // Full multi-slide plans overflow provider default output limits (Gemini defaults to 2048).
+          maxTokens: 8192,
+          parser: (text) => JSON.parse(text) as SlideshowPlannerOutput,
+        },
       });
       costUsd = sumCost(costUsd, structured.metadata);
       const rawSlides = Array.isArray((structured.object as { slides?: unknown }).slides)
         ? (structured.object as { slides: unknown[] }).slides
         : [];
       const imagePromptSlides = await Promise.all(rawSlides.map(async (slide) => {
-        const imagePrompt = await generateStructuredWithFallback<SingleImagePromptWriterOutput>({
-          systemPrompt: IMAGE_PROMPT_WRITER_SYSTEM_PROMPT,
-          prompt: buildSingleImagePromptWriterPrompt({
-            prompt: context.request.prompt,
-            revisionPrompt: context.request.revisionPrompt,
-            socialAccount: context.socialAccount,
-            requestedRenderingMode,
-            references: plannerReferences,
-            plan: structured.object,
-            slide,
-          }),
-          schema: singleImagePromptSchemaForMode(requestedRenderingMode),
-          schemaName: "slideshow_single_image_prompt",
-          model: process.env.CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL?.trim() ||
-            process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
-            "openai/gpt-4.1",
-          temperature: 0.2,
-          parser: (text) => JSON.parse(text) as SingleImagePromptWriterOutput,
+        const slideRecord = recordValue(slide);
+        const slideIndex = typeof slideRecord?.index === "number"
+          ? slideRecord.index
+          : "unknown";
+        const imagePrompt = await generateStructuredWithFallback<SingleImagePromptWriterOutput>(ctx, {
+          requestId: args.requestId,
+          operationName: `slideshow-slide-${slideIndex}-image-prompt`,
+          input: {
+            systemPrompt: IMAGE_PROMPT_WRITER_SYSTEM_PROMPT,
+            prompt: buildSingleImagePromptWriterPrompt({
+              prompt: context.request.prompt,
+              revisionPrompt: context.request.revisionPrompt,
+              socialAccount: context.socialAccount,
+              requestedRenderingMode,
+              references: plannerReferences,
+              plan: structured.object,
+              slide,
+            }),
+            schema: singleImagePromptSchemaForMode(requestedRenderingMode),
+            schemaName: "slideshow_single_image_prompt",
+            model: process.env.CONTENT_ENGINE_IMAGE_PROMPT_TEXT_MODEL?.trim() ||
+              process.env.CONTENT_ENGINE_TEXT_MODEL?.trim() ||
+              "openai/gpt-4.1",
+            temperature: 0.2,
+            parser: (text) => JSON.parse(text) as SingleImagePromptWriterOutput,
+          },
         });
         costUsd = sumCost(costUsd, imagePrompt.metadata);
         return imagePrompt.object;
@@ -490,6 +529,8 @@ export async function executeContentRequest(
       imageProvider: ModelProvider;
       referenceAssetIds: string[];
       image: GenerateImageResult;
+      providerOperationId: string;
+      providerStartedAt: number;
     }> = [];
 
     const pendingImageResults = await Promise.all(plan.slides.map(async (slide) => {
@@ -509,7 +550,7 @@ export async function executeContentRequest(
         imageModelForProviderRenderingMode(imageProviderName, plan.renderingMode);
       const imageProvider = getModelProvider(imageProviderName);
       try {
-        const image = await imageProvider.generateImage({
+        const imageCallInput = {
           prompt,
           model: imageModel,
           aspectRatio: plan.aspectRatio,
@@ -525,6 +566,19 @@ export async function executeContentRequest(
             useReferenceImage: slide.useReferenceImage === true,
             referenceAssetIds,
           },
+        };
+        const {
+          result: image,
+          operationId: providerOperationId,
+          startedAt: providerStartedAt,
+        } = await submitObservedProviderCall(ctx, {
+          contentRequestId: args.requestId,
+          operationId: `provider:${args.requestId}:slideshow-slide-${slide.index}:image`,
+          mode: "image",
+          provider: imageProviderName,
+          requestedModel: imageModel,
+          input: imageCallInput,
+          execute: async () => await imageProvider.generateImage(imageCallInput),
         });
         await ctx.runMutation(internal.usage.records.recordProviderExecution, {
           contentRequestId: args.requestId,
@@ -540,7 +594,15 @@ export async function executeContentRequest(
           },
         });
         costUsd = sumCost(costUsd, image.metadata);
-        return { slide, prompt, imageProvider, referenceAssetIds, image };
+        return {
+          slide,
+          prompt,
+          imageProvider,
+          referenceAssetIds,
+          image,
+          providerOperationId,
+          providerStartedAt,
+        };
       } catch (error) {
         imageErrors.push(`Slide ${slide.index}: ${error instanceof Error ? error.message : "Image generation failed"}`);
         await createRequestArtifact(ctx, {
@@ -568,11 +630,21 @@ export async function executeContentRequest(
 
     const resolvedImages = await Promise.all(pendingImages.map(async (pending) => {
       try {
-        const asset = pending.image.images[0] ?? await waitForGeneratedImage(pending.imageProvider, {
-          jobId: pending.image.jobId,
-          model: pending.image.metadata.model,
-          metadata: pending.image.metadata,
-        });
+        const asset = pending.image.images[0] ?? await waitForGeneratedImage(
+          pending.imageProvider,
+          {
+            jobId: pending.image.jobId,
+            model: pending.image.metadata.model,
+            metadata: pending.image.metadata,
+          },
+          providerPollObserver(ctx, {
+            contentRequestId: args.requestId,
+            operationId: pending.providerOperationId,
+            provider: pending.image.metadata.provider,
+            modelId: pending.image.metadata.model,
+            providerRequestId: pending.image.jobId,
+          })
+        );
         return { ...pending, asset };
       } catch (error) {
         return {
@@ -635,6 +707,16 @@ export async function executeContentRequest(
         prompt: result.prompt,
         captionPrefix: `Slide ${result.slide.index}`,
         parentArtifactIds: [specArtifactId],
+      });
+      await recordProviderCompletion(ctx, {
+        contentRequestId: args.requestId,
+        operationId: result.providerOperationId,
+        startedAt: result.providerStartedAt,
+        provider: result.image.metadata.provider,
+        modelId: result.image.metadata.model,
+        providerRequestId: result.image.jobId,
+        actualCostUsd: result.image.metadata.costUsd,
+        artifactIds: [artifactId],
       });
       imageBySlideIndex.set(result.slide.index, { artifactId, url: stored.storageUrl });
     }

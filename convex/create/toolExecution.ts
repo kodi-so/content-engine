@@ -51,6 +51,7 @@ import {
 } from "./execution/toolExecutionShared";
 import { toolCallHasPendingAsyncOutput } from "./execution/toolCallReadiness";
 import { hasPendingContentRequestsForThreadToolOutputs } from "./execution/threadToolOutputs";
+import { insertCreateRunEvent } from "./observability/runEvents";
 
 export {
   prepareArtifactExportForThread,
@@ -59,6 +60,45 @@ export {
 } from "./execution/toolOutputActions";
 
 export type MediaGenerationMode = "image" | "video" | "audio" | "lipsync";
+
+async function recordAsyncToolTerminalEvent(
+  ctx: MutationCtx,
+  thread: Doc<"createThreads">,
+  toolCall: Doc<"createToolCalls">,
+  args: {
+    status: "succeeded" | "failed";
+    completedAt: number;
+    output?: unknown;
+    artifactIds?: Doc<"createToolCalls">["artifactIds"];
+    actualCostUsd?: number;
+    errorMessage?: string;
+  }
+) {
+  await insertCreateRunEvent(ctx, thread, {
+    decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
+    createMessageId: toolCall.messageId,
+    createToolCallId: toolCall._id,
+    operationId: `tool:${toolCall._id}`,
+    parentOperationId: `turn:${toolCall.decisionRunId ?? thread.decisionRunId}`,
+    scope: "tool",
+    eventType: args.status === "failed" ? "tool.failed" : "tool.completed",
+    status: args.status,
+    estimatedCostUsd: toolCall.estimatedCostUsd,
+    actualCostUsd: args.actualCostUsd,
+    startedAt: toolCall.startedAt,
+    completedAt: args.completedAt,
+    durationMs: toolCall.startedAt ? args.completedAt - toolCall.startedAt : undefined,
+    summary: args.status === "failed"
+      ? `${toolCall.toolName} failed.`
+      : `${toolCall.toolName} completed.`,
+    details: {
+      output: args.output,
+      artifactIds: args.artifactIds,
+    },
+    errorMessage: args.errorMessage,
+    occurredAt: args.completedAt,
+  });
+}
 
 export const completeSocialResearch = internalMutation({
   args: {
@@ -81,6 +121,11 @@ export const completeSocialResearch = internalMutation({
       errorMessage: undefined,
       completedAt: now,
       updatedAt: now,
+    });
+    await recordAsyncToolTerminalEvent(ctx, thread, toolCall, {
+      status: "succeeded",
+      completedAt: now,
+      output: args.result,
     });
     await appendAgentMessage(ctx, thread, {
       content: args.agentContext,
@@ -111,6 +156,11 @@ export const failSocialResearch = internalMutation({
       errorMessage: args.errorMessage,
       completedAt: now,
       updatedAt: now,
+    });
+    await recordAsyncToolTerminalEvent(ctx, thread, toolCall, {
+      status: "failed",
+      completedAt: now,
+      errorMessage: args.errorMessage,
     });
     await appendAgentMessage(ctx, thread, {
       content: `${toolCall.label} failed: ${args.errorMessage}`,
@@ -163,6 +213,18 @@ export const completeTextGeneration = internalMutation({
       completedAt: now,
       updatedAt: now,
     });
+    await recordAsyncToolTerminalEvent(ctx, thread, toolCall, {
+      status: "succeeded",
+      completedAt: now,
+      output: {
+        artifactId: args.artifactId,
+        text: args.text,
+        provider: args.provider,
+        model: args.model,
+      },
+      artifactIds: [args.artifactId],
+      actualCostUsd: args.costUsd,
+    });
     await appendAgentMessage(ctx, thread, {
       content: "Generated a text draft.",
       artifactIds: [args.artifactId],
@@ -206,6 +268,11 @@ export const failTextGeneration = internalMutation({
       errorMessage: args.errorMessage,
       completedAt: now,
       updatedAt: now,
+    });
+    await recordAsyncToolTerminalEvent(ctx, thread, toolCall, {
+      status: "failed",
+      completedAt: now,
+      errorMessage: args.errorMessage,
     });
     await appendAgentMessage(ctx, thread, {
       content: `${toolCall.label} failed: ${args.errorMessage}`,
@@ -256,6 +323,21 @@ export const completeVideoRender = internalMutation({
       completedAt: now,
       updatedAt: now,
     });
+    await recordAsyncToolTerminalEvent(ctx, thread, toolCall, {
+      status: "succeeded",
+      completedAt: now,
+      output: {
+        artifactId: args.artifactId,
+        jobId: args.jobId,
+        mediaAssetCount: args.mediaAssetCount,
+        model: args.model,
+        provider: args.provider,
+        status: "ready",
+        storageUrl: args.storageUrl,
+      },
+      artifactIds: [args.artifactId],
+      actualCostUsd: args.costUsd,
+    });
     await appendAgentMessage(ctx, thread, {
       content: "AI video render completed.",
       artifactIds: [args.artifactId],
@@ -297,6 +379,11 @@ export const failVideoRender = internalMutation({
       errorMessage: args.errorMessage,
       completedAt: now,
       updatedAt: now,
+    });
+    await recordAsyncToolTerminalEvent(ctx, thread, toolCall, {
+      status: "failed",
+      completedAt: now,
+      errorMessage: args.errorMessage,
     });
     await appendAgentMessage(ctx, thread, {
       content: `${toolCall.label} failed: ${args.errorMessage}`,
@@ -432,6 +519,32 @@ export async function executeRunnableQueuedTools(
       skippedForDependencies = true;
       continue;
     }
+    const toolStartedAt = Date.now();
+    await ctx.db.patch(toolCall._id, {
+      startedAt: toolCall.startedAt ?? toolStartedAt,
+      updatedAt: toolStartedAt,
+    });
+    await insertCreateRunEvent(ctx, thread, {
+      decisionRunId: toolCall.decisionRunId ?? thread.decisionRunId,
+      createMessageId: toolCall.messageId,
+      createToolCallId: toolCall._id,
+      operationId: `tool:${toolCall._id}`,
+      parentOperationId: `turn:${toolCall.decisionRunId ?? thread.decisionRunId}`,
+      scope: "tool",
+      eventType: "tool.started",
+      status: "running",
+      estimatedCostUsd: toolCall.estimatedCostUsd,
+      pricingSource: toolCall.costEstimate ? "pricing_estimate" : undefined,
+      startedAt: toolCall.startedAt ?? toolStartedAt,
+      summary: `Started ${toolCall.toolName}.`,
+      details: {
+        label: toolCall.label,
+        input: toolCall.input,
+        dependsOnToolCallIds: toolCall.dependsOnToolCallIds,
+        costEstimate: toolCall.costEstimate,
+      },
+      occurredAt: toolStartedAt,
+    });
     try {
       const mediaMode = mediaModeForToolName(toolCall.toolName);
       if (toolCall.toolName === "social.discoverContent") {
@@ -664,6 +777,45 @@ export async function executeRunnableQueuedTools(
         failedToolCallId: toolCall._id,
         errorMessage,
       };
+    } finally {
+      const terminalToolCall = await ctx.db.get(toolCall._id);
+      if (
+        terminalToolCall &&
+        (terminalToolCall.status === "succeeded" ||
+          terminalToolCall.status === "failed" ||
+          terminalToolCall.status === "canceled")
+      ) {
+        const completedAt = terminalToolCall.completedAt ?? Date.now();
+        const failed = terminalToolCall.status === "failed";
+        await insertCreateRunEvent(ctx, thread, {
+          decisionRunId: terminalToolCall.decisionRunId ?? thread.decisionRunId,
+          createMessageId: terminalToolCall.messageId,
+          createToolCallId: terminalToolCall._id,
+          operationId: `tool:${terminalToolCall._id}`,
+          parentOperationId: `turn:${terminalToolCall.decisionRunId ?? thread.decisionRunId}`,
+          scope: "tool",
+          eventType: failed ? "tool.failed" : "tool.completed",
+          status: terminalToolCall.status === "canceled"
+            ? "canceled"
+            : failed
+              ? "failed"
+              : "succeeded",
+          estimatedCostUsd: terminalToolCall.estimatedCostUsd,
+          actualCostUsd: terminalToolCall.costUsd,
+          startedAt: terminalToolCall.startedAt ?? toolStartedAt,
+          completedAt,
+          durationMs: completedAt - (terminalToolCall.startedAt ?? toolStartedAt),
+          summary: failed
+            ? `${terminalToolCall.toolName} failed.`
+            : `${terminalToolCall.toolName} completed.`,
+          details: {
+            output: terminalToolCall.output,
+            artifactIds: terminalToolCall.artifactIds,
+          },
+          errorMessage: terminalToolCall.errorMessage,
+          occurredAt: completedAt,
+        });
+      }
     }
   }
 

@@ -11,6 +11,8 @@ plan. Delete stale planning snapshots once the implementation has moved on.
   variables.
 - [MCP Integration](./mcp-integration.md): current MCP auth, resources, tools,
   scopes, and agent usage.
+- [Create Pipeline Observability](./create-observability.md): durable per-thread
+  execution traces, recorded fields, operator access, redaction, and retention.
 - [Social Media Resolver Plan](./social-media-resolver-plan.md): future Railway
   resolver plan for TikTok, Instagram, and Facebook URL ingestion in Analyze.
 

@@ -58,6 +58,7 @@ import {
   recordToolEstimate,
   type UsageCategory,
 } from "../usage/records";
+import { insertCreateRunEvent } from "../create/observability/runEvents";
 
 function currentUserId(identity: { subject: string } | null) {
   if (!identity) throw new Error("Not authenticated");
@@ -586,6 +587,59 @@ export const transition = internalMutation({
     if (args.completedAt !== undefined) patch.completedAt = args.completedAt;
 
     await ctx.db.patch(args.requestId, patch);
+    if (current.createThreadId && args.status !== current.status) {
+      const thread = await ctx.db.get(current.createThreadId);
+      if (thread) {
+        const completedAt = args.completedAt ??
+          (args.status === "ready" ||
+          args.status === "saved" ||
+          args.status === "failed" ||
+          args.status === "discarded"
+            ? Date.now()
+            : undefined);
+        const isFailure = args.status === "failed";
+        const isComplete = args.status === "ready" || args.status === "saved";
+        const isCanceled = args.status === "discarded";
+        await insertCreateRunEvent(ctx, thread, {
+          decisionRunId: current.decisionRunId ?? thread.decisionRunId,
+          createToolCallId: current.createToolCallId,
+          contentRequestId: current._id,
+          operationId: `content-request:${current._id}`,
+          parentOperationId: current.createToolCallId
+            ? `tool:${current.createToolCallId}`
+            : `turn:${current.decisionRunId ?? thread.decisionRunId}`,
+          scope: "content_request",
+          eventType: isFailure
+            ? "content_request.failed"
+            : isComplete || isCanceled
+              ? "content_request.completed"
+              : "content_request.started",
+          status: isFailure
+            ? "failed"
+            : isCanceled
+              ? "canceled"
+              : isComplete
+                ? "succeeded"
+                : "running",
+          estimatedCostUsd: current.estimatedCostUsd,
+          actualCostUsd: args.costUsd ?? current.costUsd,
+          startedAt: current.startedAt ?? (args.status === "planning" ? patch.startedAt : undefined),
+          completedAt,
+          durationMs: completedAt && (current.startedAt ?? patch.startedAt)
+            ? completedAt - (current.startedAt ?? patch.startedAt ?? completedAt)
+            : undefined,
+          summary: `Content request moved from ${current.status} to ${args.status}.`,
+          details: {
+            contentFormat: current.contentFormat,
+            provider: current.generation?.provider,
+            model: current.generation?.model,
+            plan: args.plan,
+            summary: args.summary,
+          },
+          errorMessage: args.errorMessage,
+        });
+      }
+    }
     if (args.costUsd !== undefined) {
       await recordContentRequestCostDelta(ctx, {
         ...current,

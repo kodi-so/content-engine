@@ -137,13 +137,16 @@ export const executeVideoRender = internalAction({
     workspaceId: v.optional(v.id("workspaces")),
   },
   handler: async (ctx, args) => {
+    const operationId = `tool:${args.toolCallId}:video-render-provider`;
+    const startedAt = Date.now();
+    let providerCompleted = false;
     try {
       const provider = getModelProvider(args.provider);
       if (!provider.capabilities.videoRender) {
         throw new Error(`${provider.displayName} does not support AI video render.`);
       }
 
-      const result = await provider.generateVideoRender({
+      const renderInput = {
         prompt: args.prompt,
         model: args.model,
         systemPrompt: args.systemPrompt,
@@ -160,12 +163,91 @@ export const executeVideoRender = internalAction({
           mediaAssetCount: args.mediaAssets.length,
           toolName: "media.renderVideo",
         },
+      };
+      await ctx.runMutation(internal.create.observability.runEvents.record, {
+        threadId: args.threadId,
+        createToolCallId: args.toolCallId,
+        operationId,
+        parentOperationId: `tool:${args.toolCallId}`,
+        scope: "provider",
+        eventType: "provider.call.started",
+        status: "running",
+        provider: args.provider,
+        modelId: args.model,
+        startedAt,
+        summary: "Started the AI video-render provider call.",
+        details: { input: renderInput },
       });
-      const videoAsset = await waitForGeneratedVideo(provider, {
-        jobId: result.jobId,
-        model: result.metadata.model,
-        metadata: result.metadata,
+      const result = await provider.generateVideoRender(renderInput);
+      const submittedAt = Date.now();
+      await ctx.runMutation(internal.create.observability.runEvents.record, {
+        threadId: args.threadId,
+        createToolCallId: args.toolCallId,
+        operationId,
+        parentOperationId: `tool:${args.toolCallId}`,
+        scope: "provider",
+        eventType: "provider.submitted",
+        status: "running",
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        providerRequestId: result.jobId,
+        inputTokens: result.metadata.usage?.inputTokens,
+        outputTokens: result.metadata.usage?.outputTokens,
+        totalTokens: result.metadata.usage?.totalTokens,
+        actualCostUsd: result.metadata.costUsd,
+        pricingSource: "provider_metadata",
+        startedAt,
+        completedAt: submittedAt,
+        durationMs: submittedAt - startedAt,
+        summary: "The AI video-render provider accepted the request.",
+        details: {
+          providerStatus: result.status,
+          metadata: result.metadata,
+        },
       });
+      await ctx.runMutation(internal.usage.records.recordToolCharge, {
+        threadId: args.threadId,
+        toolCallId: args.toolCallId,
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        operationKey: `tool:${args.toolCallId}:video-render`,
+        actualCostUsd: result.metadata.costUsd,
+        parameters: {
+          maxDurationSeconds: args.maxDurationSeconds,
+          mediaAssetCount: args.mediaAssets.length,
+          width: args.width,
+          height: args.height,
+          fps: args.fps,
+        },
+      });
+      const videoAsset = await waitForGeneratedVideo(
+        provider,
+        {
+          jobId: result.jobId,
+          model: result.metadata.model,
+          metadata: result.metadata,
+        },
+        async (status, observation) => {
+          await ctx.runMutation(internal.create.observability.runEvents.record, {
+            threadId: args.threadId,
+            createToolCallId: args.toolCallId,
+            operationId,
+            parentOperationId: `tool:${args.toolCallId}`,
+            scope: "provider",
+            eventType: status === "failed" || status === "canceled"
+              ? "provider.failed"
+              : "provider.poll",
+            status: status === "failed" || status === "canceled" ? "failed" : "running",
+            provider: result.metadata.provider,
+            modelId: result.metadata.model,
+            providerRequestId: result.jobId,
+            attempt: observation.attempt,
+            summary: `Video-render provider poll ${observation.attempt}: ${status}.`,
+            details: observation,
+            errorMessage: observation.errorMessage,
+          });
+        }
+      );
       const stored = await storeGeneratedAsset(ctx, videoAsset);
       const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
         userId: args.userId,
@@ -195,6 +277,43 @@ export const executeVideoRender = internalAction({
         reviewStatus: "not_required",
       });
 
+      const completedAt = Date.now();
+      await ctx.runMutation(internal.create.observability.runEvents.record, {
+        threadId: args.threadId,
+        createToolCallId: args.toolCallId,
+        operationId,
+        parentOperationId: `tool:${args.toolCallId}`,
+        scope: "provider",
+        eventType: "provider.completed",
+        status: "succeeded",
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        providerRequestId: result.jobId,
+        actualCostUsd: result.metadata.costUsd,
+        pricingSource: "provider_metadata",
+        startedAt,
+        completedAt,
+        durationMs: completedAt - startedAt,
+        summary: "The AI video render completed and its artifact was stored.",
+        details: { artifactId },
+      });
+      await ctx.runMutation(internal.create.observability.runEvents.record, {
+        threadId: args.threadId,
+        createToolCallId: args.toolCallId,
+        artifactId,
+        operationId: `artifact:${artifactId}`,
+        parentOperationId: operationId,
+        scope: "artifact",
+        eventType: "artifact.created",
+        status: "succeeded",
+        provider: result.metadata.provider,
+        modelId: result.metadata.model,
+        providerRequestId: result.jobId,
+        completedAt,
+        summary: "Stored the AI-rendered video artifact.",
+      });
+      providerCompleted = true;
+
       await ctx.runMutation(internal.create.toolExecution.completeVideoRender, {
         artifactId,
         costUsd: result.metadata.costUsd,
@@ -207,6 +326,26 @@ export const executeVideoRender = internalAction({
         toolCallId: args.toolCallId,
       });
     } catch (error) {
+      if (!providerCompleted) {
+        const completedAt = Date.now();
+        await ctx.runMutation(internal.create.observability.runEvents.record, {
+          threadId: args.threadId,
+          createToolCallId: args.toolCallId,
+          operationId,
+          parentOperationId: `tool:${args.toolCallId}`,
+          scope: "provider",
+          eventType: "provider.failed",
+          status: "failed",
+          provider: args.provider,
+          modelId: args.model,
+          startedAt,
+          completedAt,
+          durationMs: completedAt - startedAt,
+          summary: "The AI video-render pipeline failed.",
+          errorMessage: errorMessageFromUnknown(error),
+          details: { error },
+        });
+      }
       await ctx.runMutation(internal.create.toolExecution.failVideoRender, {
         errorMessage: errorMessageFromUnknown(error),
         threadId: args.threadId,

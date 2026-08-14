@@ -21,6 +21,11 @@ import {
 } from "../providers/runtime/providerInputs";
 import { dataWithArtifactCaption } from "./artifactCaptions";
 import { storeGeneratedAsset } from "./assets/assetStorage";
+import {
+  providerPollObserver,
+  recordProviderCompletion,
+  submitObservedProviderCall,
+} from "../create/observability/providerTracing";
 
 export type CreateReferenceAsset = {
   url: string;
@@ -208,7 +213,7 @@ export async function runCreateImageRequest(
     }),
     ...providerInput,
   };
-  const result = await provider.generateImage({
+  const imageCallInput = {
     prompt: providerPrompt,
     model: args.model?.trim() || undefined,
     aspectRatio: args.aspectRatio,
@@ -223,6 +228,18 @@ export async function runCreateImageRequest(
       arguments: providerArguments,
       bulkapisInput: providerArguments,
     },
+  };
+  const {
+    result,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+  } = await submitObservedProviderCall(ctx, {
+    contentRequestId: args.contentRequestId,
+    mode: "image",
+    provider: providerName,
+    requestedModel: args.model?.trim() || undefined,
+    input: imageCallInput,
+    execute: async () => await provider.generateImage(imageCallInput),
   });
   await recordProviderExecution(ctx, {
     contentRequestId: args.contentRequestId,
@@ -241,11 +258,21 @@ export async function runCreateImageRequest(
   const generatedAssets = [...result.images];
   if (!generatedAssets.length && result.jobId) {
     generatedAssets.push(
-      ...(await waitForGeneratedImages(provider, {
-        jobId: result.jobId,
-        model: result.metadata.model,
-        metadata: result.metadata,
-      }))
+      ...(await waitForGeneratedImages(
+        provider,
+        {
+          jobId: result.jobId,
+          model: result.metadata.model,
+          metadata: result.metadata,
+        },
+        providerPollObserver(ctx, {
+          contentRequestId: args.contentRequestId,
+          operationId: providerOperationId,
+          provider: result.metadata.provider,
+          modelId: result.metadata.model,
+          providerRequestId: result.jobId,
+        })
+      ))
     );
   }
   if (!generatedAssets.length) throw new Error("Image generation returned no images.");
@@ -286,6 +313,17 @@ export async function runCreateImageRequest(
     });
     assets.push({ artifactId, storageUrl: stored.storageUrl, title });
   }
+
+  await recordProviderCompletion(ctx, {
+    contentRequestId: args.contentRequestId,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    artifactIds: assets.map((asset) => asset.artifactId),
+  });
 
   return {
     artifactIds: assets.map((asset) => asset.artifactId),
@@ -328,7 +366,7 @@ export async function runCreateVideoRequest(
     [...referenceImages, ...referenceVideos],
     "media"
   );
-  const result = await provider.generateVideo({
+  const videoCallInput = {
     prompt: providerPrompt,
     model: args.model?.trim() || undefined,
     aspectRatio: args.aspectRatio,
@@ -345,6 +383,18 @@ export async function runCreateVideoRequest(
       arguments: providerInput,
       bulkapisInput: providerInput,
     },
+  };
+  const {
+    result,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+  } = await submitObservedProviderCall(ctx, {
+    contentRequestId: args.contentRequestId,
+    mode: "video",
+    provider: providerName,
+    requestedModel: args.model?.trim() || undefined,
+    input: videoCallInput,
+    execute: async () => await provider.generateVideo(videoCallInput),
   });
   await recordProviderExecution(ctx, {
     contentRequestId: args.contentRequestId,
@@ -360,11 +410,21 @@ export async function runCreateVideoRequest(
       referenceVideoCount: referenceVideos.length,
     },
   });
-  const video = await waitForGeneratedVideo(provider, {
-    jobId: result.jobId,
-    model: result.metadata.model,
-    metadata: result.metadata,
-  });
+  const video = await waitForGeneratedVideo(
+    provider,
+    {
+      jobId: result.jobId,
+      model: result.metadata.model,
+      metadata: result.metadata,
+    },
+    providerPollObserver(ctx, {
+      contentRequestId: args.contentRequestId,
+      operationId: providerOperationId,
+      provider: result.metadata.provider,
+      modelId: result.metadata.model,
+      providerRequestId: result.jobId,
+    })
+  );
   const stored = await storeGeneratedAsset(ctx, video);
   const title = defaultTitle(prompt, "Generated video");
   const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
@@ -397,6 +457,17 @@ export async function runCreateVideoRequest(
     prompt,
     lifecycle: "preview",
     reviewStatus: "pending",
+  });
+
+  await recordProviderCompletion(ctx, {
+    contentRequestId: args.contentRequestId,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    artifactIds: [artifactId],
   });
 
   return {
@@ -434,7 +505,7 @@ export async function runCreateAudioRequest(
   if (audioUrls.length > 1) {
     providerInput.audio_urls = providerInput.audio_urls ?? audioUrls;
   }
-  const result = await provider.generateAudio({
+  const audioCallInput = {
     text,
     model: args.model?.trim() || undefined,
     mode: args.mode,
@@ -454,6 +525,18 @@ export async function runCreateAudioRequest(
         ...providerInput,
       },
     },
+  };
+  const {
+    result,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+  } = await submitObservedProviderCall(ctx, {
+    contentRequestId: args.contentRequestId,
+    mode: "audio",
+    provider: providerName,
+    requestedModel: args.model?.trim() || undefined,
+    input: audioCallInput,
+    execute: async () => await provider.generateAudio(audioCallInput),
   });
   await recordProviderExecution(ctx, {
     contentRequestId: args.contentRequestId,
@@ -469,11 +552,21 @@ export async function runCreateAudioRequest(
   const generatedAudios = [...result.audios];
   if (!generatedAudios.length && result.jobId) {
     generatedAudios.push(
-      await waitForGeneratedAudio(provider, {
-        jobId: result.jobId,
-        model: result.metadata.model,
-        metadata: result.metadata,
-      })
+      await waitForGeneratedAudio(
+        provider,
+        {
+          jobId: result.jobId,
+          model: result.metadata.model,
+          metadata: result.metadata,
+        },
+        providerPollObserver(ctx, {
+          contentRequestId: args.contentRequestId,
+          operationId: providerOperationId,
+          provider: result.metadata.provider,
+          modelId: result.metadata.model,
+          providerRequestId: result.jobId,
+        })
+      )
     );
   }
   const audio = generatedAudios.find((asset) => asset.mimeType.startsWith("audio/"));
@@ -505,6 +598,17 @@ export async function runCreateAudioRequest(
     prompt: text,
     lifecycle: "preview",
     reviewStatus: "pending",
+  });
+
+  await recordProviderCompletion(ctx, {
+    contentRequestId: args.contentRequestId,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    artifactIds: [artifactId],
   });
 
   return {
@@ -548,7 +652,7 @@ export async function runCreateLipsyncRequest(
     throw new Error("Lip sync generation needs an image or video input.");
   }
 
-  const result = await provider.generateLipsync({
+  const lipsyncCallInput = {
     audio,
     image,
     video,
@@ -564,6 +668,18 @@ export async function runCreateLipsyncRequest(
       arguments: providerInput,
       bulkapisInput: providerInput,
     },
+  };
+  const {
+    result,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+  } = await submitObservedProviderCall(ctx, {
+    contentRequestId: args.contentRequestId,
+    mode: "lipsync",
+    provider: providerName,
+    requestedModel: args.model?.trim() || undefined,
+    input: lipsyncCallInput,
+    execute: async () => await provider.generateLipsync(lipsyncCallInput),
   });
   await recordProviderExecution(ctx, {
     contentRequestId: args.contentRequestId,
@@ -578,11 +694,21 @@ export async function runCreateLipsyncRequest(
       hasAudioInput: Boolean(audio),
     },
   });
-  const videoAsset = await waitForGeneratedVideo(provider, {
-    jobId: result.jobId,
-    model: result.metadata.model,
-    metadata: result.metadata,
-  });
+  const videoAsset = await waitForGeneratedVideo(
+    provider,
+    {
+      jobId: result.jobId,
+      model: result.metadata.model,
+      metadata: result.metadata,
+    },
+    providerPollObserver(ctx, {
+      contentRequestId: args.contentRequestId,
+      operationId: providerOperationId,
+      provider: result.metadata.provider,
+      modelId: result.metadata.model,
+      providerRequestId: result.jobId,
+    })
+  );
   const stored = await storeGeneratedAsset(ctx, videoAsset);
   const title = defaultTitle(prompt, "Lip-synced video");
   const artifactId = await ctx.runMutation(internal.artifacts.records.createFromRunner, {
@@ -613,6 +739,17 @@ export async function runCreateLipsyncRequest(
     prompt,
     lifecycle: "preview",
     reviewStatus: "pending",
+  });
+
+  await recordProviderCompletion(ctx, {
+    contentRequestId: args.contentRequestId,
+    operationId: providerOperationId,
+    startedAt: providerStartedAt,
+    provider: result.metadata.provider,
+    modelId: result.metadata.model,
+    providerRequestId: result.jobId,
+    actualCostUsd: result.metadata.costUsd,
+    artifactIds: [artifactId],
   });
 
   return {

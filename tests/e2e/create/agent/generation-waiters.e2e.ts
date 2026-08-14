@@ -39,6 +39,7 @@ const retryingProvider = {
 } as unknown as ModelProvider;
 
 const retryingStatuses: string[] = [];
+const retryingAttempts: number[] = [];
 const retriedAsset = await waitForGeneratedImage(
   retryingProvider,
   {
@@ -46,13 +47,15 @@ const retriedAsset = await waitForGeneratedImage(
     model: "image-model",
     pollIntervalMs: 0,
   },
-  async (status) => {
+  async (status, observation) => {
     retryingStatuses.push(status);
+    retryingAttempts.push(observation.attempt);
   }
 );
 
 assert.equal(retryAttempts, 2);
 assert.deepEqual(retryingStatuses, ["retrying", "succeeded"]);
+assert.deepEqual(retryingAttempts, [1, 2]);
 assert.equal(retriedAsset.url, "https://example.com/image.png");
 
 const multiImageProvider = {
