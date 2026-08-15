@@ -58,7 +58,6 @@ import {
   normalizeOptionalText,
   requireThreadAccess,
   supersedeOpenCheckpointsForNewTurn,
-  uniqueCreateReferenceMentions,
 } from "./agent/agentThreadRecords";
 import {
   hasDebugGatedToolCalls,
@@ -84,6 +83,7 @@ import {
 } from "./execution/toolExecutionShared";
 import { stopCreateThread } from "./agent/agentStopActions";
 import { requireSocialAccountAccess } from "../accounts/accountAccess";
+import { hydrateAccountReferencesForTurn } from "./agent/agentAccountReferences";
 import {
   insertCreateRunEvent,
 } from "./observability/runEvents";
@@ -330,24 +330,27 @@ export const agentTurnContext = internalQuery({
       .query("createToolCalls")
       .withIndex("by_thread", (q) => q.eq("createThreadId", thread._id))
       .collect();
-    const threadReferenceMentions = uniqueCreateReferenceMentions(
-      messages.flatMap((message) => message.referenceMentions ?? [])
-    );
+    const accountReferences = await hydrateAccountReferencesForTurn(ctx, {
+      messages,
+      thread,
+      userMessage,
+    });
     const effectiveBrief = buildEffectiveBrief({
       content: userMessage.content,
-      currentMentions: threadReferenceMentions,
+      currentMentions: accountReferences.threadReferenceMentions,
     });
     const sections = await buildTurnContextSections(ctx, {
       effectiveBrief: effectiveBrief.content,
-      messages,
+      accountReferenceMentions: accountReferences.accountReferenceMentions,
+      messages: accountReferences.messages,
       thread,
       toolCalls,
-      userMessage,
+      userMessage: accountReferences.userMessage,
     });
 
     return {
       thread,
-      userMessage,
+      userMessage: accountReferences.userMessage,
       effectiveBrief,
       isContinuation: toolCalls.some((toolCall) => toolCall.createdAt > userMessage.createdAt),
       sections,

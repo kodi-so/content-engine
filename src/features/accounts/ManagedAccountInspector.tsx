@@ -52,7 +52,6 @@ function AccountOverview({ detail, onWritePlaybook }: { detail: AccountDetail; o
           {recentRuns.length ? recentRuns.map((run) => <div className="flex items-start gap-3 border-b border-[var(--color-border)] pb-2" key={run._id}><Clock3 className="mt-0.5 text-[var(--color-ink-faint)]" size={14} /><div className="grid flex-1 gap-1"><div className="flex items-center justify-between gap-2"><span className="text-[0.78rem] capitalize text-[var(--color-ink-soft)]">{run.trigger.replace(/_/g, " ")}</span><AccountStatusPill status={run.status} /></div><span className="text-[0.7rem] text-[var(--color-ink-faint)]">{formatAccountDate(run.createdAt)}</span></div></div>) : <p className="m-0 text-[0.8rem] text-[var(--color-ink-muted)]">No Agent runs yet.</p>}
         </div>
       </div>
-      {detail.references.length ? <div className="grid gap-3"><ManagedSectionHeading title="Account references" description="Identity, style, voice, and brand assets available whenever the Agent creates for this account." /><div className="flex flex-wrap gap-3">{detail.references.map((reference) => <div className="flex items-center gap-2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-[0.76rem] text-[var(--color-ink-soft)]" key={reference._id}>{reference.asset.name}<span className="text-[var(--color-ink-faint)]">{reference.role.replace(/_/g, " ")}</span></div>)}</div></div> : null}
     </div>
   );
 }
@@ -98,7 +97,7 @@ export function ManagedAccountInspector({ detail, connectionPanel }: { detail: A
       </nav>
       <div className="p-5">
         {tab === "overview" ? <AccountOverview detail={detail} onWritePlaybook={() => setTab("playbook")} /> : null}
-        {tab === "playbook" ? <AccountPlaybookEditor account={account} /> : null}
+        {tab === "playbook" ? <AccountPlaybookEditor account={account} references={detail.references} /> : null}
         {tab === "autopilot" ? <AccountAutopilotEditor account={account} /> : null}
         {tab === "posts" ? <AccountPostHistory posts={detail.posts} /> : null}
         {tab === "connection" ? connectionPanel : null}

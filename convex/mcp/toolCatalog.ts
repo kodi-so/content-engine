@@ -11,7 +11,7 @@ export const MCP_SERVER_INSTRUCTIONS = [
   "Every creation tool returns a durable run. Reuse _context.threadId to chain later commands to prior outputs.",
   "Read content-engine://models when choosing an explicit generation model, and call references.list to search the user's Content Engine library.",
   "Video, slideshow, analysis, and generation commands can continue asynchronously; call command.status to inspect them.",
-  "Call command.render when the user should see or play generated media inside the host client.",
+  "Call command.render when the user should inspect generated artifacts inside the host client.",
   "Publishing tools act on external social accounts and should only be called after the user clearly asks to publish.",
 ].join(" ");
 
@@ -121,7 +121,7 @@ export function listMcpToolDefinitions() {
     {
       name: "command.render",
       title: "Render Content Engine Run",
-      description: "Render a Content Engine run as an interactive embedded media workspace. Use this after generation when the user should see, play, or open the result.",
+      description: "Render a Content Engine run as an interactive embedded artifact workspace. Use this after generation when the user should read, see, play, or open the result.",
       inputSchema: {
         type: "object",
         additionalProperties: false,

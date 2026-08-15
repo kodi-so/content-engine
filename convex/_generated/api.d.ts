@@ -11,6 +11,7 @@
 import type * as accounts_accountAccess from "../accounts/accountAccess.js";
 import type * as accounts_accountCadence from "../accounts/accountCadence.js";
 import type * as accounts_accountMemory from "../accounts/accountMemory.js";
+import type * as accounts_accountReferenceContext from "../accounts/accountReferenceContext.js";
 import type * as accounts_autopilotScheduling from "../accounts/autopilotScheduling.js";
 import type * as accounts_creativeAssets from "../accounts/creativeAssets.js";
 import type * as accounts_managedAccounts from "../accounts/managedAccounts.js";
@@ -46,6 +47,7 @@ import type * as content_slideshows from "../content/slideshows.js";
 import type * as content_types from "../content/types.js";
 import type * as content_videoProjects from "../content/videoProjects.js";
 import type * as create_agent from "../create/agent.js";
+import type * as create_agent_agentAccountReferences from "../create/agent/agentAccountReferences.js";
 import type * as create_agent_agentAsyncResults from "../create/agent/agentAsyncResults.js";
 import type * as create_agent_agentDecision from "../create/agent/agentDecision.js";
 import type * as create_agent_agentDiagnostics from "../create/agent/agentDiagnostics.js";
@@ -102,6 +104,7 @@ import type * as library_assets from "../library/assets.js";
 import type * as mcp_apiKeyRecords from "../mcp/apiKeyRecords.js";
 import type * as mcp_apiKeys from "../mcp/apiKeys.js";
 import type * as mcp_appResource from "../mcp/appResource.js";
+import type * as mcp_artifactLinks from "../mcp/artifactLinks.js";
 import type * as mcp_commands from "../mcp/commands.js";
 import type * as mcp_http from "../mcp/http.js";
 import type * as mcp_oauth from "../mcp/oauth.js";
@@ -169,6 +172,7 @@ declare const fullApi: ApiFromModules<{
   "accounts/accountAccess": typeof accounts_accountAccess;
   "accounts/accountCadence": typeof accounts_accountCadence;
   "accounts/accountMemory": typeof accounts_accountMemory;
+  "accounts/accountReferenceContext": typeof accounts_accountReferenceContext;
   "accounts/autopilotScheduling": typeof accounts_autopilotScheduling;
   "accounts/creativeAssets": typeof accounts_creativeAssets;
   "accounts/managedAccounts": typeof accounts_managedAccounts;
@@ -204,6 +208,7 @@ declare const fullApi: ApiFromModules<{
   "content/types": typeof content_types;
   "content/videoProjects": typeof content_videoProjects;
   "create/agent": typeof create_agent;
+  "create/agent/agentAccountReferences": typeof create_agent_agentAccountReferences;
   "create/agent/agentAsyncResults": typeof create_agent_agentAsyncResults;
   "create/agent/agentDecision": typeof create_agent_agentDecision;
   "create/agent/agentDiagnostics": typeof create_agent_agentDiagnostics;
@@ -260,6 +265,7 @@ declare const fullApi: ApiFromModules<{
   "mcp/apiKeyRecords": typeof mcp_apiKeyRecords;
   "mcp/apiKeys": typeof mcp_apiKeys;
   "mcp/appResource": typeof mcp_appResource;
+  "mcp/artifactLinks": typeof mcp_artifactLinks;
   "mcp/commands": typeof mcp_commands;
   "mcp/http": typeof mcp_http;
   "mcp/oauth": typeof mcp_oauth;

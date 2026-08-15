@@ -110,6 +110,7 @@ export async function recordPlannedTools(
         ...inferredInput,
         ...(plannedCall.input ?? {}),
         ...(plannedCall.prompt ? { prompt: plannedCall.prompt, brief: callContent } : {}),
+        referenceMentions,
       },
       planStep: plannedCall.planStep,
       prompt: plannedCall.prompt,

@@ -57,6 +57,8 @@ import {
 } from "../../../../src/lib/generation/modelRoster";
 import { shouldRenderAgentCreateMessage } from "../../../../src/features/agent-create/model/agentCreateSurfaceModel";
 import { nextAutopilotRunAt } from "../../../../convex/accounts/accountCadence";
+import { accountReferenceMention } from "../../../../convex/accounts/accountReferenceContext";
+import { hydrateAccountReferencesForTurn } from "../../../../convex/create/agent/agentAccountReferences";
 import { estimateGenerationCost } from "../../../../src/lib/generation/costEstimation";
 import { buildThreadUsageSummary } from "../../../../convex/usage/threadSummary";
 
@@ -84,6 +86,25 @@ const bananaReference = {
   mediaType: "image",
 } as const;
 
+const persistentCharacterReference = accountReferenceMention({
+  asset: {
+    _id: "asset_character_1",
+    mediaType: "image",
+    name: "Maya Character",
+    storageUrl: "https://storage.example.com/maya.png",
+  } as unknown as Doc<"creativeAssets">,
+  link: {
+    _id: "account_reference_1",
+    creativeAssetId: "asset_character_1",
+    isActive: true,
+    role: "identity",
+  } as unknown as Doc<"accountReferences">,
+});
+assert.equal(persistentCharacterReference.entityType, "creative_asset");
+assert.equal(persistentCharacterReference.entityId, "asset_character_1");
+assert.equal(persistentCharacterReference.storageUrl, "https://storage.example.com/maya.png");
+assert.match(persistentCharacterReference.instruction ?? "", /primary character reference/);
+
 const uploadedImageReference = {
   token: "@pasted_image_1",
   label: "image.png",
@@ -93,6 +114,43 @@ const uploadedImageReference = {
   mimeType: "image/png",
   storageUrl: "https://storage.example.com/image.png",
 } as const;
+
+const accountScopedMessage = userMessage("Create the next post", [uploadedImageReference]);
+const hydratedAccountTurn = await hydrateAccountReferencesForTurn({
+  db: {
+    get: async () => ({
+      _id: "asset_character_1",
+      mediaType: "image",
+      name: "Maya Character",
+      storageUrl: "https://storage.example.com/maya.png",
+    } as unknown as Doc<"creativeAssets">),
+    query: () => ({
+      withIndex: () => ({
+        take: async () => [{
+          _id: "account_reference_1",
+          creativeAssetId: "asset_character_1",
+          isActive: true,
+          role: "identity",
+        } as unknown as Doc<"accountReferences">],
+      }),
+    }),
+  },
+} as unknown as Parameters<typeof hydrateAccountReferencesForTurn>[0], {
+  messages: [accountScopedMessage],
+  thread: {
+    _id: "thread_1",
+    socialAccountId: "account_1",
+  } as unknown as Doc<"createThreads">,
+  userMessage: accountScopedMessage,
+});
+assert.deepEqual(
+  hydratedAccountTurn.userMessage.referenceMentions?.map((mention) => mention.entityId),
+  ["asset_character_1", "uploaded_1"]
+);
+assert.deepEqual(
+  hydratedAccountTurn.threadReferenceMentions.map((mention) => mention.entityId),
+  ["asset_character_1", "uploaded_1"]
+);
 
 const soraModelReference = {
   token: "/Sora_2",
@@ -774,6 +832,15 @@ assert.deepEqual(
     threadReferenceMentions: [bananaReference, uploadedImageReference],
   }),
   [uploadedImageReference]
+);
+assert.deepEqual(
+  referenceMentionsForPlannedToolInput({
+    currentReferenceMentions: [persistentCharacterReference, uploadedImageReference],
+    plannedInput: { priorImageOutputIndexes: [1] },
+    threadReferenceMentions: [persistentCharacterReference, uploadedImageReference],
+  }),
+  [persistentCharacterReference, uploadedImageReference],
+  "Persistent account identity should remain attached when a post also uses prior output"
 );
 assert.deepEqual(
   referenceMentionsForPlannedToolInput({

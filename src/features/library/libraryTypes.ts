@@ -23,3 +23,15 @@ export type CandidateImage = {
   storageUrl: string;
   title: string;
 };
+
+export type LibraryTextDraft = {
+  artifactId: Id<"artifacts">;
+  title: string;
+  type: "text_draft" | "caption" | "script" | "scene_spec" | "shot_list";
+  text: string;
+  createdAt: number;
+  provider?: string;
+  model?: string;
+  prompt?: string;
+  reviewStatus: "not_required" | "pending" | "approved" | "rejected" | "needs_revision";
+};

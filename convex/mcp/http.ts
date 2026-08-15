@@ -2,7 +2,12 @@ import { makeFunctionReference } from "convex/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { httpAction, type ActionCtx } from "../_generated/server";
-import { contentEngineAppResource, CONTENT_ENGINE_APP_MIME_TYPE, CONTENT_ENGINE_APP_URI } from "./appResource";
+import {
+  contentEngineAppResource,
+  CONTENT_ENGINE_APP_MIME_TYPE,
+  CONTENT_ENGINE_APP_URI,
+  isContentEngineAppResourceUri,
+} from "./appResource";
 import { mcpResourceForRequest } from "./oauthHttp";
 import { sha256Hex } from "./oauthCrypto";
 import {
@@ -294,10 +299,16 @@ async function handleMcpRequest(
       case "resources/read": {
         const params = objectParams(message.params);
         const uri = typeof params.uri === "string" ? params.uri : "";
-        if (uri === CONTENT_ENGINE_APP_URI) {
+        const isAppResource = isContentEngineAppResourceUri(uri);
+        if (isAppResource) {
           assertAnyScope(session, ["resources:read", "content:read"]);
         } else {
           assertScopes(session, ["resources:read"]);
+        }
+        if (isAppResource && uri !== CONTENT_ENGINE_APP_URI) {
+          throw new Error(
+            `Unknown Content Engine app resource: ${uri}. Reconnect Content Engine to refresh the MCP tool catalog.`
+          );
         }
         const resource = uri === CONTENT_ENGINE_APP_URI
           ? contentEngineAppResource()

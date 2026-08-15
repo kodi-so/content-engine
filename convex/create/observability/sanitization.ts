@@ -48,6 +48,7 @@ function sanitizeTraceValue(
     return {
       name: value.name,
       message: sanitizeTraceString(value.message),
+      stack: value.stack ? sanitizeTraceString(value.stack) : undefined,
     };
   }
   if (depth >= MAX_TRACE_DEPTH) return "[max depth reached]";

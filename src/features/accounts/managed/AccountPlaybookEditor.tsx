@@ -2,7 +2,9 @@ import { useMutation } from "convex/react";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../convex/_generated/api";
+import type { Doc } from "../../../../convex/_generated/dataModel";
 import type { SocialAccount } from "../accountDisplay";
+import { AccountCharacterReferenceField } from "./AccountCharacterReferenceField";
 import {
   joinLines,
   lines,
@@ -21,7 +23,13 @@ type PlaybookDraft = {
   guardrails: string;
 };
 
-export function AccountPlaybookEditor({ account }: { account: SocialAccount }) {
+export function AccountPlaybookEditor({
+  account,
+  references,
+}: {
+  account: SocialAccount;
+  references: Array<Doc<"accountReferences"> & { asset: Doc<"creativeAssets"> }>;
+}) {
   const updatePlaybook = useMutation(api.accounts.managedAccounts.updatePlaybook);
   const [status, setStatus] = useState("");
   const [draft, setDraft] = useState<PlaybookDraft>({
@@ -81,6 +89,7 @@ export function AccountPlaybookEditor({ account }: { account: SocialAccount }) {
       />
       <div className="grid gap-4 lg:grid-cols-2">
         <label className={`${managedLabelClassName} lg:col-span-2`}>Account identity<textarea className={managedTextareaClassName} onChange={(event) => update("summary", event.target.value)} placeholder="A warm, realistic account following one curious baby through everyday discoveries." value={draft.summary} /></label>
+        <AccountCharacterReferenceField accountId={account._id} references={references} />
         <label className={managedLabelClassName}>Audience<input className={managedInputClassName} onChange={(event) => update("audience", event.target.value)} placeholder="Parents and people who enjoy wholesome short-form video" value={draft.audience} /></label>
         <label className={managedLabelClassName}>Creative direction<input className={managedInputClassName} onChange={(event) => update("creativeDirection", event.target.value)} placeholder="Realistic, intimate, playful, never overly staged" value={draft.creativeDirection} /></label>
         <label className={managedLabelClassName}>Goals · one per line<textarea className={managedTextareaClassName} onChange={(event) => update("goals", event.target.value)} placeholder={"Grow repeat viewers\nDevelop a recognizable personality"} value={draft.goals} /></label>

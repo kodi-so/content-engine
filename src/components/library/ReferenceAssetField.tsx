@@ -1,17 +1,15 @@
 import {
   ClipboardPaste,
   Library,
-  Search,
   Upload,
   X,
 } from "lucide-react";
-import { useMemo, useState, type ChangeEvent, type ClipboardEvent } from "react";
-import { AssetCard } from "../../features/assets/AssetCard";
-import { assetMatchesQuery, isImageAsset, isVideoAsset } from "../../features/assets/assetMedia";
+import { useState, type ChangeEvent, type ClipboardEvent } from "react";
+import { isImageAsset, isVideoAsset } from "../../features/assets/assetMedia";
 import { AssetPreviewModal } from "../../features/assets/AssetPreviewModal";
 import { AssetThumbnail } from "../../features/assets/AssetThumbnail";
+import { LibraryAssetPickerDialog } from "../../features/assets/LibraryAssetPickerDialog";
 import {
-  assetSourceLabels,
   type AssetPreviewItem,
   type SelectableLibraryAsset,
 } from "../../features/assets/assetTypes";
@@ -117,9 +115,7 @@ export function ReferenceAssetField({
 }: ReferenceAssetFieldProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pasteStatus, setPasteStatus] = useState("");
-  const [query, setQuery] = useState("");
   const [previewAsset, setPreviewAsset] = useState<AssetPreviewItem | null>(null);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const remainingSlots = maxCount
     ? Math.max(0, maxCount - files.length)
     : multiple
@@ -128,16 +124,6 @@ export function ReferenceAssetField({
         ? 0
         : 1;
   const canAddMore = remainingSlots > 0;
-  const filteredAssets = useMemo(
-    () =>
-      (libraryAssets ?? [])
-        .filter((asset) => kind === "media" || asset.mediaKind === kind)
-        .filter((asset) => assetMatchesQuery(asset, query, assetSourceLabels[asset.source])),
-    [kind, libraryAssets, query]
-  );
-  const selectedAssets = filteredAssets.filter((asset) =>
-    selectedAssetIds.includes(asset.id)
-  );
   const previewMeta =
     previewAsset &&
     "alias" in previewAsset &&
@@ -146,31 +132,7 @@ export function ReferenceAssetField({
       : undefined;
 
   const openPicker = () => {
-    setQuery("");
-    setSelectedAssetIds([]);
     setPickerOpen(true);
-  };
-
-  const toggleSelectedAsset = (asset: SelectableLibraryAsset) => {
-    setSelectedAssetIds((current) => {
-      if (current.includes(asset.id)) {
-        return current.filter((id) => id !== asset.id);
-      }
-
-      if (!multiple) return [asset.id];
-      if (Number.isFinite(remainingSlots) && current.length >= remainingSlots) {
-        return current;
-      }
-
-      return [...current, asset.id];
-    });
-  };
-
-  const useSelectedAssets = () => {
-    if (!selectedAssets.length) return;
-    onLibraryAssetsSelect(selectedAssets);
-    setPickerOpen(false);
-    setSelectedAssetIds([]);
   };
 
   const uploadFiles = async (files: File[]) => {
@@ -339,90 +301,16 @@ export function ReferenceAssetField({
         </small>
       ) : null}
 
-      {pickerOpen ? (
-        <div
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-[var(--space-4)]"
-          role="dialog"
-        >
-          <div className="grid max-h-[min(44rem,92vh)] w-full max-w-[54rem] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-lg)]">
-            <div className="flex items-start justify-between gap-[var(--space-3)] border-b border-[var(--color-border)] p-[var(--space-4)]">
-              <div>
-                <h3 className="m-0 text-[1rem] font-[800] text-[var(--color-ink)]">
-                  Choose from Library
-                </h3>
-                <p className="m-0 mt-1 text-[0.84rem] text-[var(--color-ink-muted)]">
-                  Select {multiple ? "assets" : "one asset"} for {label.toLowerCase()}.
-                </p>
-              </div>
-              <button
-                aria-label="Close library picker"
-                className="grid size-8 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-border)] text-[var(--color-ink-muted)]"
-                onClick={() => setPickerOpen(false)}
-                type="button"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="grid gap-[var(--space-3)] overflow-hidden p-[var(--space-4)]">
-              <label className="flex min-h-[2.4rem] items-center gap-[var(--space-2)] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-page)] px-[var(--space-3)]">
-                <Search size={15} className="text-[var(--color-ink-muted)]" />
-                <input
-                  className="min-w-0 flex-1 bg-transparent text-[0.86rem] outline-none"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search saved assets"
-                  value={query}
-                />
-              </label>
-
-              <div className="max-h-[25rem] overflow-auto">
-                {filteredAssets.length ? (
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-[var(--space-3)]">
-                    {filteredAssets.map((asset) => (
-                      <AssetCard
-                        asset={asset}
-                        key={asset.id}
-                        meta={`${assetSourceLabels[asset.source]}${asset.model ? ` · ${asset.model}` : ""}`}
-                        onPreview={setPreviewAsset}
-                        onSelect={() => toggleSelectedAsset(asset)}
-                        selected={selectedAssetIds.includes(asset.id)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    No matching library assets.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)] border-t border-[var(--color-border)] p-[var(--space-4)]">
-              <span className="text-[0.8rem] text-[var(--color-ink-muted)]">
-                {selectedAssetIds.length} selected
-              </span>
-              <div className="flex flex-wrap gap-[var(--space-2)]">
-                <button
-                  className="secondary-button"
-                  onClick={() => setPickerOpen(false)}
-                  type="button"
-                >
-                  Cancel
-                </button>
-                <button
-                  className="primary-button"
-                  disabled={!selectedAssets.length}
-                  onClick={useSelectedAssets}
-                  type="button"
-                >
-                  Use selected
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <LibraryAssetPickerDialog
+        assets={libraryAssets}
+        description={`Select ${multiple ? "assets" : "one asset"} for ${label.toLowerCase()}.`}
+        kind={kind}
+        maxSelection={Number.isFinite(remainingSlots) ? remainingSlots : undefined}
+        multiple={multiple}
+        onClose={() => setPickerOpen(false)}
+        onSelect={onLibraryAssetsSelect}
+        open={pickerOpen}
+      />
     </div>
   );
 }

@@ -1,7 +1,15 @@
 import { artifactSummary } from "../../lib/artifactUtils";
 import { isRecord } from "../../lib/artifacts/mediaItems";
 import type { ArtifactDoc, CreativeAssetDoc } from "../../types";
-import type { LibraryOutput } from "./libraryTypes";
+import type { LibraryOutput, LibraryTextDraft } from "./libraryTypes";
+
+const textDraftArtifactTypes = new Set<LibraryTextDraft["type"]>([
+  "text_draft",
+  "caption",
+  "script",
+  "scene_spec",
+  "shot_list",
+]);
 
 function artifactAspectRatio(artifact?: ArtifactDoc) {
   if (!artifact || !isRecord(artifact.data)) return undefined;
@@ -76,6 +84,39 @@ export function createOutputsFromArtifacts(artifacts: ArtifactDoc[]) {
   return artifacts
     .map(createPageArtifactOutput)
     .filter((output): output is LibraryOutput => Boolean(output))
+    .sort((first, second) => second.createdAt - first.createdAt);
+}
+
+function textDraftOutput(artifact: ArtifactDoc): LibraryTextDraft | null {
+  if (!textDraftArtifactTypes.has(artifact.type as LibraryTextDraft["type"])) return null;
+  if (
+    artifact.lifecycle === "debug" ||
+    artifact.lifecycle === "preview" ||
+    artifact.lifecycle === "discarded"
+  ) {
+    return null;
+  }
+  if (!isRecord(artifact.data) || typeof artifact.data.text !== "string") return null;
+  const text = artifact.data.text.trim();
+  if (!text) return null;
+
+  return {
+    artifactId: artifact._id,
+    title: artifact.title?.trim() || "Generated text",
+    type: artifact.type as LibraryTextDraft["type"],
+    text,
+    createdAt: artifact.createdAt,
+    provider: artifact.provider,
+    model: artifact.model,
+    prompt: artifactUserPrompt(artifact),
+    reviewStatus: artifact.reviewStatus,
+  };
+}
+
+export function textDraftOutputsFromArtifacts(artifacts: ArtifactDoc[]) {
+  return artifacts
+    .map(textDraftOutput)
+    .filter((draft): draft is LibraryTextDraft => Boolean(draft))
     .sort((first, second) => second.createdAt - first.createdAt);
 }
 

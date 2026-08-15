@@ -1,5 +1,11 @@
-export const CONTENT_ENGINE_APP_URI = "ui://content-engine/run/v1.html";
+export const CONTENT_ENGINE_APP_URI_PREFIX = "ui://content-engine/run/";
+export const CONTENT_ENGINE_APP_URI = `${CONTENT_ENGINE_APP_URI_PREFIX}v2.html`;
 export const CONTENT_ENGINE_APP_MIME_TYPE = "text/html;profile=mcp-app";
+export const CONTENT_ENGINE_APP_PROTOCOL_VERSION = "2026-01-26";
+
+export function isContentEngineAppResourceUri(uri: string) {
+  return uri.startsWith(CONTENT_ENGINE_APP_URI_PREFIX);
+}
 
 const appHtml = `<!doctype html>
 <html lang="en">
@@ -8,7 +14,7 @@ const appHtml = `<!doctype html>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root{color-scheme:dark;--bg:#0d0f12;--panel:#15181d;--line:#2a2f36;--text:#f4f5f7;--muted:#9ba3ae;--accent:#8be6ca;--danger:#ff9a9a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}button,a{font:inherit}.shell{min-height:360px;display:grid;grid-template-rows:auto 1fr auto}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--line)}.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}h1{font-size:15px;margin:3px 0 0}.status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.dot{width:7px;height:7px;border-radius:999px;background:var(--accent)}.status.failed{color:var(--danger)}.status.failed .dot{background:var(--danger)}.stage{min-height:260px;display:grid;place-items:center;padding:16px;overflow:hidden}.stage img,.stage video{display:block;max-width:100%;max-height:560px;border-radius:10px;background:#08090b;object-fit:contain}.stage audio{width:min(100%,620px)}.empty{max-width:420px;text-align:center;color:var(--muted);line-height:1.5}.loader{width:30px;height:30px;margin:0 auto 14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.details{width:min(100%,720px);border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px}.details pre{margin:10px 0 0;max-height:280px;overflow:auto;white-space:pre-wrap;font-size:12px;color:var(--muted)}.slide-wrap{display:grid;gap:10px;justify-items:center;width:100%}.slide{container-type:inline-size;position:relative;width:min(100%,340px);max-height:560px;overflow:hidden;border-radius:12px;background:#111513;box-shadow:0 18px 48px rgba(0,0,0,.28)}.slide>img{position:absolute;inset:0;width:100%;height:100%;max-height:none;border-radius:0;object-fit:cover}.slide-scrim{position:absolute;inset:0;background:rgba(0,0,0,.3)}.slide-text{position:absolute;display:grid;align-content:center;white-space:pre-wrap;overflow-wrap:anywhere;padding:.12em .2em;line-height:1.08;text-shadow:0 2px 10px rgba(0,0,0,.72)}.slide-controls{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}.slide-controls button{border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);padding:5px 9px;cursor:pointer}.slide-controls button:disabled{opacity:.35;cursor:default}.bottom{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line)}.count{font-size:12px;color:var(--muted)}.actions{display:flex;gap:8px}.action{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;cursor:pointer}.action.primary{background:var(--text);color:var(--bg);border-color:var(--text)}.strip{display:flex;gap:7px;overflow:auto;padding:0 16px 12px}.thumb{width:46px;height:46px;flex:0 0 auto;border:1px solid var(--line);border-radius:7px;background:var(--panel);padding:0;overflow:hidden;cursor:pointer;color:var(--muted)}.thumb.active{border-color:var(--accent)}.thumb img,.thumb video{width:100%;height:100%;object-fit:cover}.thumb span{display:grid;place-items:center;width:100%;height:100%;font-size:10px}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}button,a{font:inherit}.shell{min-height:360px;display:grid;grid-template-rows:auto 1fr auto}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--line)}.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}h1{font-size:15px;margin:3px 0 0}.status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.dot{width:7px;height:7px;border-radius:999px;background:var(--accent)}.status.failed{color:var(--danger)}.status.failed .dot{background:var(--danger)}.stage{min-height:260px;display:grid;place-items:center;padding:16px;overflow:hidden}.stage img,.stage video{display:block;max-width:100%;max-height:560px;border-radius:10px;background:#08090b;object-fit:contain}.stage audio{width:min(100%,620px)}.empty{max-width:420px;text-align:center;color:var(--muted);line-height:1.5}.loader{width:30px;height:30px;margin:0 auto 14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.details{width:min(100%,720px);border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px}.details pre{margin:10px 0 0;max-height:280px;overflow:auto;white-space:pre-wrap;font-size:12px;color:var(--muted)}.document{display:grid;gap:12px}.document-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}.document-text{max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.6;color:var(--text)}.slide-wrap{display:grid;gap:10px;justify-items:center;width:100%}.slide{container-type:inline-size;position:relative;width:min(100%,340px);max-height:560px;overflow:hidden;border-radius:12px;background:#111513;box-shadow:0 18px 48px rgba(0,0,0,.28)}.slide>img{position:absolute;inset:0;width:100%;height:100%;max-height:none;border-radius:0;object-fit:cover}.slide-scrim{position:absolute;inset:0;background:rgba(0,0,0,.3)}.slide-text{position:absolute;display:grid;align-content:center;white-space:pre-wrap;overflow-wrap:anywhere;padding:.12em .2em;line-height:1.08;text-shadow:0 2px 10px rgba(0,0,0,.72)}.slide-controls{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}.slide-controls button{border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);padding:5px 9px;cursor:pointer}.slide-controls button:disabled{opacity:.35;cursor:default}.bottom{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line)}.count{font-size:12px;color:var(--muted)}.actions{display:flex;gap:8px}.action{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;cursor:pointer}.action.primary{background:var(--text);color:var(--bg);border-color:var(--text)}.strip{display:flex;gap:7px;overflow:auto;padding:0 16px 12px}.thumb{width:46px;height:46px;flex:0 0 auto;border:1px solid var(--line);border-radius:7px;background:var(--panel);padding:0;overflow:hidden;cursor:pointer;color:var(--muted)}.thumb.active{border-color:var(--accent)}.thumb img,.thumb video{width:100%;height:100%;object-fit:cover}.thumb span{display:grid;place-items:center;width:100%;height:100%;font-size:10px}
   </style>
 </head>
 <body>
@@ -20,13 +26,12 @@ const appHtml = `<!doctype html>
   </main>
   <script>
     (() => {
-      let snapshot = null, selected = 0, selectedSlide = 0, requestId = 0, pollTimer = null;
+      let snapshot = null, selected = 0, selectedSlide = 0, requestId = 0, pollTimer = null, inputThreadId = null;
       const pending = new Map();
       const title = document.getElementById('title'), status = document.getElementById('status'), stage = document.getElementById('stage'), strip = document.getElementById('strip'), count = document.getElementById('count'), actions = document.getElementById('actions');
       const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
       const safeUrl = value => { try { const url = new URL(String(value ?? '')); return url.protocol === 'https:' || url.protocol === 'http:' ? esc(url.href) : ''; } catch { return ''; } };
       function hostRequest(method, params) {
-        if (window.openai?.callTool && method === 'tools/call') return window.openai.callTool(params.name, params.arguments);
         const id = ++requestId;
         window.parent.postMessage({jsonrpc:'2.0',id,method,params}, '*');
         return new Promise((resolve, reject) => { pending.set(id,{resolve,reject}); setTimeout(() => { if(pending.has(id)){pending.delete(id);reject(new Error('Host request timed out'));}},15000); });
@@ -36,13 +41,14 @@ const appHtml = `<!doctype html>
         if (artifact.type === 'image' && url) return '<img src="'+url+'" alt="'+esc(artifact.title || 'Generated image')+'" />';
         if (artifact.type === 'video' && url) return '<video src="'+url+'" controls playsinline></video>';
         if (artifact.type === 'audio' && url) return '<audio src="'+url+'" controls></audio>';
+        if (typeof artifact.data?.text === 'string') return '<div class="details document"><div class="document-label">'+esc((artifact.type || 'text draft').replaceAll('_',' '))+'</div><strong>'+esc(artifact.title || 'Generated text')+'</strong><div class="document-text">'+esc(artifact.data.text)+'</div></div>';
         return '<div class="details"><strong>'+esc(artifact.title || artifact.type || 'Artifact')+'</strong><pre>'+esc(JSON.stringify(artifact.data ?? artifact,null,2))+'</pre></div>';
       }
       const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
       const percent = (value, fallback) => Math.min(100, Math.max(0, finite(value, fallback)));
       const color = (value, fallback) => /^#[0-9a-f]{3,8}$/i.test(String(value ?? '')) ? String(value) : fallback;
       function blockMarkup(block, index, stageWidth) {
-        const text = block?.text || (Array.isArray(block?.items) ? block.items.join('\n') : '');
+        const text = block?.text || (Array.isArray(block?.items) ? block.items.join('\\n') : '');
         if (!text) return '';
         const x = percent(block.x, 10), y = percent(block.y, index === 0 ? 42 : 62), width = Math.min(100-x, Math.max(12, finite(block.width,80)));
         const size = Math.min(72, Math.max(12, finite(block.fontSize,index === 0 ? 44 : 28)));
@@ -92,9 +98,10 @@ const appHtml = `<!doctype html>
         clearTimeout(pollTimer);
         if (state === 'running' && snapshot.run.id) pollTimer = setTimeout(refresh, snapshot.run.pollAfterMs || 2500);
       }
-      async function refresh() {
+      async function refresh(threadId = snapshot?.run?.id || inputThreadId) {
+        if (!threadId) return;
         try {
-          const result = await hostRequest('tools/call',{name:'command.status',arguments:{threadId:snapshot.run.id}});
+          const result = await hostRequest('tools/call',{name:'command.status',arguments:{threadId}});
           snapshot = result?.structuredContent || result?.result?.structuredContent || snapshot;
           render();
         } catch { pollTimer = setTimeout(refresh, 4000); }
@@ -103,16 +110,32 @@ const appHtml = `<!doctype html>
         const next = value?.structuredContent || value?.result?.structuredContent || value;
         if (next?.run) { snapshot = next; render(); }
       }
+      function acceptInput(value) {
+        const argumentsValue = value?.arguments || value;
+        if (typeof argumentsValue?.threadId !== 'string') return;
+        inputThreadId = argumentsValue.threadId;
+        if (!snapshot) pollTimer = setTimeout(() => refresh(inputThreadId), 1500);
+      }
       window.addEventListener('message', event => {
         if (event.source !== window.parent) return;
         const message = event.data;
         if (!message || message.jsonrpc !== '2.0') return;
-        if (message.id && pending.has(message.id)) { const item=pending.get(message.id); pending.delete(message.id); message.error?item.reject(message.error):item.resolve(message.result); return; }
+        if (message.id !== undefined && pending.has(message.id)) { const item=pending.get(message.id); pending.delete(message.id); message.error?item.reject(message.error):item.resolve(message.result); return; }
         if (message.method === 'ui/notifications/tool-result') acceptResult(message.params);
-        if (message.method === 'ui/notifications/tool-input') acceptResult(message.params);
+        if (message.method === 'ui/notifications/tool-input') acceptInput(message.params);
       });
       if (window.openai?.toolOutput) acceptResult(window.openai.toolOutput);
-      hostRequest('ui/initialize',{appInfo:{name:'content-engine-run',version:'1.0.0'},capabilities:{tools:{}}}).then(() => window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*')).catch(()=>{});
+      if (window.openai?.toolInput) acceptInput(window.openai.toolInput);
+      hostRequest('ui/initialize',{protocolVersion:'${CONTENT_ENGINE_APP_PROTOCOL_VERSION}',appInfo:{name:'content-engine-run',version:'1.0.0'},appCapabilities:{}}).then(() => {
+        window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized',params:{}},'*');
+        if (window.openai?.toolOutput) acceptResult(window.openai.toolOutput);
+        if (window.openai?.toolInput) acceptInput(window.openai.toolInput);
+      }).catch(error => {
+        if (window.openai?.toolOutput) return acceptResult(window.openai.toolOutput);
+        status.className = 'status failed';
+        status.innerHTML = '<span class="dot"></span><span>Connection failed</span>';
+        stage.innerHTML = '<div class="empty">Content Engine could not connect to this host. '+esc(error?.message || 'The MCP Apps handshake failed.')+'</div>';
+      });
     })();
   </script>
 </body>

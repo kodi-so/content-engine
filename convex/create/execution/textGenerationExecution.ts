@@ -127,7 +127,8 @@ export const executeTextGeneration = internalAction({
         provider: result.metadata.provider,
         model: result.metadata.model,
         prompt: args.prompt,
-        reviewStatus: "not_required",
+        lifecycle: "saved",
+        reviewStatus: "pending",
       });
       await ctx.runMutation(internal.create.observability.runEvents.record, {
         threadId: args.threadId,

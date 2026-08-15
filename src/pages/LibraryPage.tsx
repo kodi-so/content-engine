@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { MediaLightbox, type MediaLightboxItem } from "../components/MediaLightbox";
+import { MediaLightbox } from "../components/MediaLightbox";
 import { LoadingState, Page, Panel, Select } from "../components/ui";
 import {
   AddMediaModal,
@@ -13,9 +13,15 @@ import {
 } from "../features/library/LibraryModals";
 import { LibraryOutputCard } from "../features/library/LibraryOutputCard";
 import { LibrarySlideshowCard } from "../features/library/LibrarySlideshowCard";
+import { visibleLibrarySlideshows } from "../features/library/librarySlideshows";
+import {
+  LibraryTextDraftModal,
+  LibraryTextDraftRow,
+} from "../features/library/LibraryTextDrafts";
 import {
   createOutputsFromArtifacts,
   creativeAssetOutputsFromAssets,
+  textDraftOutputsFromArtifacts,
 } from "../features/library/libraryOutputs";
 import {
   assetKindFromFile,
@@ -23,10 +29,14 @@ import {
   generationAspectRatio,
   libraryImageEditPrompt,
   libraryImageReference,
-  lightboxMediaForOutput,
   mediaTypeFromFile,
 } from "../features/library/libraryMedia";
-import type { CandidateImage, LibraryOutput } from "../features/library/libraryTypes";
+import type {
+  CandidateImage,
+  LibraryOutput,
+  LibraryTextDraft,
+} from "../features/library/libraryTypes";
+import { useLibraryArtifactReview } from "../features/library/useLibraryArtifactReview";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import { fileToDataUrl } from "../lib/browser/dataUrl";
 import {
@@ -67,7 +77,6 @@ export function LibraryPage() {
   const [revisionStatus, setRevisionStatus] = useState("");
   const [isGeneratingRevision, setIsGeneratingRevision] = useState(false);
   const [isApprovingRevision, setIsApprovingRevision] = useState(false);
-  const [lightboxMedia, setLightboxMedia] = useState<MediaLightboxItem | null>(null);
   const imageGenerationDefault = useMemo(
     () => generationDefaultForMode(activeWorkspace?.aiGenerationSettings, "image"),
     [activeWorkspace?.aiGenerationSettings]
@@ -88,11 +97,12 @@ export function LibraryPage() {
       ].sort((first, second) => second.createdAt - first.createdAt),
     [artifacts, creativeAssets]
   );
-  const savedSlideshows = useMemo(
-    () =>
-      (slideshows ?? [])
-        .filter((slideshow) => slideshow.status === "saved")
-        .sort((first, second) => second.updatedAt - first.updatedAt),
+  const textDrafts = useMemo(
+    () => textDraftOutputsFromArtifacts(artifacts ?? []),
+    [artifacts]
+  );
+  const librarySlideshows = useMemo(
+    () => visibleLibrarySlideshows(slideshows ?? []),
     [slideshows]
   );
 
@@ -103,26 +113,45 @@ export function LibraryPage() {
     }),
     [createOutputs, typeFilter]
   );
+  const filteredTextDrafts = useMemo(
+    () => textDrafts.filter((draft) => !typeFilter || draft.type === typeFilter),
+    [textDrafts, typeFilter]
+  );
   const filteredSlideshows = useMemo(
-    () => savedSlideshows.filter(() => {
+    () => librarySlideshows.filter(() => {
       if (typeFilter && typeFilter !== "slideshow") return false;
       return true;
     }),
-    [savedSlideshows, typeFilter]
+    [librarySlideshows, typeFilter]
   );
 
   const outputTypes = useMemo(
     () =>
       Array.from(
-        new Set(createOutputs.map((output) => output.type))
+        new Set([
+          ...createOutputs.map((output) => output.type),
+          ...textDrafts.map((draft) => draft.type),
+        ])
       ).sort(),
-    [createOutputs]
+    [createOutputs, textDrafts]
   );
   const visibleOutputTypes = useMemo(
     () => Array.from(new Set([...outputTypes, "slideshow"])).sort(),
     [outputTypes]
   );
   const loading = !artifacts || !creativeAssets || !slideshows;
+  const filteredItemCount =
+    filteredTextDrafts.length + filteredCreateOutputs.length + filteredSlideshows.length;
+  const libraryItemCount = textDrafts.length + createOutputs.length + librarySlideshows.length;
+  const {
+    closeArtifact,
+    closeMedia,
+    lightboxMedia,
+    openArtifact,
+    openMedia,
+    requestedArtifactId,
+    requestedTextDraft,
+  } = useLibraryArtifactReview({ mediaOutputs: createOutputs, textDrafts });
 
   const removeSavedAsset = async (output: LibraryOutput) => {
     if (!output.artifactId && !output.creativeAssetId) return;
@@ -145,7 +174,24 @@ export function LibraryPage() {
     }
   };
 
-  const removeSavedSlideshow = async (slideshowId: Id<"slideshows">, title: string) => {
+  const removeTextDraft = async (draft: LibraryTextDraft) => {
+    const confirmed = window.confirm(`Delete draft "${draft.title}" from the library?`);
+    if (!confirmed) return;
+
+    setDeletingArtifactId(String(draft.artifactId));
+    setLibraryStatus("");
+    try {
+      await deleteArtifact({ id: draft.artifactId });
+      if (requestedArtifactId === String(draft.artifactId)) closeArtifact();
+      setLibraryStatus("Draft deleted");
+    } catch (error) {
+      setLibraryStatus(error instanceof Error ? error.message : "Unable to delete draft");
+    } finally {
+      setDeletingArtifactId(null);
+    }
+  };
+
+  const removeSlideshow = async (slideshowId: Id<"slideshows">, title: string) => {
     const confirmed = window.confirm(`Delete "${title}" from the library?`);
     if (!confirmed) return;
 
@@ -286,14 +332,14 @@ export function LibraryPage() {
   return (
     <Page
       title="Library"
-      description={`Saved assets for ${activeWorkspace?.name ?? "this workspace"}.`}
+      description={`Generated drafts and media for ${activeWorkspace?.name ?? "this workspace"}.`}
     >
-      <Panel title="Saved Assets">
+      <Panel title="Library items">
         <div className="section-toolbar">
           <div className="grid min-w-0 gap-[var(--space-3)]">
             <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
               <div className="min-w-0 text-[0.9rem] text-[var(--color-ink-muted)]">
-                {`${filteredCreateOutputs.length + filteredSlideshows.length} saved asset${filteredCreateOutputs.length + filteredSlideshows.length === 1 ? "" : "s"}`}
+                {`${filteredItemCount} item${filteredItemCount === 1 ? "" : "s"}`}
               </div>
             </div>
           </div>
@@ -334,60 +380,102 @@ export function LibraryPage() {
 
         {loading && (
           <LoadingState
-            detail="Fetching saved assets and slideshows."
+            detail="Fetching generated drafts, media, and slideshows."
             title="Loading library"
           />
         )}
-        {!loading && filteredCreateOutputs.length === 0 && filteredSlideshows.length === 0 && (
+        {!loading && filteredItemCount === 0 && (
           <div className="empty-state">
-            {createOutputs.length === 0 && savedSlideshows.length === 0
-              ? "No saved assets yet. Add reusable media or save a generated result here."
-              : "No saved assets match these filters."}
+            {libraryItemCount === 0
+              ? "No library items yet. Generated drafts and media will appear here."
+              : "No library items match these filters."}
           </div>
         )}
 
-        {!loading && (filteredCreateOutputs.length > 0 || filteredSlideshows.length > 0) && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
-            {filteredSlideshows.map((slideshow) => (
-              <LibrarySlideshowCard
-                isDeleting={deletingSlideshowId === String(slideshow._id)}
-                key={slideshow._id}
-                onDelete={() => void removeSavedSlideshow(slideshow._id, slideshow.title)}
-                onOpen={() => navigate(`/slideshows/${slideshow._id}`)}
-                slideshow={slideshow}
-              />
-            ))}
-            {filteredCreateOutputs.map((output) => (
-              <LibraryOutputCard
-                isDeleting={
-                  deletingArtifactId === String(output.artifactId ?? output.creativeAssetId)
-                }
-                key={output.id}
-                onOpenMedia={(mediaOutput) => setLightboxMedia(lightboxMediaForOutput(mediaOutput))}
-                onCompose={
-                  output.mimeType?.startsWith("video/") || output.type === "video"
-                    ? () => navigate(`/studio?${
-                        output.artifactId
-                          ? `artifactId=${encodeURIComponent(String(output.artifactId))}`
-                          : output.creativeAssetId
-                            ? `creativeAssetId=${encodeURIComponent(String(output.creativeAssetId))}`
-                            : `outputId=${encodeURIComponent(output.id)}`
-                      }`)
-                    : undefined
-                }
-                onEdit={editableImageOutput(output) ? () => setEditingOutput(output) : undefined}
-                onDelete={() => void removeSavedAsset(output)}
-                onRename={
-                  output.artifactId || output.creativeAssetId
-                    ? () => setRenamingOutput(output)
-                    : undefined
-                }
-                output={output}
-              />
-            ))}
+        {!loading && filteredItemCount > 0 ? (
+          <div className="grid gap-[var(--space-5)]">
+            {filteredTextDrafts.length > 0 ? (
+              <section className="grid gap-[var(--space-2)]" aria-labelledby="library-drafts-heading">
+                <div className="flex items-baseline justify-between gap-[var(--space-3)]">
+                  <h2
+                    className="m-0 text-[0.92rem] font-[780] text-[var(--color-ink)]"
+                    id="library-drafts-heading"
+                  >
+                    Text drafts
+                  </h2>
+                  <span className="text-[0.76rem] text-[var(--color-ink-muted)]">
+                    {filteredTextDrafts.length}
+                  </span>
+                </div>
+                <div className="divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
+                  {filteredTextDrafts.map((draft) => (
+                    <LibraryTextDraftRow
+                      draft={draft}
+                      isDeleting={deletingArtifactId === String(draft.artifactId)}
+                      key={draft.artifactId}
+                      onDelete={() => void removeTextDraft(draft)}
+                      onOpen={() => openArtifact(draft.artifactId)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {filteredCreateOutputs.length > 0 || filteredSlideshows.length > 0 ? (
+              <section className="grid gap-[var(--space-2)]" aria-labelledby="library-media-heading">
+                <h2
+                  className="m-0 text-[0.92rem] font-[780] text-[var(--color-ink)]"
+                  id="library-media-heading"
+                >
+                  Media and references
+                </h2>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),16rem))] items-start justify-start gap-[var(--space-3)]">
+                  {filteredSlideshows.map((slideshow) => (
+                    <LibrarySlideshowCard
+                      isDeleting={deletingSlideshowId === String(slideshow._id)}
+                      key={slideshow._id}
+                      onDelete={() => void removeSlideshow(slideshow._id, slideshow.title)}
+                      onOpen={() => navigate(`/slideshows/${slideshow._id}`)}
+                      slideshow={slideshow}
+                    />
+                  ))}
+                  {filteredCreateOutputs.map((output) => (
+                    <LibraryOutputCard
+                      isDeleting={
+                        deletingArtifactId === String(output.artifactId ?? output.creativeAssetId)
+                      }
+                      key={output.id}
+                      onOpenMedia={openMedia}
+                      onCompose={
+                        output.mimeType?.startsWith("video/") || output.type === "video"
+                          ? () => navigate(`/studio?${
+                              output.artifactId
+                                ? `artifactId=${encodeURIComponent(String(output.artifactId))}`
+                                : output.creativeAssetId
+                                  ? `creativeAssetId=${encodeURIComponent(String(output.creativeAssetId))}`
+                                  : `outputId=${encodeURIComponent(output.id)}`
+                            }`)
+                          : undefined
+                      }
+                      onEdit={editableImageOutput(output) ? () => setEditingOutput(output) : undefined}
+                      onDelete={() => void removeSavedAsset(output)}
+                      onRename={
+                        output.artifactId || output.creativeAssetId
+                          ? () => setRenamingOutput(output)
+                          : undefined
+                      }
+                      output={output}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
-        )}
-        <MediaLightbox media={lightboxMedia} onClose={() => setLightboxMedia(null)} />
+        ) : null}
+        <MediaLightbox media={lightboxMedia} onClose={closeMedia} />
+        {requestedTextDraft ? (
+          <LibraryTextDraftModal draft={requestedTextDraft} onClose={closeArtifact} />
+        ) : null}
         {renamingOutput ? (
           <TitleRenameModal
             onCancel={() => setRenamingOutput(null)}

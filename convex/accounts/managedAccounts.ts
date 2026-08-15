@@ -213,6 +213,71 @@ export const addReference = mutation({
   },
 });
 
+export const setCharacterReference = mutation({
+  args: {
+    id: v.id("socialAccounts"),
+    creativeAssetId: v.union(v.id("creativeAssets"), v.null()),
+  },
+  returns: v.union(v.id("accountReferences"), v.null()),
+  handler: async (ctx, args) => {
+    const { userId } = await ensureCurrentUser(ctx);
+    const account = await requireSocialAccountAccess(ctx, args.id, userId);
+    const links = await ctx.db
+      .query("accountReferences")
+      .withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id))
+      .take(100);
+
+    if (!args.creativeAssetId) {
+      await Promise.all(
+        links
+          .filter((link) => link.role === "identity")
+          .map((link) => ctx.db.delete(link._id))
+      );
+      return null;
+    }
+
+    const asset = await ctx.db.get(args.creativeAssetId);
+    if (
+      !asset ||
+      asset.mediaType !== "image" ||
+      (account.workspaceId
+        ? asset.workspaceId !== account.workspaceId
+        : asset.userId !== userId)
+    ) {
+      throw new Error("Character reference image not found");
+    }
+
+    const existing = links.find((link) => link.creativeAssetId === asset._id);
+    await Promise.all(
+      links
+        .filter((link) => link.role === "identity" && link._id !== existing?._id)
+        .map((link) => ctx.db.delete(link._id))
+    );
+
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        role: "identity",
+        instruction: undefined,
+        isActive: true,
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("accountReferences", {
+      userId,
+      workspaceId: account.workspaceId,
+      socialAccountId: account._id,
+      creativeAssetId: asset._id,
+      role: "identity",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 export const removeReference = mutation({
   args: { id: v.id("accountReferences") },
   returns: v.null(),

@@ -1,0 +1,15 @@
+interface:
+  display_name: "Content Engine Agent"
+  short_description: "Create and publish content with Content Engine"
+  default_prompt: "Use $content-engine-agent to create social content with my Content Engine tools and references."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "content-engine"
+      description: "Authenticated Content Engine creation and publishing tools"
+      transport: "streamable_http"
+      url: "https://tame-civet-64.convex.site/mcp"
+
+policy:
+  allow_implicit_invocation: true

@@ -1,7 +1,7 @@
 import type { Doc } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { compactLogValue } from "./agentDiagnostics";
-import { toolDescriptorMap } from "../planning";
+import { toolDescriptorMap, type CreateReferenceMention } from "../planning";
 import type { CreateToolName } from "../tools";
 import { isRecord } from "../references/referenceResolution";
 import { readyArtifactsForThreadToolOutputs } from "../execution/threadToolOutputs";
@@ -72,7 +72,8 @@ function artifactType(artifact: Doc<"artifacts">) {
 
 async function accountContextForThread(
   ctx: Pick<QueryCtx, "db">,
-  thread: Doc<"createThreads">
+  thread: Doc<"createThreads">,
+  accountReferenceMentions: CreateReferenceMention[]
 ) {
   if (!thread.socialAccountId) return "Account scope: none. This is a workspace-level conversation.";
   const account = await ctx.db.get(thread.socialAccountId);
@@ -116,6 +117,11 @@ async function accountContextForThread(
     postLines.length
       ? `Recent account posts:\n${postLines.join("\n")}`
       : "Recent account posts: none yet.",
+    accountReferenceMentions.length
+      ? `Persistent account references:\n${accountReferenceMentions.map((reference) =>
+          `- ${reference.label}${reference.instruction ? `: ${reference.instruction}` : ""}`
+        ).join("\n")}`
+      : "Persistent account references: none.",
     "Treat manual and scheduled posts as one shared account history and choose ideas from the full account context.",
   ].join("\n\n");
 }
@@ -162,6 +168,7 @@ export function formatTurnToolProgressSection(entries: TurnToolProgressEntry[]) 
 export async function buildTurnContextSections(
   ctx: Pick<QueryCtx, "db">,
   args: {
+    accountReferenceMentions?: CreateReferenceMention[];
     effectiveBrief: string;
     messages: Doc<"createMessages">[];
     thread: Doc<"createThreads">;
@@ -373,7 +380,11 @@ export async function buildTurnContextSections(
         ...selectedModelLines,
       ].join("\n")
     : "User-selected models for this request: none.";
-  const accountContext = await accountContextForThread(ctx, args.thread);
+  const accountContext = await accountContextForThread(
+    ctx,
+    args.thread,
+    args.accountReferenceMentions ?? []
+  );
 
   const contextBlock = [
     "Current request and plan:",

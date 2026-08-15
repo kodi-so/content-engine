@@ -7,6 +7,7 @@ import {
   CONTENT_ENGINE_APP_MIME_TYPE,
   CONTENT_ENGINE_APP_URI,
   contentEngineAppResource,
+  isContentEngineAppResourceUri,
 } from "../../../convex/mcp/appResource";
 import { pkceChallenge } from "../../../convex/mcp/oauthCrypto";
 import {
@@ -14,6 +15,8 @@ import {
   mcpToolPolicy,
   splitCommandArguments,
 } from "../../../convex/mcp/toolCatalog";
+import { contentEngineArtifactUrl } from "../../../convex/mcp/artifactLinks";
+import type { Doc } from "../../../convex/_generated/dataModel";
 
 const nativeTools = listCreateToolsForPlanner();
 const mcpTools = listCreateToolsForMcp();
@@ -62,9 +65,30 @@ assert.deepEqual(
 
 const resource = contentEngineAppResource();
 assert.equal(resource.contents[0].mimeType, CONTENT_ENGINE_APP_MIME_TYPE);
+assert.equal(isContentEngineAppResourceUri(CONTENT_ENGINE_APP_URI), true);
+assert.equal(isContentEngineAppResourceUri("ui://content-engine/run/v1.html"), true);
+assert.equal(isContentEngineAppResourceUri("content-engine://models"), false);
 assert.match(resource.contents[0].text, /ui\/notifications\/tool-result/);
 assert.match(resource.contents[0].text, /command\.status/);
 assert.match(resource.contents[0].text, /slide-controls/);
+
+const reviewableDraft = {
+  _id: "artifact-draft",
+  data: { text: "Review me" },
+  type: "text_draft",
+} as Doc<"artifacts">;
+assert.equal(
+  contentEngineArtifactUrl("https://content.example", reviewableDraft),
+  "https://content.example/library?artifactId=artifact-draft"
+);
+assert.equal(
+  contentEngineArtifactUrl("https://content.example", {
+    ...reviewableDraft,
+    lifecycle: "debug",
+  }),
+  undefined,
+  "MCP results must not link to artifacts the Library intentionally hides"
+);
 
 assert.equal(
   await pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),

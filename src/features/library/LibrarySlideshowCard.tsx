@@ -87,7 +87,9 @@ export function LibrarySlideshowCard({
         <SlideshowThumbnail slide={slides[0]} spec={spec} />
       </button>
       <div className="grid min-w-0 gap-[var(--space-2)]">
-        <div className="entity-eyebrow">slideshow</div>
+        <div className="entity-eyebrow">
+          {slideshow.status === "preview" ? "Slideshow preview" : "Saved slideshow"}
+        </div>
         <button
           aria-label={`Open ${slideshow.title}`}
           className="block w-full min-w-0 rounded-[var(--radius-sm)] border border-transparent bg-transparent p-0 text-left text-[var(--color-ink)] transition hover:text-[var(--color-primary-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-2 focus:ring-offset-[var(--color-surface)]"

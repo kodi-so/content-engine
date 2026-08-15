@@ -6,6 +6,7 @@ import type {
   ModelProviderName,
 } from "../../providers/model";
 import type { CreateRunEventInput } from "./runEvents";
+import { sanitizeCreateTraceDetails } from "./sanitization";
 
 export type CreateActionTraceIdentity = {
   threadId: Id<"createThreads">;
@@ -23,18 +24,44 @@ function errorMessageFromUnknown(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function traceEventForTransport(event: CreateRunEventInput): CreateRunEventInput {
+  return event.details === undefined
+    ? event
+    : {
+        ...event,
+        details: sanitizeCreateTraceDetails(event.details),
+      };
+}
+
+async function recordTraceBestEffort(
+  event: CreateRunEventInput,
+  write: (event: CreateRunEventInput) => Promise<unknown>
+) {
+  try {
+    await write(traceEventForTransport(event));
+  } catch (error) {
+    console.warn("Create trace recording failed", {
+      operationId: event.operationId,
+      eventType: event.eventType,
+      errorMessage: errorMessageFromUnknown(error),
+    });
+  }
+}
+
 export async function recordCreateActionTrace(
   ctx: ActionCtx,
   identity: CreateActionTraceIdentity,
   event: CreateRunEventInput
 ) {
-  await ctx.runMutation(internal.create.observability.runEvents.record, {
-    threadId: identity.threadId,
-    decisionRunId: identity.decisionRunId,
-    createMessageId: identity.createMessageId,
-    createToolCallId: identity.createToolCallId,
-    parentOperationId: identity.parentOperationId,
-    ...event,
+  await recordTraceBestEffort(event, async (transportEvent) => {
+    await ctx.runMutation(internal.create.observability.runEvents.record, {
+      threadId: identity.threadId,
+      decisionRunId: identity.decisionRunId,
+      createMessageId: identity.createMessageId,
+      createToolCallId: identity.createToolCallId,
+      parentOperationId: identity.parentOperationId,
+      ...transportEvent,
+    });
   });
 }
 
@@ -132,14 +159,16 @@ export async function observeContentRequestModelCall<T extends ObservedModelResu
 ) {
   const startedAt = Date.now();
   const record = async (event: CreateRunEventInput) => {
-    await ctx.runMutation(
-      internal.create.observability.runEvents.recordForContentRequest,
-      {
-        requestId: args.requestId,
-        parentOperationId: `content-request:${args.requestId}`,
-        ...event,
-      }
-    );
+    await recordTraceBestEffort(event, async (transportEvent) => {
+      await ctx.runMutation(
+        internal.create.observability.runEvents.recordForContentRequest,
+        {
+          requestId: args.requestId,
+          parentOperationId: `content-request:${args.requestId}`,
+          ...transportEvent,
+        }
+      );
+    });
   };
   await record({
     operationId: args.operationId,

@@ -7,6 +7,7 @@ import {
   DEFAULT_ACCOUNT_TIMEZONE,
   nextAutopilotRunAfterDue,
 } from "./accountCadence";
+import { activeAccountReferences } from "./accountReferenceContext";
 
 type SocialAccount = Doc<"socialAccounts">;
 const SCHEDULER_BATCH_SIZE = 25;
@@ -142,16 +143,7 @@ export const getAccountAgentRunContext = internalQuery({
         q.eq("socialAccountId", account._id).eq("status", "active")
       )
       .take(30);
-    const referenceLinks = await ctx.db
-      .query("accountReferences")
-      .withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id))
-      .take(50);
-    const references = [];
-    for (const link of referenceLinks) {
-      if (!link.isActive) continue;
-      const asset = await ctx.db.get(link.creativeAssetId);
-      if (asset) references.push({ link, asset });
-    }
+    const references = await activeAccountReferences(ctx, account._id);
     return { account, insights, posts, references, run };
   },
 });
@@ -249,26 +241,6 @@ export const seedAccountAgentThread = internalMutation({
     if (!run) return null;
     const account = await ctx.db.get(run.socialAccountId);
     if (!account) return null;
-    const referenceLinks = await ctx.db
-      .query("accountReferences")
-      .withIndex("by_social_account", (q) => q.eq("socialAccountId", account._id))
-      .take(50);
-    const referenceMentions = [];
-    for (const link of referenceLinks) {
-      if (!link.isActive) continue;
-      const asset = await ctx.db.get(link.creativeAssetId);
-      if (!asset) continue;
-      referenceMentions.push({
-        token: `@${asset.name.replace(/\s+/g, "_").toLowerCase()}`,
-        label: asset.name,
-        entityType: "creative_asset" as const,
-        entityId: String(asset._id),
-        mediaType: asset.mediaType,
-        storageUrl: asset.storageUrl,
-        instruction: link.instruction ?? `Use as an account ${link.role} reference.`,
-      });
-    }
-
     const now = Date.now();
     const threadId = await ctx.db.insert("createThreads", {
       userId: account.userId,
@@ -295,7 +267,6 @@ export const seedAccountAgentThread = internalMutation({
         "When the media is complete, prepare the post for this account.",
       ].join("\n\n"),
       kind: "chat",
-      referenceMentions: referenceMentions.length ? referenceMentions : undefined,
       createdAt: now,
     });
     const decisionRunId = crypto.randomUUID();

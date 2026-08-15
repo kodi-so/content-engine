@@ -11,6 +11,9 @@ coverage
 # Production
 dist
 build
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 
 # Misc
 .DS_Store

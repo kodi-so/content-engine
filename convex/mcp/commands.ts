@@ -7,14 +7,10 @@ import { requireThreadAccess } from "../create/agent/agentThreadRecords";
 import { executeRunnableQueuedTools } from "../create/toolExecution";
 import { getCreateTool, type CreateToolName } from "../create/tools";
 import { defaultWorkspaceForUser, requireWorkspaceMember } from "../workspaces/workspaces";
+import { contentEngineArtifactUrl } from "./artifactLinks";
 
 function normalizeAppUrl(value: string | undefined) {
   return value?.trim().replace(/\/$/, "") || undefined;
-}
-
-function artifactLink(appUrl: string | undefined, artifact: Doc<"artifacts">) {
-  if (!appUrl) return undefined;
-  return `${appUrl}/library?artifactId=${artifact._id}`;
 }
 
 function runState(args: {
@@ -191,7 +187,7 @@ export const snapshot = internalQuery({
         prompt: artifact.prompt,
         reviewStatus: artifact.reviewStatus,
         createdAt: artifact.createdAt,
-        contentEngineUrl: artifactLink(appUrl, artifact),
+        contentEngineUrl: contentEngineArtifactUrl(appUrl, artifact),
       })),
       slideshows: outputs.contentRequests.flatMap(({ slideshows }) =>
         slideshows.map((slideshow) => ({

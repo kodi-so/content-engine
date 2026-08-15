@@ -1,6 +1,7 @@
-import { Copy, KeyRound, Trash2 } from "lucide-react";
-import type { FormEvent } from "react";
+import { ChevronDown, Copy, FileText, KeyRound, Trash2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import type { Id } from "../../../convex/_generated/dataModel";
+import contentEngineAgentSkill from "../../../skills/content-engine-agent/SKILL.md?raw";
 import { LoadingState } from "../../components/ui";
 import {
   DEFAULT_MCP_KEY_NAME,
@@ -9,6 +10,8 @@ import {
   settingsInputClass,
 } from "./settingsPrimitives";
 import type { McpApiKeySummary, McpOauthConnectionSummary } from "./settingsTypes";
+
+const agentSkillLineCount = contentEngineAgentSkill.split("\n").length;
 
 export function AgentAccessSettingsSection({
   apiKeys,
@@ -33,6 +36,8 @@ export function AgentAccessSettingsSection({
   onRevokeKey: (id: Id<"mcpApiKeys">) => void;
   onRevokeOauthConnection: (id: Id<"mcpOauthTokens">) => void;
 }) {
+  const [isSkillOpen, setIsSkillOpen] = useState(false);
+
   return (
     <section>
       <header className="mb-[var(--space-2)]">
@@ -58,6 +63,63 @@ export function AgentAccessSettingsSection({
           >
             <Copy size={16} />
           </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label="Agent skill"
+        note="Give another agent the same workflow guidance for research, generation, durable runs, account management, and publishing safety."
+      >
+        <div className="max-w-[44rem] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div className="flex flex-wrap items-center justify-between gap-[var(--space-3)] px-[var(--space-3)] py-[var(--space-3)]">
+            <div className="flex min-w-0 items-center gap-[var(--space-3)]">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)] text-[var(--color-muted)]">
+                <FileText size={17} />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-[0.92rem] font-[740] text-[var(--color-ink)]">
+                  Content Engine Agent
+                </div>
+                <div className="mt-[0.15rem] text-[0.78rem] text-[var(--color-muted)]">
+                  SKILL.md · {agentSkillLineCount} lines
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-[var(--space-2)]">
+              <button
+                className="secondary-button min-h-9 px-[var(--space-3)] py-[0.45rem] text-[0.8rem]"
+                type="button"
+                onClick={() => onCopy(contentEngineAgentSkill)}
+              >
+                <Copy size={14} />
+                Copy skill
+              </button>
+              <button
+                aria-controls="content-engine-agent-skill"
+                aria-expanded={isSkillOpen}
+                className="secondary-button min-h-9 px-[var(--space-3)] py-[0.45rem] text-[0.8rem]"
+                type="button"
+                onClick={() => setIsSkillOpen((open) => !open)}
+              >
+                {isSkillOpen ? "Hide" : "View"}
+                <ChevronDown
+                  className={`transition-transform ${isSkillOpen ? "rotate-180" : ""}`}
+                  size={14}
+                />
+              </button>
+            </div>
+          </div>
+          {isSkillOpen ? (
+            <div className="border-t border-[var(--color-border)]" id="content-engine-agent-skill">
+              <div className="flex items-center justify-between bg-[var(--color-surface-muted)] px-[var(--space-3)] py-[var(--space-2)] text-[0.74rem] font-[720] text-[var(--color-muted)]">
+                <span>skills/content-engine-agent/SKILL.md</span>
+                <span>Markdown</span>
+              </div>
+              <pre className="m-0 max-h-[30rem] overflow-auto whitespace-pre-wrap break-words px-[var(--space-3)] py-[var(--space-3)] text-[0.78rem] leading-[1.65] text-[var(--color-ink)]">
+                <code>{contentEngineAgentSkill}</code>
+              </pre>
+            </div>
+          ) : null}
         </div>
       </SettingRow>
 

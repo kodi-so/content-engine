@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug Create Runs"
+  short_description: "Diagnose Create pipeline failures from traces"
+  default_prompt: "Use $debug-create-runs to inspect this failed Content Engine Create run and explain the root cause."
